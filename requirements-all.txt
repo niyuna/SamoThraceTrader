@@ -1,0 +1,14 @@
+# vnpy Complete Dependencies
+# 包含所有模块的完整依赖列表
+
+# Core Dependencies
+-r requirements.txt
+
+# Alpha Module Dependencies
+-r requirements-alpha.txt
+
+# Brisk Module Dependencies
+-r requirements-brisk.txt
+
+# Development Dependencies (可选)
+# -r requirements-dev.txt 

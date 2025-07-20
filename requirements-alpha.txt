@@ -1,0 +1,17 @@
+# vnpy Alpha Module Dependencies
+# Alpha策略模块的额外依赖
+
+# Data Processing
+polars>=1.26.0
+pyarrow>=19.0.1
+
+# Machine Learning
+scikit-learn>=1.6.1
+lightgbm>=4.6.0
+torch>=2.6.0
+
+# Scientific Computing
+scipy>=1.15.2
+
+# Alpha Research Tools
+alphalens-reloaded>=0.4.5 

@@ -56,6 +56,123 @@ class Frame(BaseModel):
     timestamp: int
     type: int
 
+# WebSocket连接管理器
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+        self.subscribed_symbols: Dict[WebSocket, set] = {}
+        self.lock = Lock()
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        with self.lock:
+            self.active_connections.append(websocket)
+            self.subscribed_symbols[websocket] = set()
+        logger.info(f"WebSocket连接建立，当前连接数: {len(self.active_connections)}")
+
+    def disconnect(self, websocket: WebSocket):
+        with self.lock:
+            if websocket in self.active_connections:
+                self.active_connections.remove(websocket)
+            if websocket in self.subscribed_symbols:
+                del self.subscribed_symbols[websocket]
+        logger.info(f"WebSocket连接断开，当前连接数: {len(self.active_connections)}")
+
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        try:
+            await websocket.send_text(message)
+        except Exception as e:
+            logger.error(f"发送个人消息失败: {e}")
+            self.disconnect(websocket)
+
+    async def broadcast(self, message: str):
+        with self.lock:
+            disconnected = []
+            for connection in self.active_connections:
+                try:
+                    await connection.send_text(message)
+                except Exception as e:
+                    logger.error(f"广播消息失败: {e}")
+                    disconnected.append(connection)
+            
+            # 清理断开的连接
+            for connection in disconnected:
+                self.disconnect(connection)
+
+    async def broadcast_tick_data(self, frames: Dict[str, List[Frame]]):
+        """广播tick数据到所有订阅了相关股票的连接"""
+        if not frames:
+            return
+            
+        message = {
+            "type": "tick_data",
+            "frames": frames,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        with self.lock:
+            disconnected = []
+            for connection in self.active_connections:
+                try:
+                    # 检查连接是否订阅了相关股票
+                    subscribed = self.subscribed_symbols.get(connection, set())
+                    relevant_frames = {symbol: frame_list for symbol, frame_list in frames.items() 
+                                     if symbol in subscribed or not subscribed}  # 如果没订阅任何股票，接收所有数据
+                    
+                    if relevant_frames:
+                        message["frames"] = relevant_frames
+                        await connection.send_text(json.dumps(message, default=lambda x: x.dict() if hasattr(x, 'dict') else x))
+                except Exception as e:
+                    logger.error(f"广播tick数据失败: {e}")
+                    disconnected.append(connection)
+            
+            # 清理断开的连接
+            for connection in disconnected:
+                self.disconnect(connection)
+
+    def update_subscription(self, websocket: WebSocket, symbols: List[str]):
+        """更新订阅的股票列表"""
+        with self.lock:
+            if websocket in self.subscribed_symbols:
+                self.subscribed_symbols[websocket] = set(symbols)
+                logger.info(f"更新订阅: {symbols}")
+
+manager = ConnectionManager()
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            # 接收客户端消息
+            data = await websocket.receive_text()
+            logger.info(f"收到WebSocket消息: {data}")
+            try:
+                message = json.loads(data)
+                message_type = message.get("type")
+                logger.info(f"消息类型: {message_type}, 完整消息: {message}")
+                
+                if message_type == "subscribe":
+                    symbols = message.get("symbols", [])
+                    manager.update_subscription(websocket, symbols)
+                    await manager.send_personal_message(
+                        json.dumps({"type": "subscription_confirmed", "symbols": symbols}),
+                        websocket
+                    )
+                    logger.info(f"订阅确认: {symbols}")
+                
+                elif message_type == "ping":
+                    await manager.send_personal_message(
+                        json.dumps({"type": "pong"}),
+                        websocket
+                    )
+                    
+            except json.JSONDecodeError:
+                logger.error("无效的JSON消息")
+                
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+
 # @app.on_event("startup")
 # def startup():
 #     pass
@@ -129,7 +246,7 @@ def get_in_day_frames(ts: str, max_frames: int):
 
 
 @app.post("/inDayFrames")
-def post_in_day_frames(frames: Dict[str, List[Frame]]):
+async def post_in_day_frames(frames: Dict[str, List[Frame]]):
     """
     保存日内帧数据到文件，使用临时文件和 fsync 确保写入原子性
     
@@ -149,6 +266,9 @@ def post_in_day_frames(frames: Dict[str, List[Frame]]):
     if new_frame_cnt > 0:
         # write to multi_day_queue first
         multi_day_queue.append({'timestamp': f'{formatted_date}_{ts}', 'frames': data_dict})
+
+        # 通过WebSocket广播tick数据
+        await manager.broadcast_tick_data(data_dict)
 
         # then to file
         # 确保输出目录存在

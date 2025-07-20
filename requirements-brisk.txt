@@ -1,0 +1,14 @@
+# Brisk Module Dependencies
+# Brisk Web服务的依赖
+
+# Web Framework
+fastapi>=0.116.1
+uvicorn>=0.35.0
+
+# Data Validation
+pydantic>=2.11.7
+
+# Logging
+loguru>=0.7.3 
+
+websockets>=13.0.0

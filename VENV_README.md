@@ -4,6 +4,8 @@
 
 你的vnpy项目已经成功配置了Python 3.12.10虚拟环境，完全满足项目要求（>=3.10）。
 
+**开发模式**: 已配置为可编辑安装模式，便于框架开发。
+
 ## 环境信息
 
 - **Python版本**: 3.12.10
@@ -113,14 +115,58 @@ launch_tick_server_venv.bat
    ```
 3. **路径问题**: 确保在项目根目录下执行激活命令
 
-## 更新依赖
+## 开发模式
 
-如果需要更新依赖：
+当前使用**可编辑安装模式**，这是进行框架开发的最佳实践：
 
 ```bash
-# 激活环境后
+# 查看当前安装状态
+pip show vnpy
+# 应该显示: Location: D:\dev\github\vnpy
+
+# 修改代码后无需重新安装，直接测试即可
+python -c "import vnpy; print('vnpy version:', vnpy.__version__)"
+```
+
+**优势：**
+- ✅ 修改源代码立即生效
+- ✅ 无需重新安装
+- ✅ 便于调试和开发
+- ✅ 支持IDE断点调试
+
+详细说明请查看 `DEVELOPMENT_MODE.md`。
+
+## 依赖管理
+
+项目使用requirements文件管理依赖：
+
+### 快速安装
+```bash
+# 使用批处理脚本（推荐）
+install_deps.bat
+
+# 或使用PowerShell脚本
+.\install_deps.ps1
+```
+
+### 手动安装
+```bash
+# 安装所有依赖
+pip install -r requirements-all.txt
+
+# 安装特定模块依赖
+pip install -r requirements-alpha.txt  # Alpha模块
+pip install -r requirements-brisk.txt  # Brisk模块
+pip install -r requirements-dev.txt    # 开发工具
+```
+
+### 更新依赖
+```bash
+# 更新特定包
 pip install --upgrade package_name
 
-# 或者重新安装项目
-pip install -e .
-``` 
+# 重新安装项目（保持可编辑模式）
+pip install -e . --force-reinstall
+```
+
+详细说明请查看 `REQUIREMENTS_README.md`。 
