@@ -40,3 +40,10 @@ _templates
 
 # Alpha
 lab/
+
+# Virtual Environment
+venv/
+env/
+.venv/
+.env/
+/venv_py39
