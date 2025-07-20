@@ -15,9 +15,7 @@ from websockets.exceptions import ConnectionClosed, WebSocketException
 from vnpy.trader.object import Exchange, Product, ContractData, TickData, OrderRequest, CancelRequest, HistoryRequest, SubscribeRequest, BarData
 from vnpy.trader.gateway import BaseGateway
 from vnpy.event import EventEngine
-from vnpy.trader.constant import Exchange
-
-
+from vnpy.trader.constant import Exchange, Interval
 
 # 日股交易所映射
 JAPANESE_EXCHANGES = {
@@ -96,6 +94,7 @@ class BriskGateway(BaseGateway):
         self._replay_speed = setting.get("replay_speed", self.default_setting["replay_speed"])
 
         self._active = True
+        
         self._ws_thread = threading.Thread(target=self._run_websocket)
         self._ws_thread.daemon = True
         self._ws_thread.start()
@@ -270,7 +269,7 @@ class BriskGateway(BaseGateway):
             # 转换并发送tick数据
             tick = self._convert_frame_to_tick(data['symbol'], data['frame'], data['date_str'])
             if tick:
-                # self.write_log(f"symbol: {tick.symbol}, price: {tick.last_price}, volume: {tick.last_volume}, datetime: {tick.datetime}")
+                # 发送tick事件
                 self.on_tick(tick)
 
         self._replay_active = False
@@ -349,6 +348,7 @@ class BriskGateway(BaseGateway):
             for frame_data in frame_list:
                 tick = self._convert_frame_to_tick(symbol, frame_data)
                 if tick:
+                    # 发送tick事件
                     self.on_tick(tick)
 
     def _convert_frame_to_tick(self, symbol: str, frame: Dict, date_str: str = None) -> Optional[TickData]:
