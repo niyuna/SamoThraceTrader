@@ -47,3 +47,4 @@ env/
 .venv/
 .env/
 /venv_py39
+*.log
