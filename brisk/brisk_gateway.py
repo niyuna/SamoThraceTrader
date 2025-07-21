@@ -74,6 +74,18 @@ class BriskGateway(BaseGateway):
         self._contracts: Dict[str, ContractData] = {}
         self._ticks: Dict[str, TickData] = {}
 
+        # 成交量和成交额缓存 - 用于累计计算
+        self._trading_cache = {}  # {
+        #   symbol: {
+        #       'last_volume': 0,
+        #       'current_volume': 0,
+        #       'last_turnover': 0,
+        #       'current_turnover': 0,
+        #       'last_timestamp': 0,
+        #       'last_date': None
+        #   }
+        # }
+
         # 回放相关
         self._replay_active: bool = False
         self._replay_speed: float = 1.0
@@ -351,8 +363,21 @@ class BriskGateway(BaseGateway):
                     # 发送tick事件
                     self.on_tick(tick)
 
+    def _reset_daily_cache(self, symbol: str, new_date):
+        """重置指定symbol的每日缓存"""
+        if symbol in self._trading_cache:
+            self._trading_cache[symbol] = {
+                'last_volume': 0,
+                'current_volume': 0,
+                'last_turnover': 0,
+                'current_turnover': 0,
+                'last_timestamp': 0,
+                'last_date': new_date
+            }
+            self.write_log(f"重置 {symbol} 的每日缓存")
+
     def _convert_frame_to_tick(self, symbol: str, frame: Dict, date_str: str = None) -> Optional[TickData]:
-        """将Frame转换为TickData"""
+        """将Frame转换为TickData（增强版 - 支持累计成交量和成交额）"""
         try:
             # 解析时间戳 - frame中的timestamp是距离当天JST 0点的微秒数
             micro_seconds = frame.get("timestamp", 0)
@@ -368,6 +393,44 @@ class BriskGateway(BaseGateway):
             seconds = micro_seconds / 1_000_000  # 微秒转秒
             dt = base_date + timedelta(seconds=seconds)
             
+            # 处理成交量和成交额
+            frame_volume = frame.get("quantity", 0)
+            frame_price = frame.get("price10", 0) / 10.0  # 转换为实际价格
+            frame_turnover = frame_volume * frame_price   # 计算单次成交额
+            frame_timestamp = frame.get("timestamp", 0)
+            
+            # 初始化缓存
+            if symbol not in self._trading_cache:
+                self._trading_cache[symbol] = {
+                    'last_volume': 0,
+                    'current_volume': 0,
+                    'last_turnover': 0,
+                    'current_turnover': 0,
+                    'last_timestamp': 0,
+                    'last_date': None
+                }
+            
+            cache = self._trading_cache[symbol]
+            
+            # 检查是否需要重置每日数据
+            frame_date = base_date.date()
+            if cache['last_date'] is not None and cache['last_date'] != frame_date:
+                self._reset_daily_cache(symbol, frame_date)
+                cache = self._trading_cache[symbol]  # 重新获取缓存引用
+            
+            # 检查时间戳，确保按顺序处理
+            if frame_timestamp < cache['last_timestamp']:
+                self.write_log(f"警告：{symbol} 时间戳倒序，跳过frame (当前:{frame_timestamp}, 上次:{cache['last_timestamp']})")
+                return None
+            
+            # 更新累计成交量和成交额
+            cache['last_volume'] = cache['current_volume']
+            cache['last_turnover'] = cache['current_turnover']
+            cache['current_volume'] += frame_volume
+            cache['current_turnover'] += frame_turnover
+            cache['last_timestamp'] = frame_timestamp
+            cache['last_date'] = frame_date
+            
             # 创建TickData
             tick = TickData(
                 symbol=symbol,
@@ -375,17 +438,17 @@ class BriskGateway(BaseGateway):
                 datetime=dt,
                 gateway_name=self.gateway_name,
                 name=symbol,
-                volume=frame.get("quantity", 0),
-                last_price=frame.get("price10", 0) / 10.0,  # price10需要除以10
-                last_volume=frame.get("quantity", 0),
+                volume=cache['current_volume'],             # 累计成交量
+                turnover=cache['current_turnover'],         # 累计成交额
+                last_price=frame_price,
+                last_volume=frame_volume,                   # 单次成交量
                 localtime=datetime.now(ZoneInfo("Asia/Tokyo"))
             )
             
             return tick
             
         except Exception as e:
-            self.write_log(f"symbol: {symbol}, frame: {frame}")
-            self.write_log(f"数据转换失败: {e}")
+            self.write_log(f"数据转换失败: symbol={symbol}, frame={frame}, error={e}")
             return None
 
     def _run_heartbeat(self) -> None:
