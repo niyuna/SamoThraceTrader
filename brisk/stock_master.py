@@ -1,3 +1,9 @@
+import requests
+import json
+import logging
+
+logger = logging.getLogger(__name__)
+
 def get_stockmaster(url = 'http://127.0.0.1:8001/metadata/stockmaster'):
     try:
         response = requests.get(url)
