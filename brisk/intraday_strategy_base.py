@@ -14,13 +14,14 @@ from enhanced_bargenerator import EnhancedBarGenerator
 from brisk_gateway import BriskGateway
 from vnpy.trader.event import EVENT_TICK, EVENT_LOG
 from vnpy.event import Event
-from technical_indicators_v3 import TechnicalIndicatorManager
+from technical_indicators import TechnicalIndicatorManager
 
 
-class BriskGatewayDemoV3:
-    """Brisk Gateway演示类 V3 - 集成技术指标"""
+class IntradayStrategyBase:
+    """日内策略基础框架 - 集成技术指标和K线生成"""
     
     def __init__(self):
+        """初始化日内策略基础框架"""
         # 创建事件引擎
         self.event_engine = EventEngine()
         
@@ -194,31 +195,31 @@ class BriskGatewayDemoV3:
 
 def main():
     """主函数"""
-    print("启动Brisk Gateway Demo V3...")
+    print("启动日内策略基础框架...")
     
-    # 创建演示实例
-    demo = BriskGatewayDemoV3()
+    # 创建策略实例
+    strategy = IntradayStrategyBase()
     
     try:
         # 连接Gateway
-        demo.connect()
+        strategy.connect()
         
         # 订阅股票（这里使用示例股票代码）
         # symbols = ["7203", "6758", "9984"]  # 丰田、索尼、软银
-        symbols = ["9984"]  # 丰田、索尼、软银
-        demo.subscribe(symbols)
+        symbols = ["9984"]  # 软银
+        strategy.subscribe(symbols)
         
         # 等待一段时间接收数据
         print("等待接收数据...")
         time.sleep(1)
         
         # 打印摘要
-        # demo.print_summary()
+        # strategy.print_summary()
         
         # 或者开始历史数据回放
-        demo.start_replay("20250718", symbols)
+        strategy.start_replay("20250718", symbols)
         # time.sleep(30)
-        # demo.stop_replay()
+        # strategy.stop_replay()
         
         # 保持运行
         print("按Ctrl+C退出...")
@@ -232,7 +233,7 @@ def main():
         import traceback
         traceback.print_exc()
     finally:
-        demo.close()
+        strategy.close()
 
 
 if __name__ == "__main__":

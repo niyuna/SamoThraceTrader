@@ -9,7 +9,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datetime import datetime, timedelta
 from vnpy.trader.object import BarData
 from vnpy.trader.constant import Exchange, Interval
-from technical_indicators_v3 import TechnicalIndicatorManager, VWAPCalculator, BarStatistics
+from technical_indicators import TechnicalIndicatorManager, VWAPCalculator, BarStatistics
 
 
 def create_test_bar(symbol: str, dt: datetime, open_price: float, high_price: float, 
