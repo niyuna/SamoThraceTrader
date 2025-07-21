@@ -11,7 +11,15 @@ from vnpy.event import EventEngine
 from vnpy.trader.engine import MainEngine
 from vnpy.trader.object import SubscribeRequest, Exchange, BarData, Interval
 from enhanced_bargenerator import EnhancedBarGenerator
-from brisk_gateway import BriskGateway
+# 动态导入
+try:
+    from brisk_gateway import BriskGateway
+except ImportError:
+    BriskGateway = None
+try:
+    from mock_brisk_gateway import MockBriskGateway
+except ImportError:
+    MockBriskGateway = None
 from vnpy.trader.event import EVENT_TICK, EVENT_LOG
 from vnpy.event import Event
 from technical_indicators import TechnicalIndicatorManager
@@ -20,27 +28,19 @@ from technical_indicators import TechnicalIndicatorManager
 class IntradayStrategyBase:
     """日内策略基础框架 - 集成技术指标和K线生成"""
     
-    def __init__(self):
+    def __init__(self, use_mock_gateway=False):
         """初始化日内策略基础框架"""
-        # 创建事件引擎
-        self.event_engine = EventEngine()
-        
-        # 创建主引擎
-        self.main_engine = MainEngine(self.event_engine)
-        
-        # 添加Brisk Gateway
-        self.main_engine.add_gateway(BriskGateway)
-        self.brisk_gateway = self.main_engine.get_gateway("BRISK")
-        
-        # 为每个股票创建BarGenerator和技术指标管理器
+        self.use_mock_gateway = use_mock_gateway
+        self.event_engine = None
+        self.main_engine = None
+        self.gateway = None
+        self.gateway_name = None
+        self.brisk_gateway = None
         self.bar_generators = {}
         self.indicator_managers = {}
         self.bars_count = defaultdict(int)
-        
-        # 注册事件处理函数
-        self.event_engine.register(EVENT_TICK, self.on_tick)
-        self.event_engine.register(EVENT_LOG, self.on_log)
-        
+        # 事件注册延后到connect
+
     def add_symbol(self, symbol: str):
         """为指定股票创建BarGenerator和技术指标管理器"""
         # 创建增强版1分钟K线生成器
@@ -118,20 +118,38 @@ class IntradayStrategyBase:
         print(f"[{log.time}] {log.level}: {log.msg}")
     
     def connect(self, setting: dict = None):
-        """连接Brisk Gateway"""
+        """连接Gateway，支持mock和真实gateway"""
+        if self.use_mock_gateway:
+            gateway_cls = MockBriskGateway
+            gateway_name = "MOCK_BRISK"
+        else:
+            gateway_cls = BriskGateway
+            gateway_name = "BRISK"
+
+        if not self.main_engine:
+            self.event_engine = EventEngine()
+            self.main_engine = MainEngine(self.event_engine)
+            self.main_engine.add_gateway(gateway_cls)
+            self.gateway = self.main_engine.get_gateway(gateway_name)
+            self.gateway_name = gateway_name
+            self.brisk_gateway = self.gateway
+            # 注册事件
+            self.event_engine.register(EVENT_TICK, self.on_tick)
+            self.event_engine.register(EVENT_LOG, self.on_log)
+
         if setting is None:
-            setting = {
-                "tick_server_url": "ws://127.0.0.1:8001/ws",
-                "tick_server_http_url": "http://127.0.0.1:8001",
-                "frames_output_dir": "D:\\dev\\github\\brisk-hack\\brisk_in_day_frames",
-                "reconnect_interval": 5,
-                "heartbeat_interval": 30,
-                "max_reconnect_attempts": 10,
-                "replay_speed": 15,
-            }
-        
-        self.main_engine.connect(setting, "BRISK")
-        print("Brisk Gateway连接成功")
+            if self.use_mock_gateway:
+                setting = {
+                    "tick_mode": "mock",
+                    "mock_account_balance": 10000000,
+                }
+            else:
+                setting = {
+                    "tick_server_url": "ws://127.0.0.1:8001/ws",
+                    "tick_server_http_url": "http://127.0.0.1:8001",
+                }
+        self.main_engine.connect(setting, self.gateway_name)
+        print(f"{self.gateway_name} Gateway连接成功")
     
     def subscribe(self, symbols: list):
         """订阅股票"""
@@ -141,7 +159,7 @@ class IntradayStrategyBase:
             
             # 订阅行情
             req = SubscribeRequest(symbol=symbol, exchange=Exchange.TSE)
-            self.main_engine.subscribe(req, "BRISK")
+            self.main_engine.subscribe(req, self.gateway_name)
             print(f"订阅股票: {symbol}")
     
     def start_replay(self, date: str, symbols: list = None):
@@ -149,13 +167,20 @@ class IntradayStrategyBase:
         if symbols is None:
             symbols = list(self.indicator_managers.keys())
         
-        self.brisk_gateway.start_replay(date, symbols)
-        print(f"开始回放 {date} 的历史数据")
+        # 统一调用Gateway的回放方法
+        if hasattr(self.gateway, 'start_replay'):
+            self.gateway.start_replay(date, symbols)
+            print(f"开始回放 {date} 的历史数据")
+        else:
+            print(f"当前Gateway不支持回放功能")
     
     def stop_replay(self):
         """停止历史数据回放"""
-        self.brisk_gateway.stop_replay()
-        print("停止历史数据回放")
+        if hasattr(self.gateway, 'stop_replay'):
+            self.gateway.stop_replay()
+            print("停止历史数据回放")
+        else:
+            print("当前Gateway不支持回放功能")
     
     def get_indicators(self, symbol: str) -> dict:
         """获取指定股票的技术指标"""

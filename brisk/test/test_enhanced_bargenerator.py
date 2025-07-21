@@ -13,6 +13,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from vnpy.trader.object import TickData, BarData
 from vnpy.trader.constant import Exchange
+import sys
+import os
+
+# 添加父目录到Python路径
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from enhanced_bargenerator import EnhancedBarGenerator
 
 

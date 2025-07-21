@@ -3,8 +3,6 @@ import asyncio
 import json
 import threading
 import time
-import os
-import glob
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from urllib.parse import urljoin
@@ -39,11 +37,9 @@ class BriskGateway(BaseGateway):
     default_setting: Dict[str, str | int | float | bool] = {
         "tick_server_url": "ws://127.0.0.1:8001/ws",
         "tick_server_http_url": "http://127.0.0.1:8001",
-        "frames_output_dir": "D:\\dev\\github\\brisk-hack\\brisk_in_day_frames",
         "reconnect_interval": 5,
         "heartbeat_interval": 30,
         "max_reconnect_attempts": 10,
-        "replay_speed": 1.0,  # 回放速度倍数
     }
     exchanges: List[Exchange] = [Exchange.TSE]
 
@@ -55,7 +51,6 @@ class BriskGateway(BaseGateway):
         self._ws: Optional[websockets.WebSocketServerProtocol] = None
         self._ws_url: str = ""
         self._http_url: str = ""
-        self._frames_output_dir: str = ""
         self._connected: bool = False
         self._reconnect_interval: int = 5
         self._heartbeat_interval: int = 30
@@ -66,7 +61,6 @@ class BriskGateway(BaseGateway):
         # 线程相关
         self._ws_thread: Optional[threading.Thread] = None
         self._heartbeat_thread: Optional[threading.Thread] = None
-        self._replay_thread: Optional[threading.Thread] = None
         self._active: bool = False
 
         # 数据缓存
@@ -86,12 +80,6 @@ class BriskGateway(BaseGateway):
         #   }
         # }
 
-        # 回放相关
-        self._replay_active: bool = False
-        self._replay_speed: float = 1.0
-        self._replay_data: List[Dict] = []
-        self._replay_index: int = 0
-
         # 锁
         self._lock: threading.Lock = threading.Lock()
 
@@ -99,11 +87,9 @@ class BriskGateway(BaseGateway):
         """连接服务器"""
         self._ws_url = setting.get("tick_server_url", self.default_setting["tick_server_url"])
         self._http_url = setting.get("tick_server_http_url", self.default_setting["tick_server_http_url"])
-        self._frames_output_dir = setting.get("frames_output_dir", self.default_setting["frames_output_dir"])
         self._reconnect_interval = setting.get("reconnect_interval", self.default_setting["reconnect_interval"])
         self._heartbeat_interval = setting.get("heartbeat_interval", self.default_setting["heartbeat_interval"])
         self._max_reconnect_attempts = setting.get("max_reconnect_attempts", self.default_setting["max_reconnect_attempts"])
-        self._replay_speed = setting.get("replay_speed", self.default_setting["replay_speed"])
 
         self._active = True
         
@@ -122,7 +108,6 @@ class BriskGateway(BaseGateway):
         """关闭连接"""
         self._active = False
         self._connected = False
-        self._replay_active = False
 
         # 不直接关闭WebSocket，让线程自然结束
         # if self._ws:
@@ -170,122 +155,6 @@ class BriskGateway(BaseGateway):
             self.write_log(f"查询历史数据失败: {e}")
             return []
 
-    def start_replay(self, date: str, symbols: List[str] = None) -> None:
-        """开始历史数据回放"""
-        if self._replay_active:
-            self.write_log("回放已在进行中")
-            return
-
-        try:
-            # 加载指定日期的历史数据
-            replay_data = self._load_replay_data(date, symbols)
-            if not replay_data:
-                self.write_log(f"未找到{date}的历史数据")
-                return
-
-            self._replay_data = replay_data
-            self._replay_index = 0
-            self._replay_active = True
-
-            # 启动回放线程
-            self._replay_thread = threading.Thread(target=self._run_replay)
-            self._replay_thread.daemon = True
-            self._replay_thread.start()
-
-            self.write_log(f"开始回放{date}的历史数据，共{len(replay_data)}条记录")
-
-        except Exception as e:
-            self.write_log(f"启动回放失败: {e}")
-
-    def stop_replay(self) -> None:
-        """停止历史数据回放"""
-        self._replay_active = False
-        self.write_log("停止历史数据回放")
-
-    def _load_replay_data(self, date: str, symbols: List[str] = None) -> List[Dict]:
-        """加载回放数据"""
-        replay_data = []
-        
-        try:
-            # 查找指定日期的数据文件
-            pattern = os.path.join(self._frames_output_dir, f"brisk_in_day_frames_{date}_*.json")
-            files = glob.glob(pattern)
-            
-            if not files:
-                return []
-
-            # 按文件名排序（时间戳）
-            files.sort()
-            
-            self.write_log(f"找到{len(files)}个文件")
-
-            for file_path in files:
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        
-                        # 提取时间戳
-                        filename = os.path.basename(file_path)
-                        timestamp_str = filename.split('_')[-1].replace('.json', '')
-                        timestamp = int(timestamp_str)
-                        
-                        # 处理每个股票的数据
-                        for symbol, frames in data.items():
-                            if symbols and symbol not in symbols:
-                                continue
-                                
-                            for frame in frames:
-                                replay_data.append({
-                                    'timestamp': frame.get("timestamp", 0),  # 使用frame中的微秒时间戳
-                                    'symbol': symbol,
-                                    'frame': frame,
-                                    'date_str': date  # 添加日期信息
-                                })
-                                
-                except Exception as e:
-                    self.write_log(f"读取文件{file_path}失败: {e}")
-                    continue
-
-            # 按时间戳排序
-            replay_data.sort(key=lambda x: x['timestamp'])
-            
-            return replay_data
-            
-        except Exception as e:
-            self.write_log(f"加载回放数据失败: {e}")
-            return []
-
-    def _run_replay(self) -> None:
-        """运行回放"""
-        if not self._replay_data:
-            return
-
-        last_timestamp = None
-        
-        for i, data in enumerate(self._replay_data):
-            if not self._replay_active:
-                break
-
-            current_timestamp = data['timestamp']  # 微秒时间戳
-            
-            # 计算时间间隔（微秒转秒）
-            if last_timestamp is not None:
-                time_diff_microseconds = current_timestamp - last_timestamp
-                time_diff_seconds = time_diff_microseconds / 1_000_000  # 微秒转秒
-                sleep_time = time_diff_seconds / self._replay_speed
-                if sleep_time > 0:
-                    time.sleep(sleep_time)
-            
-            last_timestamp = current_timestamp
-            
-            # 转换并发送tick数据
-            tick = self._convert_frame_to_tick(data['symbol'], data['frame'], data['date_str'])
-            if tick:
-                # 发送tick事件
-                self.on_tick(tick)
-
-        self._replay_active = False
-        self.write_log("历史数据回放完成")
 
     def _run_websocket(self) -> None:
         """运行WebSocket连接"""

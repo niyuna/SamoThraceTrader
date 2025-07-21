@@ -7,15 +7,19 @@ from datetime import datetime
 from collections import defaultdict
 from typing import Dict, Set
 
+from vnpy.trader.constant import Direction, Offset, Status, OrderType
+from vnpy.trader.object import OrderData, OrderRequest
+
 from intraday_strategy_base import IntradayStrategyBase
 from stock_master import get_stockmaster
+from mock_brisk_gateway import MockBriskGateway
 
 
 class VWAPFailureStrategy(IntradayStrategyBase):
     """VWAP Failure 日内交易策略"""
     
-    def __init__(self):
-        super().__init__()
+    def __init__(self, use_mock_gateway=True):
+        super().__init__(use_mock_gateway=use_mock_gateway)
         
         # 策略参数
         self.market_cap_threshold = 100_000_000_000  # 1000亿日元
@@ -38,6 +42,14 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         # 信号统计
         self.signal_count = 0           # 信号计数
         self.signals = []               # 信号记录
+        
+        # 订单状态管理 - 使用vnpy的OrderData
+        self.entry_orders = {}          # 每个股票的entry订单: symbol -> OrderData
+        self.exit_orders = {}           # 每个股票的exit订单: symbol -> OrderData
+        
+        # 订单相关参数
+        self.exit_factor = 1.0          # 平仓ATR倍数
+        self.max_exit_wait_time = 30    # 最大平仓等待时间（分钟）
         
     def initialize_stock_filter(self):
         """初始化股票筛选器"""
@@ -101,6 +113,10 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             self.gap_direction.clear()
             self.eligible_stocks.clear()  # 重置符合条件的股票列表
             
+            # 重置订单状态
+            self.entry_orders.clear()
+            self.exit_orders.clear()
+            
             print("策略状态已重置")
     
     def _evaluate_gap_condition(self, symbol):
@@ -147,8 +163,11 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         indicators = self.get_indicators(bar.symbol)
         if not indicators:
             return
-            
-        # 生成交易信号
+        
+        # 更新等待中的订单价格
+        self._update_pending_orders(bar, indicators)
+        
+        # 生成交易信号（只有在没有活跃订单时才生成）
         self._generate_trading_signal(bar, indicators)
     
     def _generate_trading_signal(self, bar, indicators):
@@ -159,6 +178,10 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             
         # 检查当日交易次数限制
         if self.daily_trade_counts[bar.symbol] >= self.max_daily_trades:
+            return
+            
+        # 检查当前是否有活跃的entry订单 - 使用vnpy的is_active()方法
+        if bar.symbol in self.entry_orders and self.entry_orders[bar.symbol].is_active():
             return
             
         gap_dir = self.gap_direction.get(bar.symbol, 'none')
@@ -176,8 +199,8 @@ class VWAPFailureStrategy(IntradayStrategyBase):
                 # 在VWAP + ATR * entry_factor位置做空
                 short_price = vwap + (atr * self.entry_factor)
                 
-                # 生成做空信号
-                self._place_short_order(bar, short_price, atr, vwap, below_vwap_count)
+                # 执行做空开仓
+                self._execute_short_entry(bar, short_price, atr, vwap, below_vwap_count)
                 
         elif gap_dir == 'down':
             # Gap Down策略：寻找VWAP failure做多机会
@@ -187,64 +210,14 @@ class VWAPFailureStrategy(IntradayStrategyBase):
                 # 在VWAP - ATR * entry_factor位置做多
                 long_price = vwap - (atr * self.entry_factor)
                 
-                # 生成做多信号
-                self._place_long_order(bar, long_price, atr, vwap, above_vwap_count)
+                # 执行做多开仓
+                self._execute_long_entry(bar, long_price, atr, vwap, above_vwap_count)
     
     def _is_within_trading_time(self, bar_datetime):
         """检查是否在允许交易的时间范围内"""
         current_time = bar_datetime.time()
         latest_time = datetime.strptime(self.latest_entry_time, "%H:%M:%S").time()
         return current_time <= latest_time
-    
-    def _place_short_order(self, bar, price, atr, vwap, failure_count):
-        """下做空限价单"""
-        self.daily_trade_counts[bar.symbol] += 1
-        self.signal_count += 1
-        
-        signal = {
-            'datetime': bar.datetime,
-            'symbol': bar.symbol,
-            'direction': 'short',
-            'price': price,
-            'vwap': vwap,
-            'atr': atr,
-            'failure_count': failure_count,
-            'daily_trade_count': self.daily_trade_counts[bar.symbol],
-            'gap_direction': self.gap_direction[bar.symbol],
-            'bar_close': bar.close_price
-        }
-        self.signals.append(signal)
-        
-        print(f"做空信号 #{self.signal_count}: {bar.symbol} "
-              f"价格: {price:.2f} VWAP: {vwap:.2f} "
-              f"ATR: {atr:.2f} Failure次数: {failure_count} "
-              f"当日交易次数: {self.daily_trade_counts[bar.symbol]} "
-              f"时间: {bar.datetime.strftime('%H:%M:%S')}")
-        
-    def _place_long_order(self, bar, price, atr, vwap, failure_count):
-        """下做多限价单"""
-        self.daily_trade_counts[bar.symbol] += 1
-        self.signal_count += 1
-        
-        signal = {
-            'datetime': bar.datetime,
-            'symbol': bar.symbol,
-            'direction': 'long',
-            'price': price,
-            'vwap': vwap,
-            'atr': atr,
-            'failure_count': failure_count,
-            'daily_trade_count': self.daily_trade_counts[bar.symbol],
-            'gap_direction': self.gap_direction[bar.symbol],
-            'bar_close': bar.close_price
-        }
-        self.signals.append(signal)
-        
-        print(f"做多信号 #{self.signal_count}: {bar.symbol} "
-              f"价格: {price:.2f} VWAP: {vwap:.2f} "
-              f"ATR: {atr:.2f} Failure次数: {failure_count} "
-              f"当日交易次数: {self.daily_trade_counts[bar.symbol]} "
-              f"时间: {bar.datetime.strftime('%H:%M:%S')}")
     
     def set_strategy_params(self, 
                           market_cap_threshold=100_000_000_000,
@@ -314,13 +287,135 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         
         return summary
 
+    def _execute_short_entry(self, bar, price, atr, vwap, failure_count):
+        """执行做空开仓"""
+        print(f"执行做空开仓: {bar.symbol} 价格: {price:.2f} VWAP: {vwap:.2f} "
+              f"ATR: {atr:.2f} Failure次数: {failure_count} "
+              f"时间: {bar.datetime.strftime('%H:%M:%S')}")
+        
+        # 创建OrderRequest - 使用vnpy的抽象
+        order_req = OrderRequest(
+            symbol=bar.symbol,
+            exchange=bar.exchange,
+            direction=Direction.SHORT,      # 使用vnpy的Direction
+            type=OrderType.LIMIT,           # 使用vnpy的OrderType
+            volume=100,                     # 固定数量，后续可参数化
+            price=price,
+            offset=Offset.OPEN,             # 使用vnpy的Offset
+            reference=f"entry_short_{bar.symbol}_{bar.datetime.strftime('%H%M%S')}"
+        )
+        
+        # 执行下单（使用Mock Gateway）
+        order_id = self.gateway.send_order(order_req)
+        
+        if order_id:
+            print(f"做空开仓订单已提交: {bar.symbol} 订单ID: {order_id}")
+            
+            # 使用vnpy的create_order_data方法创建OrderData
+            order_data = order_req.create_order_data(order_id, self.gateway_name)
+            self.entry_orders[bar.symbol] = order_data
+        else:
+            # 订单被拒绝
+            self._handle_entry_rejection(bar.symbol, order_req)
+
+    def _execute_long_entry(self, bar, price, atr, vwap, failure_count):
+        """执行做多开仓"""
+        print(f"执行做多开仓: {bar.symbol} 价格: {price:.2f} VWAP: {vwap:.2f} "
+              f"ATR: {atr:.2f} Failure次数: {failure_count} "
+              f"时间: {bar.datetime.strftime('%H:%M:%S')}")
+        
+        # 创建OrderRequest - 使用vnpy的抽象
+        order_req = OrderRequest(
+            symbol=bar.symbol,
+            exchange=bar.exchange,
+            direction=Direction.LONG,       # 使用vnpy的Direction
+            type=OrderType.LIMIT,           # 使用vnpy的OrderType
+            volume=100,                     # 固定数量，后续可参数化
+            price=price,
+            offset=Offset.OPEN,             # 使用vnpy的Offset
+            reference=f"entry_long_{bar.symbol}_{bar.datetime.strftime('%H%M%S')}"
+        )
+        
+        # 执行下单（使用Mock Gateway）
+        order_id = self.gateway.send_order(order_req)
+        
+        if order_id:
+            print(f"做多开仓订单已提交: {bar.symbol} 订单ID: {order_id}")
+            
+            # 使用vnpy的create_order_data方法创建OrderData
+            order_data = order_req.create_order_data(order_id, self.gateway_name)
+            self.entry_orders[bar.symbol] = order_data
+        else:
+            # 订单被拒绝
+            self._handle_entry_rejection(bar.symbol, order_req)
+
+    def _handle_entry_rejection(self, symbol, order_req):
+        """处理开仓订单被拒绝"""
+        print(f"开仓订单被拒绝: {symbol} 订单ID: {order_req.reference}")
+        
+        # 创建被拒绝的OrderData
+        rejected_order = order_req.create_order_data(
+            orderid=order_req.reference,
+            gateway_name=self.gateway_name
+        )
+        rejected_order.status = Status.REJECTED  # 使用vnpy的Status
+        
+        # 保存订单记录（用于日志）
+        self.entry_orders[symbol] = rejected_order
+        
+        print(f"股票 {symbol} 订单被拒绝，可以重新寻找entry信号")
+
+    def _update_pending_orders(self, bar, indicators):
+        """更新等待中的订单价格"""
+        symbol = bar.symbol
+        
+        # 更新entry订单价格
+        if symbol in self.entry_orders:
+            entry_order = self.entry_orders[symbol]
+            if entry_order.is_active():  # 使用vnpy的is_active()方法
+                self._update_entry_order_price(entry_order, bar, indicators)
+        
+        # 更新exit订单价格（步骤2中实现）
+        if symbol in self.exit_orders:
+            exit_order = self.exit_orders[symbol]
+            if exit_order.is_active():  # 使用vnpy的is_active()方法
+                self._update_exit_order_price(exit_order, bar, indicators)
+
+    def _update_entry_order_price(self, entry_order, bar, indicators):
+        """更新entry订单价格"""
+        vwap = indicators['vwap']
+        atr = indicators['atr_14']
+        
+        # 计算新的entry价格
+        if entry_order.direction == Direction.SHORT:  # 使用vnpy的Direction
+            new_price = vwap + (atr * self.entry_factor)
+        else:  # Direction.LONG
+            new_price = vwap - (atr * self.entry_factor)
+        
+        # 更新订单价格
+        old_price = entry_order.price
+        entry_order.price = new_price
+        
+        print(f"更新entry订单价格: {bar.symbol} {entry_order.direction.value} "
+              f"旧价格: {old_price:.2f} -> 新价格: {new_price:.2f} "
+              f"时间: {bar.datetime.strftime('%H:%M:%S')}")
+        
+        # 执行订单更新（使用Mock Gateway）
+        # 注意：Mock Gateway会自动处理订单更新，这里只需要记录日志
+        print(f"订单价格已更新: {entry_order.vt_orderid}")
+
+    def _update_exit_order_price(self, exit_order, bar, indicators):
+        """更新exit订单价格（步骤2中实现）"""
+        # TODO: 实现exit订单价格更新逻辑
+        pass
+
 
 def main():
     """主函数 - 测试VWAP Failure策略"""
-    print("启动VWAP Failure策略...")
+    print("启动VWAP Failure策略 (Mock Gateway Replay模式)...")
     
-    # 创建策略实例
-    strategy = VWAPFailureStrategy()
+    # 创建策略实例（使用Mock Gateway）
+    strategy = VWAPFailureStrategy(use_mock_gateway=False)
     
     try:
         # 设置策略参数
@@ -334,8 +429,19 @@ def main():
             latest_entry_time="14:30:00"  # 最晚入场时间
         )
         
+        # 配置Mock Gateway的replay模式
+        # mock_setting = {
+        #     "tick_mode": "replay",
+        #     "replay_data_dir": "D:\\dev\\github\\brisk-hack\\brisk_in_day_frames",
+        #     "replay_date": "20250718",  # 根据实际数据文件调整
+        #     "replay_speed": 10.0,       # 10倍速回放
+        #     "mock_account_balance": 10000000,
+        # }
+        
         # 连接Gateway
+        # strategy.connect(mock_setting)
         strategy.connect()
+
         
         # 初始化股票筛选器
         strategy.initialize_stock_filter()
@@ -343,10 +449,7 @@ def main():
         # 等待一段时间接收数据
         print("等待接收数据...")
         import time
-        time.sleep(2)
-        
-        # 开始历史数据回放
-        strategy.start_replay("20250718")
+        time.sleep(5)
         
         # 保持运行
         print("按Ctrl+C退出...")

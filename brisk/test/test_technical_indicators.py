@@ -9,6 +9,12 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datetime import datetime, timedelta
 from vnpy.trader.object import BarData
 from vnpy.trader.constant import Exchange, Interval
+import sys
+import os
+
+# 添加父目录到Python路径
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from technical_indicators import TechnicalIndicatorManager, VWAPCalculator, BarStatistics
 
 
