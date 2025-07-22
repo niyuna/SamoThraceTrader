@@ -1,0 +1,14 @@
+现在的问题
+1. main engine只支持对单个SubscriptionRequest做订阅，策略启动的时候我们可能要订阅几百个股票，这就是几百个request
+2. gateway那边的实现是，每次增加股票的时候，往一个维护的set里面增加一个股票，然后把整个list通过ws发给tick server
+3. tick server接到message之后，直接用message里面的list去replace自己保存的list作为订阅list
+4. tick server不会处理vt_symbol，所以2222.TSE这样的东西存在list里面是不会真的有订阅的效果的。
+
+方针
+1. vt_symbol的接口我们要维持，具体来说，最上面的subscribe如果发的是普通symbol，那么tick server要有能力handle vt_symbol，或者就干脆在存这些symbol的时候去掉所有的.TSE之类的后缀
+2. 需要思考清楚batch处理在哪里发生，现在看起来不太可能新建一个batchRequest
+2.1 复用已有的SubscriptionRequest，hack symbol部分，这样在base strategy那里就是一个request，gateway和tick server也是一个request。最后tick server那边解析一下这个很长的symbol。好处是只要改base strategy一点点地方，以及tick server，具体的strategy以及gateway不需要改动。坏处是，subscribe会直接覆盖以前的状态这件事情不会变化，这个地方以后仍然可能有坑
+2.2 对于2.1，一个alternative可以是，我们不在tick server resolve batch这件事情，而是在gateway里面resolve他。
+2.3 在gateway里面实现某种定时机制，gateway的subscribe被调用之后先cache对象，每次定时触发之后再flush到tick server。好处是只需要修改gateway代码，坏处是如果不能复用整个engine的timer那么会有额外的timer开销，而且会有一个subscribe被delay的问题
+
+结论：使用2.2因为改动很小。对第一个问题，我们发现其实可以在gateway里面不使用vt_symbol而是直接使用symbol来构建消息

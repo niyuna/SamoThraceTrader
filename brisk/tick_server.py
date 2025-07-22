@@ -117,7 +117,7 @@ class ConnectionManager:
                     # 检查连接是否订阅了相关股票
                     subscribed = self.subscribed_symbols.get(connection, set())
                     relevant_frames = {symbol: frame_list for symbol, frame_list in frames.items() 
-                                     if symbol in subscribed or not subscribed}  # 如果没订阅任何股票，接收所有数据
+                                     if symbol in subscribed or symbol + ".TSE" in subscribed or not subscribed}  # 如果没订阅任何股票，接收所有数据
                     
                     if relevant_frames:
                         message["frames"] = relevant_frames

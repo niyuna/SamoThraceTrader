@@ -118,9 +118,20 @@ class BriskGateway(BaseGateway):
     def subscribe(self, req: SubscribeRequest) -> None:
         """订阅行情"""
         with self._lock:
-            self._subscribed_symbols.add(req.vt_symbol)
+            # hacky way to do batch subscription. TODO: design a better way
+            for real_symbol in req.symbol.split(','):
+                self._subscribed_symbols.add(real_symbol)
 
         self.write_log(f"订阅行情成功: {req.vt_symbol}")
+        
+        # 如果WebSocket已连接，立即发送完整的订阅列表
+        # TODO：这里需要优化，不要每次订阅都发送完整的订阅列表
+        if self._connected and self._ws:
+            # 使用asyncio.run在同步方法中调用异步方法
+            try:
+                asyncio.run(self._send_subscribe_message())
+            except Exception as e:
+                self.write_log(f"发送订阅消息失败: {e}")
 
     def send_order(self, req: OrderRequest) -> str:
         """发送委托"""
@@ -204,6 +215,8 @@ class BriskGateway(BaseGateway):
         }
         self.write_log(f"发送订阅消息: {subscribe_msg}")
         await self._ws.send(json.dumps(subscribe_msg))
+
+
 
     async def _on_message(self, message: str) -> None:
         """处理接收到的消息"""

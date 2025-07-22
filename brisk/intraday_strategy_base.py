@@ -153,14 +153,15 @@ class IntradayStrategyBase:
     
     def subscribe(self, symbols: list):
         """订阅股票"""
+        # hacky way to do batch subscription. TODO: design a better way
         for symbol in symbols:
             # 添加股票到技术指标管理器
             self.add_symbol(symbol)
             
-            # 订阅行情
-            req = SubscribeRequest(symbol=symbol, exchange=Exchange.TSE)
-            self.main_engine.subscribe(req, self.gateway_name)
-            print(f"订阅股票: {symbol}")
+        # 订阅行情
+        req = SubscribeRequest(symbol=','.join(symbols), exchange=Exchange.TSE)
+        self.main_engine.subscribe(req, self.gateway_name)
+        print(f"subscribe: {','.join(symbols)}")
     
     def start_replay(self, date: str, symbols: list = None):
         """开始历史数据回放"""
