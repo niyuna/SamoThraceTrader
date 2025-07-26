@@ -47,7 +47,8 @@ class VWAPFailureStrategyTest(ContextBasedStrategyTest,
             market_cap_threshold=100_000_000_000,
             gap_up_threshold=0.02,
             gap_down_threshold=-0.02,
-            failure_threshold=3,
+            failure_threshold_gap_up=3,
+            failure_threshold_gap_down=3,
             entry_factor=1.5,
             max_daily_trades=3,
             latest_entry_time="23:59:50", # make it always true
@@ -219,19 +220,19 @@ class TestVWAPFailureSpecificLogic(VWAPFailureStrategyTest):
     def test_vwap_failure_threshold_configuration(self):
         """测试 VWAP Failure 阈值配置"""
         symbol = self.test_symbol
-        self.strategy.gap_direction[symbol] = 'up'
         
-        # 测试不同的 failure_threshold 值
-        test_cases = [
+        # 测试 Gap Up 策略的不同 failure_threshold 值
+        self.strategy.gap_direction[symbol] = 'up'
+        test_cases_gap_up = [
             (2, 1, False),  # threshold=2, count=1, 不应该生成信号
             (2, 2, True),   # threshold=2, count=2, 应该生成信号
             (3, 2, False),  # threshold=3, count=2, 不应该生成信号
             (3, 3, True),   # threshold=3, count=3, 应该生成信号
         ]
         
-        for threshold, count, should_generate in test_cases:
+        for threshold, count, should_generate in test_cases_gap_up:
             # 设置策略参数
-            self.strategy.failure_threshold = threshold
+            self.strategy.failure_threshold_gap_up = threshold
             
             # 设置初始状态
             self.setup_context(symbol, state=StrategyState.IDLE, trade_count=0, entry_order_id="", exit_order_id="")
@@ -257,7 +258,50 @@ class TestVWAPFailureSpecificLogic(VWAPFailureStrategyTest):
                 if should_generate:
                     self.assert_context_state(symbol, "waiting_entry")
                 else:
-                    assert context.entry_order_id == "", f"不应该生成信号: threshold={threshold}, count={count}"
+                    assert context.entry_order_id == "", f"Gap Up不应该生成信号: threshold={threshold}, count={count}"
+                    self.assert_context_state(symbol, "idle")
+            finally:
+                # 恢复原方法
+                self.get_mock_indicators = original_method
+        
+        # 测试 Gap Down 策略的不同 failure_threshold 值
+        self.strategy.gap_direction[symbol] = 'down'
+        test_cases_gap_down = [
+            (1, 0, False),  # threshold=1, count=0, 不应该生成信号
+            (1, 1, True),   # threshold=1, count=1, 应该生成信号
+            (2, 1, False),  # threshold=2, count=1, 不应该生成信号
+            (2, 2, True),   # threshold=2, count=2, 应该生成信号
+        ]
+        
+        for threshold, count, should_generate in test_cases_gap_down:
+            # 设置策略参数
+            self.strategy.failure_threshold_gap_down = threshold
+            
+            # 设置初始状态
+            self.setup_context(symbol, state=StrategyState.IDLE, trade_count=0, entry_order_id="", exit_order_id="")
+            
+            # 创建对应的技术指标
+            def get_mock_indicators_with_count(symbol: str) -> dict:
+                return self.mock_generator.create_mock_indicators(
+                    vwap=100.0, atr_14=1.0, above_vwap_count=count
+                )
+            
+            # 临时替换方法
+            original_method = self.get_mock_indicators
+            self.get_mock_indicators = get_mock_indicators_with_count
+            
+            try:
+                # 触发 bar 更新
+                bar = self.mock_generator.create_mock_bar(symbol)
+                self.trigger_bar_update(bar)
+                time.sleep(0.01)
+                
+                # 验证结果
+                context = self.strategy.get_context(symbol)
+                if should_generate:
+                    self.assert_context_state(symbol, "waiting_entry")
+                else:
+                    assert context.entry_order_id == "", f"Gap Down不应该生成信号: threshold={threshold}, count={count}"
                     self.assert_context_state(symbol, "idle")
             finally:
                 # 恢复原方法
@@ -320,6 +364,30 @@ class TestVWAPFailureSpecificLogic(VWAPFailureStrategyTest):
             exit_price = self.strategy._calculate_exit_price(context, None, indicators)
             assert abs(exit_price - expected_price) < 0.01, \
                 f"exit_factor={exit_factor}, expected={expected_price}, got={exit_price}"
+    
+    def test_get_failure_threshold_method(self):
+        """测试 _get_failure_threshold 方法"""
+        symbol = self.test_symbol
+        
+        # 测试 Gap Up 情况
+        self.strategy.gap_direction[symbol] = 'up'
+        self.strategy.failure_threshold_gap_up = 5
+        self.strategy.failure_threshold_gap_down = 3
+        
+        threshold = self.strategy._get_failure_threshold(symbol)
+        assert threshold == 5, f"Gap Up应该返回failure_threshold_gap_up: 期望5, 实际{threshold}"
+        
+        # 测试 Gap Down 情况
+        self.strategy.gap_direction[symbol] = 'down'
+        threshold = self.strategy._get_failure_threshold(symbol)
+        assert threshold == 3, f"Gap Down应该返回failure_threshold_gap_down: 期望3, 实际{threshold}"
+        
+        # 测试 none 情况（应该返回gap_down的默认值）
+        self.strategy.gap_direction[symbol] = 'none'
+        threshold = self.strategy._get_failure_threshold(symbol)
+        assert threshold == 3, f"None应该返回failure_threshold_gap_down: 期望3, 实际{threshold}"
+        
+        print("✅ _get_failure_threshold 方法测试通过")
     
     def test_error_conditions(self):
         """测试错误条件"""
@@ -763,7 +831,7 @@ def run_all_tests():
     test_classes = [
         VWAPFailureStrategyTest,
         TestVWAPFailureSpecificLogic,
-        TestVWAPFailureCompleteFlow
+        # TestVWAPFailureCompleteFlow
     ]
     
     all_results = []

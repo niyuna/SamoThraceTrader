@@ -25,7 +25,8 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         self.market_cap_threshold = 100_000_000_000  # 1000亿日元
         self.gap_up_threshold = 0.02    # 2% gap up
         self.gap_down_threshold = -0.02 # -2% gap down
-        self.failure_threshold = 3      # VWAP failure次数阈值
+        self.failure_threshold_gap_up = 3      # Gap Up时的VWAP failure次数阈值
+        self.failure_threshold_gap_down = 2    # Gap Down时的VWAP failure次数阈值
         self.entry_factor = 1.5         # ATR倍数
         self.max_daily_trades = 3       # 单个股票单日最多执行策略次数
         self.latest_entry_time = "14:30:00"  # 最晚入场时间
@@ -241,6 +242,13 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         """判断是否为 gap up"""
         return self.gap_direction.get(symbol, 'none') == 'up'
     
+    def _get_failure_threshold(self, symbol: str) -> int:
+        """根据gap方向获取对应的failure_threshold"""
+        if self._is_gap_up(symbol):
+            return self.failure_threshold_gap_up
+        else:
+            return self.failure_threshold_gap_down
+    
     def on_1min_bar(self, bar):
         """重写1分钟K线处理逻辑"""
         # 只处理真正符合条件的股票
@@ -327,7 +335,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             # Gap Up策略：寻找VWAP failure做空机会
             below_vwap_count = indicators['below_vwap_count']
             
-            if below_vwap_count >= self.failure_threshold:
+            if below_vwap_count >= self._get_failure_threshold(bar.symbol):
                 # 在VWAP + ATR * entry_factor位置做空
                 short_price = vwap + (atr * self.entry_factor)
                 self._execute_entry(context, bar, short_price, Direction.SHORT)
@@ -336,7 +344,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             # Gap Down策略：寻找VWAP failure做多机会
             above_vwap_count = indicators['above_vwap_count']
             
-            if above_vwap_count >= self.failure_threshold:
+            if above_vwap_count >= self._get_failure_threshold(bar.symbol):
                 # 在VWAP - ATR * entry_factor位置做多
                 long_price = vwap - (atr * self.entry_factor)
                 self._execute_entry(context, bar, long_price, Direction.LONG)
@@ -399,7 +407,8 @@ class VWAPFailureStrategy(IntradayStrategyBase):
                           market_cap_threshold=100_000_000_000,
                           gap_up_threshold=0.02,
                           gap_down_threshold=-0.02,
-                          failure_threshold=3,
+                          failure_threshold_gap_up=3,
+                          failure_threshold_gap_down=2,
                           entry_factor=1.5,
                           max_daily_trades=3,
                           latest_entry_time="14:30:00",
@@ -409,7 +418,8 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         self.market_cap_threshold = market_cap_threshold
         self.gap_up_threshold = gap_up_threshold
         self.gap_down_threshold = gap_down_threshold
-        self.failure_threshold = failure_threshold
+        self.failure_threshold_gap_up = failure_threshold_gap_up
+        self.failure_threshold_gap_down = failure_threshold_gap_down
         self.entry_factor = entry_factor
         self.max_daily_trades = max_daily_trades
         self.latest_entry_time = latest_entry_time
@@ -420,7 +430,8 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         print(f"  市值阈值: {market_cap_threshold:,.0f} 日元")
         print(f"  Gap Up阈值: {gap_up_threshold:.1%}")
         print(f"  Gap Down阈值: {gap_down_threshold:.1%}")
-        print(f"  VWAP Failure阈值: {failure_threshold}")
+        print(f"  Gap Up VWAP Failure阈值: {failure_threshold_gap_up}")
+        print(f"  Gap Down VWAP Failure阈值: {failure_threshold_gap_down}")
         print(f"  Entry ATR倍数: {entry_factor}")
         print(f"  Exit ATR倍数: {exit_factor}")
         print(f"  单日最大交易次数: {max_daily_trades}")
@@ -506,7 +517,8 @@ def main():
             market_cap_threshold=100_000_000_000,  # 1000亿日元
             gap_up_threshold=0.02,      # 2% gap up
             gap_down_threshold=-0.02,   # -2% gap down
-            failure_threshold=30,        # VWAP failure次数阈值
+            failure_threshold_gap_up=30,        # Gap Up时的VWAP failure次数阈值
+            failure_threshold_gap_down=20,      # Gap Down时的VWAP failure次数阈值
             entry_factor=1.5,           # Entry ATR倍数
             max_daily_trades=3,         # 单日最大交易次数
             latest_entry_time="11:23:00",  # 最晚入场时间

@@ -233,10 +233,13 @@ class IntradayStrategyBase:
         atr = indicators['atr_14']
         
         # 计算新的 entry 价格 - 子类需要实现具体的价格计算逻辑
-        old_entry_price = normalize_price(context.symbol, context.entry_price)
-        new_entry_price = normalize_price(context.symbol, self._calculate_entry_price(context, bar, indicators))
+        old_entry_price = context.entry_price
+        new_entry_price = self._calculate_entry_price(context, bar, indicators)
+        if change_only:
+            new_entry_price = normalize_price(context.symbol, new_entry_price)
+            old_entry_price = normalize_price(context.symbol, old_entry_price)
 
-        if old_entry_price != new_entry_price or not change_only:
+        if new_entry_price != old_entry_price or not change_only:
             self.write_log(f"更新 entry 订单价格: {context.symbol} 旧价格: {old_entry_price:.2f} 新价格: {new_entry_price:.2f}")
             # 撤单并重新下单
             if self._cancel_order_safely(context.entry_order_id, context.symbol):

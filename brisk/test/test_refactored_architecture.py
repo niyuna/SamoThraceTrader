@@ -33,13 +33,16 @@ def test_mock_gateway_replay():
     try:
         # 设置策略参数
         strategy.set_strategy_params(
-            market_cap_threshold=100_000_000_000,  # 1000亿日元
-            gap_up_threshold=0.02,      # 2% gap up
-            gap_down_threshold=-0.02,   # -2% gap down
-            failure_threshold=3,        # VWAP failure次数阈值
-            entry_factor=1.5,           # ATR倍数
-            max_daily_trades=3,         # 单日最大交易次数
-            latest_entry_time="14:30:00"  # 最晚入场时间
+            market_cap_threshold=100_000_000_000,
+            gap_up_threshold=0.02,
+            gap_down_threshold=-0.02,
+            failure_threshold_gap_up=3,        # Gap Up时的VWAP failure次数阈值
+            failure_threshold_gap_down=2,      # Gap Down时的VWAP failure次数阈值
+            entry_factor=1.5,
+            max_daily_trades=3,
+            latest_entry_time="23:59:50",
+            exit_factor=1.0,
+            max_exit_wait_time=5
         )
         
         # 配置Mock Gateway的replay模式
@@ -101,13 +104,16 @@ def test_mock_gateway_mock_tick():
     try:
         # 设置策略参数
         strategy.set_strategy_params(
-            market_cap_threshold=100_000_000_000,  # 1000亿日元
-            gap_up_threshold=0.02,      # 2% gap up
-            gap_down_threshold=-0.02,   # -2% gap down
-            failure_threshold=3,        # VWAP failure次数阈值
-            entry_factor=1.5,           # ATR倍数
-            max_daily_trades=3,         # 单日最大交易次数
-            latest_entry_time="14:30:00"  # 最晚入场时间
+            market_cap_threshold=100_000_000_000,
+            gap_up_threshold=0.02,
+            gap_down_threshold=-0.02,
+            failure_threshold_gap_up=3,        # Gap Up时的VWAP failure次数阈值
+            failure_threshold_gap_down=2,      # Gap Down时的VWAP failure次数阈值
+            entry_factor=1.5,
+            max_daily_trades=3,
+            latest_entry_time="23:59:50",
+            exit_factor=1.0,
+            max_exit_wait_time=5
         )
         
         # 配置Mock Gateway的mock tick模式
