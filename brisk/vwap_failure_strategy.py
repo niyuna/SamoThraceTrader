@@ -68,7 +68,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             market_cap = stock_info.get('market_cap', 0)
             if market_cap >= self.market_cap_threshold:
                 self.market_cap_eligible.add(symbol)
-                print(f"股票 {symbol} 通过市值筛选: {market_cap:,.0f} 日元")
+                # print(f"股票 {symbol} 通过市值筛选: {market_cap:,.0f} 日元")
         
         print(f"市值筛选后符合条件的股票数量: {len(self.market_cap_eligible)}")
     
@@ -147,7 +147,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         self.write_log(f"Order event: {order.orderid} for {context.symbol}, "
                       f"entry_order_id: {context.entry_order_id}, "
                       f"exit_order_id: {context.exit_order_id}")
-        self.write_log(f"order: {order}")
+        # self.write_log(f"order: {order}")
         
         if order.orderid == context.entry_order_id:
             self._handle_entry_order_update(order, context)
@@ -495,7 +495,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
 
 def main():
     """主函数 - 测试VWAP Failure策略"""
-    print("启动VWAP Failure策略 (Mock Gateway Replay模式)...")
+    print("启动VWAP Failure策略 ...")
     
     # 创建策略实例（使用Mock Gateway）
     strategy = VWAPFailureStrategy(use_mock_gateway=False)

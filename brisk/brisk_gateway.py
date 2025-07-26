@@ -15,6 +15,8 @@ from vnpy.trader.gateway import BaseGateway
 from vnpy.event import EventEngine
 from vnpy.trader.constant import Exchange, Interval
 
+from common import kabus_api
+
 # 日股交易所映射
 JAPANESE_EXCHANGES = {
     "TSE": Exchange.TSE,  # 东京证券交易所
@@ -69,7 +71,8 @@ class BriskGateway(BaseGateway):
         self._ticks: Dict[str, TickData] = {}
 
         # 成交量和成交额缓存 - 用于累计计算
-        self._trading_cache = {}  # {
+        self._trading_cache = {}  
+        # {
         #   symbol: {
         #       'last_volume': 0,
         #       'current_volume': 0,
@@ -79,6 +82,12 @@ class BriskGateway(BaseGateway):
         #       'last_date': None
         #   }
         # }
+
+        token = kabus_api.init_trading_api()
+        if token is None:
+            self.write_log("Kabus API token is None")
+            return
+        self.write_log(f"Kabus API token: {token}")
 
         # 锁
         self._lock: threading.Lock = threading.Lock()

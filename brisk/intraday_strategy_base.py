@@ -14,15 +14,10 @@ from vnpy.event import EventEngine
 from vnpy.trader.engine import MainEngine
 from vnpy.trader.object import SubscribeRequest, Exchange, BarData, Interval
 from enhanced_bargenerator import EnhancedBarGenerator
-# 动态导入
-try:
-    from brisk_gateway import BriskGateway
-except ImportError:
-    BriskGateway = None
-try:
-    from mock_brisk_gateway import MockBriskGateway
-except ImportError:
-    MockBriskGateway = None
+
+from brisk_gateway import BriskGateway
+from mock_brisk_gateway import MockBriskGateway
+
 from vnpy.trader.event import EVENT_TICK, EVENT_LOG, EVENT_ORDER, EVENT_TRADE
 from vnpy.event import Event
 from technical_indicators import TechnicalIndicatorManager
@@ -299,8 +294,7 @@ class IntradayStrategyBase:
         
         # 创建技术指标管理器
         self.indicator_managers[symbol] = TechnicalIndicatorManager(symbol, size=15)
-        
-        print(f"为 {symbol} 创建增强版K线生成器和技术指标管理器")
+        # print(f"为 {symbol} 创建增强版K线生成器和技术指标管理器")
         
     def on_tick(self, event: Event):
         """Tick数据回调函数"""
