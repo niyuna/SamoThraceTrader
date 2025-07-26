@@ -49,11 +49,17 @@ class VWAPFailureStrategyTest(ContextBasedStrategyTest,
             gap_down_threshold=-0.02,
             failure_threshold_gap_up=3,
             failure_threshold_gap_down=3,
-            entry_factor=1.5,
-            max_daily_trades=3,
+            entry_factor_gap_up=1.5,
+            entry_factor_gap_down=1.5,
+            max_daily_trades_gap_up=3,
+            max_daily_trades_gap_down=3,
             latest_entry_time="23:59:50", # make it always true
-            exit_factor=1.0,
-            max_exit_wait_time=5  # 测试时使用较短时间
+            exit_factor_gap_up=1.0,
+            exit_factor_gap_down=1.0,
+            max_exit_wait_time_gap_up=5,  # 测试时使用较短时间
+            max_exit_wait_time_gap_down=5,  # 测试时使用较短时间
+            max_vol_ma5_ratio_threshold_gap_up=2.0,
+            max_vol_ma5_ratio_threshold_gap_down=1.5
         )
         
         # 连接Gateway（使用禁用自动订单处理的配置）
@@ -310,18 +316,18 @@ class TestVWAPFailureSpecificLogic(VWAPFailureStrategyTest):
     def test_entry_factor_configuration(self):
         """测试 Entry Factor 配置"""
         symbol = self.test_symbol
-        self.strategy.gap_direction[symbol] = 'up'
         
-        # 测试不同的 entry_factor 值
-        test_cases = [
+        # 测试 Gap Up 策略的不同 entry_factor 值
+        self.strategy.gap_direction[symbol] = 'up'
+        test_cases_gap_up = [
             (1.0, 100.0 + 2.0 * 1.0),  # entry_factor=1.0, expected_price=vwap + atr * 1.0
             (1.5, 100.0 + 2.0 * 1.5),  # entry_factor=1.5, expected_price=vwap + atr * 1.5
             (2.0, 100.0 + 2.0 * 2.0),  # entry_factor=2.0, expected_price=vwap + atr * 2.0
         ]
         
-        for entry_factor, expected_price in test_cases:
+        for entry_factor, expected_price in test_cases_gap_up:
             # 设置策略参数
-            self.strategy.entry_factor = entry_factor
+            self.strategy.entry_factor_gap_up = entry_factor
             
             # 设置初始状态
             context = self.setup_context(symbol, state=StrategyState.IDLE, entry_order_id="", exit_order_id="", entry_price=0, exit_price=0)
@@ -334,23 +340,48 @@ class TestVWAPFailureSpecificLogic(VWAPFailureStrategyTest):
             # 计算 entry 价格
             entry_price = self.strategy._calculate_entry_price(context, None, indicators)
             assert abs(entry_price - expected_price) < 0.01, \
-                f"entry_factor={entry_factor}, expected={expected_price}, got={entry_price}"
+                f"Gap Up entry_factor={entry_factor}, expected={expected_price}, got={entry_price}"
+        
+        # 测试 Gap Down 策略的不同 entry_factor 值
+        self.strategy.gap_direction[symbol] = 'down'
+        test_cases_gap_down = [
+            (0.8, 100.0 - 2.0 * 0.8),  # entry_factor=0.8, expected_price=vwap - atr * 0.8
+            (1.2, 100.0 - 2.0 * 1.2),  # entry_factor=1.2, expected_price=vwap - atr * 1.2
+            (1.5, 100.0 - 2.0 * 1.5),  # entry_factor=1.5, expected_price=vwap - atr * 1.5
+        ]
+        
+        for entry_factor, expected_price in test_cases_gap_down:
+            # 设置策略参数
+            self.strategy.entry_factor_gap_down = entry_factor
+            
+            # 设置初始状态
+            context = self.setup_context(symbol, state=StrategyState.IDLE, entry_order_id="", exit_order_id="", entry_price=0, exit_price=0)
+            
+            # 创建技术指标
+            indicators = self.mock_generator.create_mock_indicators(
+                vwap=100.0, atr_14=2.0, above_vwap_count=3
+            )
+            
+            # 计算 entry 价格
+            entry_price = self.strategy._calculate_entry_price(context, None, indicators)
+            assert abs(entry_price - expected_price) < 0.01, \
+                f"Gap Down entry_factor={entry_factor}, expected={expected_price}, got={entry_price}"
     
     def test_exit_factor_configuration(self):
         """测试 Exit Factor 配置"""
         symbol = self.test_symbol
-        self.strategy.gap_direction[symbol] = 'up'
         
-        # 测试不同的 exit_factor 值
-        test_cases = [
+        # 测试 Gap Up 策略的不同 exit_factor 值
+        self.strategy.gap_direction[symbol] = 'up'
+        test_cases_gap_up = [
             (0.5, 100.0 - 2.0 * 0.5),  # exit_factor=0.5, expected_price=vwap - atr * 0.5
             (1.0, 100.0 - 2.0 * 1.0),  # exit_factor=1.0, expected_price=vwap - atr * 1.0
             (1.5, 100.0 - 2.0 * 1.5),  # exit_factor=1.5, expected_price=vwap - atr * 1.5
         ]
         
-        for exit_factor, expected_price in test_cases:
+        for exit_factor, expected_price in test_cases_gap_up:
             # 设置策略参数
-            self.strategy.exit_factor = exit_factor
+            self.strategy.exit_factor_gap_up = exit_factor
             
             # 设置初始状态
             context = self.setup_context(symbol, state=StrategyState.IDLE)
@@ -363,7 +394,32 @@ class TestVWAPFailureSpecificLogic(VWAPFailureStrategyTest):
             # 计算 exit 价格
             exit_price = self.strategy._calculate_exit_price(context, None, indicators)
             assert abs(exit_price - expected_price) < 0.01, \
-                f"exit_factor={exit_factor}, expected={expected_price}, got={exit_price}"
+                f"Gap Up exit_factor={exit_factor}, expected={expected_price}, got={exit_price}"
+        
+        # 测试 Gap Down 策略的不同 exit_factor 值
+        self.strategy.gap_direction[symbol] = 'down'
+        test_cases_gap_down = [
+            (0.5, 100.0 + 2.0 * 0.5),  # exit_factor=0.5, expected_price=vwap + atr * 0.5
+            (0.8, 100.0 + 2.0 * 0.8),  # exit_factor=0.8, expected_price=vwap + atr * 0.8
+            (1.0, 100.0 + 2.0 * 1.0),  # exit_factor=1.0, expected_price=vwap + atr * 1.0
+        ]
+        
+        for exit_factor, expected_price in test_cases_gap_down:
+            # 设置策略参数
+            self.strategy.exit_factor_gap_down = exit_factor
+            
+            # 设置初始状态
+            context = self.setup_context(symbol, state=StrategyState.IDLE)
+            
+            # 创建技术指标
+            indicators = self.mock_generator.create_mock_indicators(
+                vwap=100.0, atr_14=2.0, above_vwap_count=3
+            )
+            
+            # 计算 exit 价格
+            exit_price = self.strategy._calculate_exit_price(context, None, indicators)
+            assert abs(exit_price - expected_price) < 0.01, \
+                f"Gap Down exit_factor={exit_factor}, expected={expected_price}, got={exit_price}"
     
     def test_get_failure_threshold_method(self):
         """测试 _get_failure_threshold 方法"""
@@ -388,6 +444,356 @@ class TestVWAPFailureSpecificLogic(VWAPFailureStrategyTest):
         assert threshold == 3, f"None应该返回failure_threshold_gap_down: 期望3, 实际{threshold}"
         
         print("✅ _get_failure_threshold 方法测试通过")
+    
+    def test_get_entry_factor_method(self):
+        """测试 _get_entry_factor 方法"""
+        symbol = self.test_symbol
+        
+        # 测试 Gap Up 情况
+        self.strategy.gap_direction[symbol] = 'up'
+        self.strategy.entry_factor_gap_up = 2.0
+        self.strategy.entry_factor_gap_down = 1.0
+        
+        factor = self.strategy._get_entry_factor(symbol)
+        assert factor == 2.0, f"Gap Up应该返回entry_factor_gap_up: 期望2.0, 实际{factor}"
+        
+        # 测试 Gap Down 情况
+        self.strategy.gap_direction[symbol] = 'down'
+        factor = self.strategy._get_entry_factor(symbol)
+        assert factor == 1.0, f"Gap Down应该返回entry_factor_gap_down: 期望1.0, 实际{factor}"
+        
+        print("✅ _get_entry_factor 方法测试通过")
+    
+    def test_get_exit_factor_method(self):
+        """测试 _get_exit_factor 方法"""
+        symbol = self.test_symbol
+        
+        # 测试 Gap Up 情况
+        self.strategy.gap_direction[symbol] = 'up'
+        self.strategy.exit_factor_gap_up = 1.5
+        self.strategy.exit_factor_gap_down = 0.8
+        
+        factor = self.strategy._get_exit_factor(symbol)
+        assert factor == 1.5, f"Gap Up应该返回exit_factor_gap_up: 期望1.5, 实际{factor}"
+        
+        # 测试 Gap Down 情况
+        self.strategy.gap_direction[symbol] = 'down'
+        factor = self.strategy._get_exit_factor(symbol)
+        assert factor == 0.8, f"Gap Down应该返回exit_factor_gap_down: 期望0.8, 实际{factor}"
+        
+        print("✅ _get_exit_factor 方法测试通过")
+    
+    def test_get_daily_trades_for_gap_method(self):
+        """测试 _get_daily_trades_for_gap 方法"""
+        symbol = self.test_symbol
+        
+        # 测试 Gap Up 情况
+        self.strategy.gap_direction[symbol] = 'up'
+        self.strategy.max_daily_trades_gap_up = 5
+        self.strategy.max_daily_trades_gap_down = 2
+        
+        trades = self.strategy._get_daily_trades_for_gap(symbol)
+        assert trades == 5, f"Gap Up应该返回max_daily_trades_gap_up: 期望5, 实际{trades}"
+        
+        # 测试 Gap Down 情况
+        self.strategy.gap_direction[symbol] = 'down'
+        trades = self.strategy._get_daily_trades_for_gap(symbol)
+        assert trades == 2, f"Gap Down应该返回max_daily_trades_gap_down: 期望2, 实际{trades}"
+        
+        print("✅ _get_daily_trades_for_gap 方法测试通过")
+    
+    def test_get_exit_wait_time_method(self):
+        """测试 _get_exit_wait_time 方法"""
+        symbol = self.test_symbol
+        
+        # 测试 Gap Up 情况
+        self.strategy.gap_direction[symbol] = 'up'
+        self.strategy.max_exit_wait_time_gap_up = 45
+        self.strategy.max_exit_wait_time_gap_down = 15
+        
+        wait_time = self.strategy._get_exit_wait_time(symbol)
+        assert wait_time == 45, f"Gap Up应该返回max_exit_wait_time_gap_up: 期望45, 实际{wait_time}"
+        
+        # 测试 Gap Down 情况
+        self.strategy.gap_direction[symbol] = 'down'
+        wait_time = self.strategy._get_exit_wait_time(symbol)
+        assert wait_time == 15, f"Gap Down应该返回max_exit_wait_time_gap_down: 期望15, 实际{wait_time}"
+        
+        print("✅ _get_exit_wait_time 方法测试通过")
+    
+    def test_max_vol_ma5_ratio_threshold_configuration(self):
+        """测试 max_vol_ma5_ratio_threshold 参数配置"""
+        symbol = self.test_symbol
+        
+        # 验证默认值设置
+        assert self.strategy.max_vol_ma5_ratio_threshold_gap_up == 2.0, f"默认Gap Up比例阈值应该是2.0, 实际{self.strategy.max_vol_ma5_ratio_threshold_gap_up}"
+        assert self.strategy.max_vol_ma5_ratio_threshold_gap_down == 1.5, f"默认Gap Down比例阈值应该是1.5, 实际{self.strategy.max_vol_ma5_ratio_threshold_gap_down}"
+        
+        # 测试参数设置
+        self.strategy.set_strategy_params(
+            max_vol_ma5_ratio_threshold_gap_up=3.0,
+            max_vol_ma5_ratio_threshold_gap_down=1.2
+        )
+        
+        assert self.strategy.max_vol_ma5_ratio_threshold_gap_up == 3.0, f"设置后Gap Up比例阈值应该是3.0, 实际{self.strategy.max_vol_ma5_ratio_threshold_gap_up}"
+        assert self.strategy.max_vol_ma5_ratio_threshold_gap_down == 1.2, f"设置后Gap Down比例阈值应该是1.2, 实际{self.strategy.max_vol_ma5_ratio_threshold_gap_down}"
+        
+        print("✅ max_vol_ma5_ratio_threshold 参数配置测试通过")
+    
+    def test_get_max_vol_ma5_ratio_threshold_method(self):
+        """测试 _get_max_vol_ma5_ratio_threshold 方法"""
+        symbol = self.test_symbol
+        
+        # 测试 Gap Up 情况
+        self.strategy.gap_direction[symbol] = 'up'
+        self.strategy.max_vol_ma5_ratio_threshold_gap_up = 3.0
+        self.strategy.max_vol_ma5_ratio_threshold_gap_down = 1.0
+        
+        threshold = self.strategy._get_max_vol_ma5_ratio_threshold(symbol)
+        assert threshold == 3.0, f"Gap Up应该返回max_vol_ma5_ratio_threshold_gap_up: 期望3.0, 实际{threshold}"
+        
+        # 测试 Gap Down 情况
+        self.strategy.gap_direction[symbol] = 'down'
+        threshold = self.strategy._get_max_vol_ma5_ratio_threshold(symbol)
+        assert threshold == 1.0, f"Gap Down应该返回max_vol_ma5_ratio_threshold_gap_down: 期望1.0, 实际{threshold}"
+        
+        print("✅ _get_max_vol_ma5_ratio_threshold 方法测试通过")
+    
+    def test_volume_anomaly_check_normal_volume(self):
+        """测试成交量异常检查 - 正常成交量情况"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 设置初始状态为waiting_entry
+        context = self.setup_context(symbol, state=StrategyState.WAITING_ENTRY, entry_order_id="test_order_123")
+        
+        # 设置技术指标：vol_ma5=1000，当前bar成交量=1500，比例=1.5 < 阈值2.0
+        def get_mock_indicators_normal(symbol: str) -> dict:
+            indicators = self.mock_generator.create_mock_indicators(
+                vwap=100.0, atr_14=1.0, below_vwap_count=3
+            )
+            indicators['volume_ma5'] = 1000  # 覆盖默认值
+            return indicators
+        
+        # 临时替换方法
+        original_get_indicators = self.strategy.get_indicators
+        self.strategy.get_indicators = get_mock_indicators_normal
+        
+        try:
+            # 创建模拟的当前bar（成交量1500，比例1.5 < 阈值2.0）
+            current_bar = self.mock_generator.create_mock_bar(symbol, volume=1500)
+            
+            # 模拟_get_current_bar返回当前bar
+            original_get_current_bar = self.strategy._get_current_bar
+            self.strategy._get_current_bar = lambda s: current_bar if s == symbol else None
+            
+            # 创建tick
+            tick = self.mock_generator.create_mock_tick(symbol)
+            
+            # 调用检查方法
+            self.strategy._check_current_bar_volume_anomaly_and_cancel(tick)
+            time.sleep(0.01)
+            
+            # 验证：不应该取消订单，状态应该保持waiting_entry
+            context = self.strategy.get_context(symbol)
+            assert context.state == StrategyState.WAITING_ENTRY, "正常成交量不应该改变状态"
+            assert context.entry_order_id == "test_order_123", "正常成交量不应该取消订单"
+            
+            print("✅ 正常成交量测试通过")
+            
+        finally:
+            # 恢复原方法
+            self.strategy.get_indicators = original_get_indicators
+            self.strategy._get_current_bar = original_get_current_bar
+    
+    def test_volume_anomaly_check_abnormal_volume(self):
+        """测试成交量异常检查 - 异常成交量情况"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 设置初始状态为waiting_entry
+        context = self.setup_context(symbol, state=StrategyState.WAITING_ENTRY, entry_order_id="test_order_456")
+        
+        # 设置技术指标：vol_ma5=1000，当前bar成交量=2500，比例=2.5 > 阈值2.0
+        def get_mock_indicators_abnormal(symbol: str) -> dict:
+            indicators = self.mock_generator.create_mock_indicators(
+                vwap=100.0, atr_14=1.0, below_vwap_count=3
+            )
+            indicators['volume_ma5'] = 1000  # 覆盖默认值
+            return indicators
+        
+        # 临时替换方法
+        original_get_indicators = self.strategy.get_indicators
+        self.strategy.get_indicators = get_mock_indicators_abnormal
+        
+        try:
+            # 创建模拟的当前bar（成交量2500，比例2.5 > 阈值2.0）
+            current_bar = self.mock_generator.create_mock_bar(symbol, volume=2500)
+            
+            # 模拟_get_current_bar返回当前bar
+            original_get_current_bar = self.strategy._get_current_bar
+            self.strategy._get_current_bar = lambda s: current_bar if s == symbol else None
+            
+            # 创建tick
+            tick = self.mock_generator.create_mock_tick(symbol)
+            
+            # 调用检查方法
+            self.strategy._check_current_bar_volume_anomaly_and_cancel(tick)
+            time.sleep(0.01)
+            
+            # 验证：应该取消订单，状态应该变为idle
+            context = self.strategy.get_context(symbol)
+            assert context.state == StrategyState.IDLE, "异常成交量应该改变状态为idle"
+            assert context.entry_order_id == "", "异常成交量应该清空订单ID"
+            
+            print("✅ 异常成交量测试通过")
+            
+        finally:
+            # 恢复原方法
+            self.strategy.get_indicators = original_get_indicators
+            self.strategy._get_current_bar = original_get_current_bar
+    
+    def test_volume_anomaly_check_different_gap_directions(self):
+        """测试成交量异常检查 - 不同gap方向的阈值"""
+        symbol = self.test_symbol
+        
+        # 测试 Gap Down 情况（阈值1.5）
+        self.strategy.gap_direction[symbol] = 'down'
+        context = self.setup_context(symbol, state=StrategyState.WAITING_ENTRY, entry_order_id="test_order_down")
+        
+        def get_mock_indicators_down(symbol: str) -> dict:
+            indicators = self.mock_generator.create_mock_indicators(
+                vwap=100.0, atr_14=1.0, above_vwap_count=3
+            )
+            indicators['volume_ma5'] = 1000  # 覆盖默认值
+            return indicators
+        
+        original_get_indicators = self.strategy.get_indicators
+        self.strategy.get_indicators = get_mock_indicators_down
+        
+        try:
+            # 测试成交量1600，比例1.6 > 阈值1.5，应该触发取消
+            current_bar = self.mock_generator.create_mock_bar(symbol, volume=1600)
+            original_get_current_bar = self.strategy._get_current_bar
+            self.strategy._get_current_bar = lambda s: current_bar if s == symbol else None
+            
+            tick = self.mock_generator.create_mock_tick(symbol)
+            self.strategy._check_current_bar_volume_anomaly_and_cancel(tick)
+            time.sleep(0.01)
+            
+            context = self.strategy.get_context(symbol)
+            assert context.state == StrategyState.IDLE, "Gap Down异常成交量应该改变状态"
+            assert context.entry_order_id == "", "Gap Down异常成交量应该清空订单ID"
+            
+            print("✅ Gap Down异常成交量测试通过")
+            
+        finally:
+            self.strategy.get_indicators = original_get_indicators
+            self.strategy._get_current_bar = original_get_current_bar
+    
+    def test_volume_anomaly_check_edge_cases(self):
+        """测试成交量异常检查 - 边界情况"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 测试1: vol_ma5为0的情况
+        context = self.setup_context(symbol, state=StrategyState.WAITING_ENTRY, entry_order_id="test_order_edge")
+        
+        def get_mock_indicators_zero_ma5(symbol: str) -> dict:
+            indicators = self.mock_generator.create_mock_indicators(
+                vwap=100.0, atr_14=1.0, below_vwap_count=3
+            )
+            indicators['volume_ma5'] = 0  # vol_ma5为0
+            return indicators
+        
+        original_get_indicators = self.strategy.get_indicators
+        self.strategy.get_indicators = get_mock_indicators_zero_ma5
+        
+        try:
+            current_bar = self.mock_generator.create_mock_bar(symbol, volume=1000)
+            original_get_current_bar = self.strategy._get_current_bar
+            self.strategy._get_current_bar = lambda s: current_bar if s == symbol else None
+            
+            tick = self.mock_generator.create_mock_tick(symbol)
+            self.strategy._check_current_bar_volume_anomaly_and_cancel(tick)
+            time.sleep(0.01)
+            
+            # 验证：vol_ma5为0时不应该触发取消
+            context = self.strategy.get_context(symbol)
+            assert context.state == StrategyState.WAITING_ENTRY, "vol_ma5为0时不应该改变状态"
+            assert context.entry_order_id == "test_order_edge", "vol_ma5为0时不应该取消订单"
+            
+            print("✅ vol_ma5为0的边界情况测试通过")
+            
+        finally:
+            self.strategy.get_indicators = original_get_indicators
+            self.strategy._get_current_bar = original_get_current_bar
+        
+        # 测试2: 没有技术指标的情况
+        context = self.setup_context(symbol, state=StrategyState.WAITING_ENTRY, entry_order_id="test_order_no_indicators")
+        
+        def get_mock_indicators_none(symbol: str) -> dict:
+            return {}  # 返回空的技术指标
+        
+        self.strategy.get_indicators = get_mock_indicators_none
+        
+        try:
+            current_bar = self.mock_generator.create_mock_bar(symbol, volume=1000)
+            self.strategy._get_current_bar = lambda s: current_bar if s == symbol else None
+            
+            tick = self.mock_generator.create_mock_tick(symbol)
+            self.strategy._check_current_bar_volume_anomaly_and_cancel(tick)
+            time.sleep(0.01)
+            
+            # 验证：没有技术指标时不应该触发取消
+            context = self.strategy.get_context(symbol)
+            assert context.state == StrategyState.WAITING_ENTRY, "没有技术指标时不应该改变状态"
+            assert context.entry_order_id == "test_order_no_indicators", "没有技术指标时不应该取消订单"
+            
+            print("✅ 没有技术指标的边界情况测试通过")
+            
+        finally:
+            self.strategy.get_indicators = original_get_indicators
+            self.strategy._get_current_bar = original_get_current_bar
+    
+    def test_volume_anomaly_check_state_conditions(self):
+        """测试成交量异常检查 - 状态条件"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 测试：非waiting_entry状态时不应该检查
+        context = self.setup_context(symbol, state=StrategyState.IDLE, entry_order_id="test_order_idle")
+        
+        def get_mock_indicators_abnormal(symbol: str) -> dict:
+            indicators = self.mock_generator.create_mock_indicators(
+                vwap=100.0, atr_14=1.0, below_vwap_count=3
+            )
+            indicators['volume_ma5'] = 1000  # 覆盖默认值
+            return indicators
+        
+        original_get_indicators = self.strategy.get_indicators
+        self.strategy.get_indicators = get_mock_indicators_abnormal
+        
+        try:
+            # 创建异常成交量的bar
+            current_bar = self.mock_generator.create_mock_bar(symbol, volume=2500)
+            original_get_current_bar = self.strategy._get_current_bar
+            self.strategy._get_current_bar = lambda s: current_bar if s == symbol else None
+            
+            tick = self.mock_generator.create_mock_tick(symbol)
+            self.strategy._check_current_bar_volume_anomaly_and_cancel(tick)
+            time.sleep(0.01)
+            
+            # 验证：非waiting_entry状态时不应该触发取消
+            context = self.strategy.get_context(symbol)
+            assert context.state == StrategyState.IDLE, "非waiting_entry状态时不应该改变状态"
+            assert context.entry_order_id == "test_order_idle", "非waiting_entry状态时不应该取消订单"
+            
+            print("✅ 非waiting_entry状态的测试通过")
+            
+        finally:
+            self.strategy.get_indicators = original_get_indicators
+            self.strategy._get_current_bar = original_get_current_bar
     
     def test_error_conditions(self):
         """测试错误条件"""
@@ -701,7 +1107,7 @@ class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest,
         
         # 2. 模拟时间流逝，触发超时
         # 设置一个很早的exit_start_time来模拟超时
-        context.exit_start_time = datetime.now() - timedelta(minutes=self.strategy.max_exit_wait_time + 1)
+        context.exit_start_time = datetime.now() - timedelta(minutes=self.strategy.max_exit_wait_time_gap_down + 1)
         
         # 生成新的 bar，这会触发超时检查
         bar2 = self.mock_generator.create_mock_bar(symbol, close_price=100.0)
@@ -736,91 +1142,172 @@ class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest,
         print(f"   超时后订单类型: {updated_exit_order.type.value}")
         print(f"   最终状态: {self.strategy.get_context(symbol).state.value}")
         print(f"   交易次数: {self.strategy.get_context(symbol).trade_count}")
-
-    def test_exit_timeout_with_price_update(self):
-        """测试 exit 订单超时流程（包含价格更新）"""
+    
+    def test_volume_anomaly_cancel_and_reentry_success(self):
+        """测试成交量异常取消订单后，在下一根bar重新进入并成功的复杂流程"""
         symbol = self.test_symbol
         self.strategy.gap_direction[symbol] = 'up'
         
-        # 1. 设置初始状态并完成 entry
-        self.setup_context(symbol, state=StrategyState.IDLE, trade_count=0)
-        
-        # 生成 entry 信号
-        bar1 = self.mock_generator.create_mock_bar(symbol, close_price=100.0)
-        self.trigger_bar_update(bar1)
-        time.sleep(0.01)
-        
-        # 完成 entry 订单
-        context = self.strategy.get_context(symbol)
-        entry_order = self.mock_generator.create_mock_order(
-            symbol, Status.ALLTRADED, order_id=context.entry_order_id
+        # 设置初始状态为waiting_entry
+        context = self.setup_context(
+            symbol, 
+            state=StrategyState.WAITING_ENTRY,
+            entry_order_id="test_entry_order_789"
         )
-        self.trigger_order_update(entry_order)
-        time.sleep(0.01)
         
-        # 验证进入 waiting_exit 状态
-        self.assert_context_state(symbol, "waiting_exit")
-        context = self.strategy.get_context(symbol)
-        assert context.exit_order_id != ""
+        # 第一阶段：创建第一根bar，成交量异常导致取消订单
+        first_bar = self.mock_generator.create_mock_bar(
+            symbol, 
+            open_price=100.0, 
+            close_price=101.0,
+            volume=2500  # 异常成交量，超过阈值
+        )
         
-        # 获取初始的 exit 订单
-        initial_exit_order = self.strategy.gateway.get_order_by_id(context.exit_order_id)
-        initial_exit_price = initial_exit_order.price
-        print(f"初始exit订单价格: {initial_exit_price:.2f}")
-        
-        # 2. 先进行价格更新（未超时）
-        def get_mock_indicators_updated(symbol: str) -> dict:
-            return self.mock_generator.create_mock_indicators(
-                vwap=98.0,   # VWAP 变化
-                atr_14=1.2,  # ATR 变化
-                below_vwap_count=3
+        # 设置技术指标：vol_ma5=1000，比例=2.5 > 阈值2.0
+        def get_mock_indicators_first_bar(symbol: str) -> dict:
+            indicators = self.mock_generator.create_mock_indicators(
+                vwap=100.5, atr_14=1.0, below_vwap_count=3
             )
+            indicators['volume_ma5'] = 1000  # 手动设置volume_ma5
+            return indicators
         
-        # 临时替换方法
-        original_method = self.get_mock_indicators
-        self.get_mock_indicators = get_mock_indicators_updated
+        # Mock get_indicators和_get_current_bar
+        original_get_indicators = self.strategy.get_indicators
+        original_get_current_bar = self.strategy._get_current_bar
+        
+        def mock_get_indicators_first(symbol: str) -> dict:
+            return get_mock_indicators_first_bar(symbol)
+        
+        self.strategy.get_indicators = mock_get_indicators_first
+        self.strategy._get_current_bar = lambda s: first_bar if s == symbol else None
         
         try:
-            # 生成新的 bar，触发价格更新
-            bar2 = self.mock_generator.create_mock_bar(symbol, close_price=98.0)
-            self.trigger_bar_update(bar2)
+            # 创建tick触发成交量异常检查
+            tick = self.mock_generator.create_mock_tick(symbol, price=101.0)
+            self.strategy._check_current_bar_volume_anomaly_and_cancel(tick)
             time.sleep(0.01)
             
-            # 验证价格已更新
-            updated_exit_order = self.strategy.gateway.get_order_by_id(context.exit_order_id)
-            assert updated_exit_order.price != initial_exit_price, "价格应该已更新"
-            assert updated_exit_order.type == OrderType.LIMIT, "未超时时应该仍然是限价单"
-            print(f"价格更新后: {updated_exit_order.price:.2f}")
+            # 验证：应该取消订单，状态变为idle
+            context = self.strategy.get_context(symbol)
+            assert context.state == StrategyState.IDLE, "成交量异常应该取消订单并变为idle状态"
+            assert context.entry_order_id == "", "成交量异常应该清空订单ID"
             
-            # 3. 现在模拟超时
-            context.exit_start_time = datetime.now() - timedelta(minutes=self.strategy.max_exit_wait_time + 1)
-            
-            # 生成另一个 bar，触发超时检查
-            bar3 = self.mock_generator.create_mock_bar(symbol, close_price=98.0)
-            self.trigger_bar_update(bar3)
-            time.sleep(0.01)
-            
-            # 验证超时后变成市价单
-            timeout_exit_order = self.strategy.gateway.get_order_by_id(context.exit_order_id)
-            assert timeout_exit_order.type == OrderType.MARKET, "超时后应该变成市价单"
-            print(f"超时后订单类型: {timeout_exit_order.type.value}")
-            
-            # 4. 手动让市价单成交
-            market_exit_order = self.mock_generator.create_mock_order(
-                symbol, Status.ALLTRADED, order_id=context.exit_order_id
-            )
-            self.trigger_order_update(market_exit_order)
-            time.sleep(0.01)
-            
-            # 5. 验证最终状态
-            self.assert_context_state(symbol, "idle")
-            self.assert_context_field(symbol, "trade_count", 1)
-            
-            print("✅ Exit超时流程（含价格更新）测试完成")
+            print("✅ 第一阶段：成交量异常取消订单测试通过")
             
         finally:
             # 恢复原方法
-            self.get_mock_indicators = original_method
+            self.strategy.get_indicators = original_get_indicators
+            self.strategy._get_current_bar = original_get_current_bar
+        
+        # 第二阶段：触发第一根bar完成，策略应该重新评估进入条件
+        # 临时替换get_mock_indicators方法
+        original_get_mock_indicators = self.get_mock_indicators
+        self.get_mock_indicators = get_mock_indicators_first_bar
+        
+        try:
+            self.trigger_bar_update(first_bar)
+            time.sleep(0.01)
+        finally:
+            self.get_mock_indicators = original_get_mock_indicators
+        
+        # 验证：第一根bar完成时应该触发新的entry，因为below_vwap_count=3满足entry条件
+        self.assert_context_state(symbol, StrategyState.WAITING_ENTRY.value)
+        
+        # 验证：应该有新的entry订单ID
+        context = self.strategy.get_context(symbol)
+        assert context.entry_order_id != "", "第一根bar完成时应该生成新的entry订单ID"
+        assert context.entry_order_id != "test_entry_order_789", "应该是新的订单ID"
+        
+        print("✅ 第二阶段：第一根bar完成时触发新的entry测试通过")
+        
+        # 第三阶段：模拟第一根bar的entry订单成交
+        entry_order = self.mock_generator.create_mock_order(
+            symbol, 
+            status=Status.ALLTRADED,
+            direction=Direction.LONG,
+            volume=100,
+            price=101.0,
+            order_id=context.entry_order_id
+        )
+        
+        # 触发订单更新
+        self.trigger_order_update(entry_order)
+        time.sleep(0.01)
+        
+        # 验证：状态应该变为waiting_exit（因为entry成交后会自动下exit订单）
+        self.assert_context_state(symbol, StrategyState.WAITING_EXIT.value)
+        
+        # 验证：entry_price应该被设置
+        context = self.strategy.get_context(symbol)
+        # it will not be 101.0 because mock_brisk_gateway will always use the original order price as trade price
+        # TODO: fix mock_brisk_gateway manually_process_order to use the order price as trade price
+        assert context.entry_price == 102.0, f"entry_price应该被设置: 期望102.0, 实际{context.entry_price}"
+        assert context.entry_time is not None, "entry_time应该被设置"
+        
+        # 验证：应该有exit订单ID
+        assert context.exit_order_id != "", "entry成交后应该生成exit订单ID"
+        
+        print("✅ 第三阶段：第一根bar的entry订单成交，自动下exit订单测试通过")
+        
+        # 第四阶段：创建第二根bar，触发exit条件更新
+        second_bar = self.mock_generator.create_mock_bar(
+            symbol, 
+            open_price=101.0, 
+            close_price=102.0,
+            volume=1500  # 正常成交量
+        )
+        
+        # 设置技术指标：触发exit条件
+        def get_mock_indicators_second_bar(symbol: str) -> dict:
+            indicators = self.mock_generator.create_mock_indicators(
+                vwap=101.5, atr_14=1.0, below_vwap_count=0  # 重置failure count
+            )
+            indicators['volume_ma5'] = 1100  # 手动设置volume_ma5
+            return indicators
+        
+        # 记录更新前的exit订单ID
+        context = self.strategy.get_context(symbol)
+        original_exit_order_id = context.exit_order_id
+        assert original_exit_order_id != "", "应该有初始的exit订单ID"
+        
+        # 触发第二根bar更新
+        self.get_mock_indicators = get_mock_indicators_second_bar
+        self.trigger_bar_update(second_bar)
+        time.sleep(0.01)
+        
+        # 验证：应该保持waiting_exit状态
+        self.assert_context_state(symbol, StrategyState.WAITING_EXIT.value)
+        
+        # 验证：exit订单ID应该发生变化（因为价格更新会取消旧订单并下新订单）
+        context = self.strategy.get_context(symbol)
+        assert context.exit_order_id != "", "应该保持exit订单ID"
+        assert context.exit_order_id != original_exit_order_id, "exit订单ID应该发生变化"
+        
+        print("✅ 第四阶段：第二根bar更新，exit订单价格更新测试通过")
+        
+        # 第五阶段：模拟exit订单成交
+        exit_order = self.mock_generator.create_mock_order(
+            symbol, 
+            status=Status.ALLTRADED,
+            direction=Direction.SHORT,
+            volume=100,
+            price=102.0,
+            order_id=context.exit_order_id
+        )
+        
+        # 触发订单更新
+        self.trigger_order_update(exit_order)
+        time.sleep(0.01)
+        
+        # 验证：状态应该变为idle，完成一个完整的交易周期
+        self.assert_context_state(symbol, StrategyState.IDLE.value)
+        
+        # 验证：trade_count应该增加
+        context = self.strategy.get_context(symbol)
+        assert context.trade_count == 1, f"trade_count应该增加: 期望1, 实际{context.trade_count}"
+        
+        print("✅ 第五阶段：exit订单成交，完成交易周期测试通过")
+        print("✅ 复杂流程测试：成交量异常取消订单后重新进入并成功完成交易")
 
 
 def run_all_tests():
@@ -831,7 +1318,7 @@ def run_all_tests():
     test_classes = [
         VWAPFailureStrategyTest,
         TestVWAPFailureSpecificLogic,
-        # TestVWAPFailureCompleteFlow
+        TestVWAPFailureCompleteFlow
     ]
     
     all_results = []

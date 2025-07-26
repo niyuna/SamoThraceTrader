@@ -435,6 +435,13 @@ class IntradayStrategyBase:
             return self.indicator_managers[symbol].get_indicators()
         return {}
     
+    def _get_current_bar(self, symbol: str) -> Optional[BarData]:
+        """获取当前正在构建的1分钟bar"""
+        bar_gen = self.bar_generators.get(symbol)
+        if bar_gen and hasattr(bar_gen, 'bar'):
+            return bar_gen.bar
+        return None
+    
     def get_all_indicators(self) -> dict:
         """获取所有股票的技术指标"""
         all_indicators = {}

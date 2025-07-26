@@ -27,11 +27,17 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         self.gap_down_threshold = -0.02 # -2% gap down
         self.failure_threshold_gap_up = 3      # Gap Up时的VWAP failure次数阈值
         self.failure_threshold_gap_down = 2    # Gap Down时的VWAP failure次数阈值
-        self.entry_factor = 1.5         # ATR倍数
-        self.max_daily_trades = 3       # 单个股票单日最多执行策略次数
+        self.entry_factor_gap_up = 1.5         # Gap Up时的ATR倍数
+        self.entry_factor_gap_down = 1.2       # Gap Down时的ATR倍数
+        self.max_daily_trades_gap_up = 3       # Gap Up时单个股票单日最多执行策略次数
+        self.max_daily_trades_gap_down = 2     # Gap Down时单个股票单日最多执行策略次数
         self.latest_entry_time = "14:30:00"  # 最晚入场时间
-        self.exit_factor = 1.0          # 平仓ATR倍数
-        self.max_exit_wait_time = 30    # 最大平仓等待时间（分钟）
+        self.exit_factor_gap_up = 1.0          # Gap Up时的平仓ATR倍数
+        self.exit_factor_gap_down = 0.8        # Gap Down时的平仓ATR倍数
+        self.max_exit_wait_time_gap_up = 30    # Gap Up时的最大平仓等待时间（分钟）
+        self.max_exit_wait_time_gap_down = 20  # Gap Down时的最大平仓等待时间（分钟）
+        self.max_vol_ma5_ratio_threshold_gap_up = 2.0    # Gap Up时当前bar的vol/vol_ma5比例上限
+        self.max_vol_ma5_ratio_threshold_gap_down = 1.5  # Gap Down时当前bar的vol/vol_ma5比例上限
         
         # 股票状态管理
         self.stock_master = {}          # 股票基础信息
@@ -91,7 +97,11 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         
         # 只处理真正符合条件的股票
         if tick.symbol in self.eligible_stocks:
+            # 先调用父类方法，确保技术指标和bar都已更新
             super().on_tick(event)
+            
+            # 检查当前bar的成交量异常并取消订单
+            self._check_current_bar_volume_anomaly_and_cancel(tick)
     
     def _check_new_trading_day(self, datetime_obj):
         """检查是否是新交易日，如果是则重置相关数据"""
@@ -249,6 +259,84 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         else:
             return self.failure_threshold_gap_down
     
+    def _get_entry_factor(self, symbol: str) -> float:
+        """根据gap方向获取对应的entry_factor"""
+        if self._is_gap_up(symbol):
+            return self.entry_factor_gap_up
+        else:
+            return self.entry_factor_gap_down
+    
+    def _get_exit_factor(self, symbol: str) -> float:
+        """根据gap方向获取对应的exit_factor"""
+        if self._is_gap_up(symbol):
+            return self.exit_factor_gap_up
+        else:
+            return self.exit_factor_gap_down
+    
+    def _get_daily_trades_for_gap(self, symbol: str) -> int:
+        """根据gap方向获取对应的max_daily_trades"""
+        if self._is_gap_up(symbol):
+            return self.max_daily_trades_gap_up
+        else:
+            return self.max_daily_trades_gap_down
+    
+    def _get_exit_wait_time(self, symbol: str) -> int:
+        """根据gap方向获取对应的max_exit_wait_time"""
+        if self._is_gap_up(symbol):
+            return self.max_exit_wait_time_gap_up
+        else:
+            return self.max_exit_wait_time_gap_down
+    
+    def _get_max_vol_ma5_ratio_threshold(self, symbol: str) -> float:
+        """根据gap方向获取对应的max_vol_ma5_ratio_threshold"""
+        if self._is_gap_up(symbol):
+            return self.max_vol_ma5_ratio_threshold_gap_up
+        else:
+            return self.max_vol_ma5_ratio_threshold_gap_down
+    
+    def _check_current_bar_volume_anomaly_and_cancel(self, tick):
+        """检查当前1分钟bar的成交量异常并取消订单"""
+        symbol = tick.symbol
+        context = self.get_context(symbol)
+        
+        # 检查状态是否为waiting_entry
+        if context.state != StrategyState.WAITING_ENTRY:
+            return
+        
+        # 获取当前正在构建的1分钟bar
+        current_bar = self._get_current_bar(symbol)
+        if not current_bar:
+            return
+        
+        # 获取技术指标
+        indicators = self.get_indicators(symbol)
+        if not indicators:
+            return
+        
+        # 计算成交量比例
+        current_bar_volume = current_bar.volume  # 当前1分钟bar的成交量
+        vol_ma5 = indicators.get('volume_ma5', 0)
+        max_ratio = self._get_max_vol_ma5_ratio_threshold(symbol)
+
+        print(f"current_bar_volume: {current_bar_volume}, vol_ma5: {vol_ma5}, max_ratio: {max_ratio}")
+        
+        # 检查是否超过阈值
+        if vol_ma5 > 0 and (current_bar_volume / vol_ma5) > max_ratio:
+            # 取消订单
+            if context.entry_order_id:
+                self._cancel_order_safely(context.entry_order_id, symbol)
+            
+            # 重置状态
+            context.entry_order_id = ""
+            self.update_context_state(symbol, StrategyState.IDLE)
+            
+            # 记录日志
+            self.write_log(f"当前bar成交量异常取消订单: {symbol}, "
+                          f"当前bar成交量: {current_bar_volume}, "
+                          f"MA5: {vol_ma5:.0f}, "
+                          f"比例: {current_bar_volume/vol_ma5:.2f}, "
+                          f"阈值: {max_ratio}")
+
     def on_1min_bar(self, bar):
         """重写1分钟K线处理逻辑"""
         # 只处理真正符合条件的股票
@@ -290,7 +378,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             return False
         
         # 使用策略参数而不是 Context 中的固定值
-        max_wait_time = timedelta(minutes=self.max_exit_wait_time)
+        max_wait_time = timedelta(minutes=self._get_exit_wait_time(context.symbol))
         if (datetime.now() - context.exit_start_time) > max_wait_time:
             # 超时，撤单并以市价单平仓
             if self._cancel_order_safely(context.exit_order_id, context.symbol):
@@ -316,7 +404,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         context = self.get_context(bar.symbol)
         
         # 检查交易次数限制 - 直接使用 Context 中的交易次数
-        if context.trade_count >= self.max_daily_trades:
+        if context.trade_count >= self._get_daily_trades_for_gap(bar.symbol):
             return
         
         # 检查当前状态
@@ -337,7 +425,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             
             if below_vwap_count >= self._get_failure_threshold(bar.symbol):
                 # 在VWAP + ATR * entry_factor位置做空
-                short_price = vwap + (atr * self.entry_factor)
+                short_price = vwap + (atr * self._get_entry_factor(bar.symbol))
                 self._execute_entry(context, bar, short_price, Direction.SHORT)
                 
         elif gap_dir == 'down':
@@ -346,7 +434,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             
             if above_vwap_count >= self._get_failure_threshold(bar.symbol):
                 # 在VWAP - ATR * entry_factor位置做多
-                long_price = vwap - (atr * self.entry_factor)
+                long_price = vwap - (atr * self._get_entry_factor(bar.symbol))
                 self._execute_entry(context, bar, long_price, Direction.LONG)
     
     def _is_within_trading_time(self, bar_datetime):
@@ -363,9 +451,9 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         atr = indicators['atr_14']
         
         if self._is_gap_up(context.symbol):
-            return vwap + (atr * self.entry_factor)  # 做空
+            return vwap + (atr * self._get_entry_factor(context.symbol))  # 做空
         else:
-            return vwap - (atr * self.entry_factor)  # 做多
+            return vwap - (atr * self._get_entry_factor(context.symbol))  # 做多
     
     def _calculate_exit_price(self, context, bar, indicators) -> float:
         """计算 exit 价格"""
@@ -373,19 +461,19 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             # 如果没有技术指标，使用简单的固定比例
             if self._is_gap_up(context.symbol):
                 # Gap Up 策略是做空，平仓需要买入
-                return context.entry_price - (self.exit_factor * 0.01)
+                return context.entry_price - (self._get_exit_factor(context.symbol) * 0.01)
             else:
                 # Gap Down 策略是做多，平仓需要卖出
-                return context.entry_price + (self.exit_factor * 0.01)
+                return context.entry_price + (self._get_exit_factor(context.symbol) * 0.01)
         else:
             # 使用技术指标计算
             vwap = indicators['vwap']
             atr = indicators['atr_14']
             
             if self._is_gap_up(context.symbol):
-                return vwap - (atr * self.exit_factor)  # 做空平仓
+                return vwap - (atr * self._get_exit_factor(context.symbol))  # 做空平仓
             else:
-                return vwap + (atr * self.exit_factor)  # 做多平仓
+                return vwap + (atr * self._get_exit_factor(context.symbol))  # 做多平仓
     
     def _execute_entry_with_direction(self, context, bar, price):
         """根据策略逻辑执行 entry 订单"""
@@ -409,22 +497,34 @@ class VWAPFailureStrategy(IntradayStrategyBase):
                           gap_down_threshold=-0.02,
                           failure_threshold_gap_up=3,
                           failure_threshold_gap_down=2,
-                          entry_factor=1.5,
-                          max_daily_trades=3,
+                          entry_factor_gap_up=1.5,
+                          entry_factor_gap_down=1.2,
+                          max_daily_trades_gap_up=3,
+                          max_daily_trades_gap_down=2,
                           latest_entry_time="14:30:00",
-                          exit_factor=1.0,
-                          max_exit_wait_time=30):
+                          exit_factor_gap_up=1.0,
+                          exit_factor_gap_down=0.8,
+                          max_exit_wait_time_gap_up=30,
+                          max_exit_wait_time_gap_down=20,
+                          max_vol_ma5_ratio_threshold_gap_up=2.0,
+                          max_vol_ma5_ratio_threshold_gap_down=1.5):
         """设置策略参数"""
         self.market_cap_threshold = market_cap_threshold
         self.gap_up_threshold = gap_up_threshold
         self.gap_down_threshold = gap_down_threshold
         self.failure_threshold_gap_up = failure_threshold_gap_up
         self.failure_threshold_gap_down = failure_threshold_gap_down
-        self.entry_factor = entry_factor
-        self.max_daily_trades = max_daily_trades
+        self.entry_factor_gap_up = entry_factor_gap_up
+        self.entry_factor_gap_down = entry_factor_gap_down
+        self.max_daily_trades_gap_up = max_daily_trades_gap_up
+        self.max_daily_trades_gap_down = max_daily_trades_gap_down
         self.latest_entry_time = latest_entry_time
-        self.exit_factor = exit_factor
-        self.max_exit_wait_time = max_exit_wait_time
+        self.exit_factor_gap_up = exit_factor_gap_up
+        self.exit_factor_gap_down = exit_factor_gap_down
+        self.max_exit_wait_time_gap_up = max_exit_wait_time_gap_up
+        self.max_exit_wait_time_gap_down = max_exit_wait_time_gap_down
+        self.max_vol_ma5_ratio_threshold_gap_up = max_vol_ma5_ratio_threshold_gap_up
+        self.max_vol_ma5_ratio_threshold_gap_down = max_vol_ma5_ratio_threshold_gap_down
         
         print(f"策略参数设置完成:")
         print(f"  市值阈值: {market_cap_threshold:,.0f} 日元")
@@ -432,11 +532,17 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         print(f"  Gap Down阈值: {gap_down_threshold:.1%}")
         print(f"  Gap Up VWAP Failure阈值: {failure_threshold_gap_up}")
         print(f"  Gap Down VWAP Failure阈值: {failure_threshold_gap_down}")
-        print(f"  Entry ATR倍数: {entry_factor}")
-        print(f"  Exit ATR倍数: {exit_factor}")
-        print(f"  单日最大交易次数: {max_daily_trades}")
+        print(f"  Gap Up Entry ATR倍数: {entry_factor_gap_up}")
+        print(f"  Gap Down Entry ATR倍数: {entry_factor_gap_down}")
+        print(f"  Gap Up Exit ATR倍数: {exit_factor_gap_up}")
+        print(f"  Gap Down Exit ATR倍数: {exit_factor_gap_down}")
+        print(f"  Gap Up 单日最大交易次数: {max_daily_trades_gap_up}")
+        print(f"  Gap Down 单日最大交易次数: {max_daily_trades_gap_down}")
         print(f"  最晚入场时间: {latest_entry_time}")
-        print(f"  最大平仓等待时间: {max_exit_wait_time} 分钟")
+        print(f"  Gap Up 最大平仓等待时间: {max_exit_wait_time_gap_up} 分钟")
+        print(f"  Gap Down 最大平仓等待时间: {max_exit_wait_time_gap_down} 分钟")
+        print(f"  Gap Up 当前bar的vol/vol_ma5比例上限: {max_vol_ma5_ratio_threshold_gap_up}")
+        print(f"  Gap Down 当前bar的vol/vol_ma5比例上限: {max_vol_ma5_ratio_threshold_gap_down}")
     
     def print_strategy_status(self):
         """打印策略状态"""
@@ -464,7 +570,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
                 context = self.get_context(symbol)
                 gap_dir = self.gap_direction.get(symbol, 'none')
                 print(f"  {symbol}: {gap_dir} | {context.state.value} | "
-                      f"交易次数: {context.trade_count}/{self.max_daily_trades}")
+                      f"交易次数: {context.trade_count}/{self._get_daily_trades_for_gap(symbol)}")
     
     def get_signals_summary(self) -> dict:
         """获取信号汇总信息"""
@@ -481,7 +587,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         for symbol, context in self.contexts.items():
             if symbol in self.eligible_stocks:
                 print(f"{symbol}: {context.state.value} | "
-                      f"交易次数: {context.trade_count}/{self.max_daily_trades} | "
+                      f"交易次数: {context.trade_count}/{self._get_daily_trades_for_gap(symbol)} | "
                       f"Entry订单: {context.entry_order_id[:8] if context.entry_order_id else 'None'} | "
                       f"Exit订单: {context.exit_order_id[:8] if context.exit_order_id else 'None'}")
 
@@ -519,11 +625,17 @@ def main():
             gap_down_threshold=-0.02,   # -2% gap down
             failure_threshold_gap_up=30,        # Gap Up时的VWAP failure次数阈值
             failure_threshold_gap_down=20,      # Gap Down时的VWAP failure次数阈值
-            entry_factor=1.5,           # Entry ATR倍数
-            max_daily_trades=3,         # 单日最大交易次数
+            entry_factor_gap_up=1.5,           # Entry ATR倍数
+            entry_factor_gap_down=1.2,         # Entry ATR倍数
+            max_daily_trades_gap_up=3,         # 单日最大交易次数
+            max_daily_trades_gap_down=2,       # 单日最大交易次数
             latest_entry_time="11:23:00",  # 最晚入场时间
-            exit_factor=1.0,            # Exit ATR倍数
-            max_exit_wait_time=30       # 最大平仓等待时间（分钟）
+            exit_factor_gap_up=1.0,            # Exit ATR倍数
+            exit_factor_gap_down=0.8,          # Exit ATR倍数
+            max_exit_wait_time_gap_up=30,     # 最大平仓等待时间（分钟）
+            max_exit_wait_time_gap_down=20,    # 最大平仓等待时间（分钟）
+            max_vol_ma5_ratio_threshold_gap_up=2.0, # Gap Up时的成交量MA5阈值
+            max_vol_ma5_ratio_threshold_gap_down=1.5 # Gap Down时的成交量MA5阈值
         )
         
         # 配置Mock Gateway的replay模式

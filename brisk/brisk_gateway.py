@@ -428,7 +428,7 @@ class BriskGateway(BaseGateway):
         # None means API call quota exceeded, we should retry later
         if orders == list():
             # 即使没有订单，也要更新时间，避免重复查询
-            self.write_log(f"empty orders, updating last_updtime to {current_time}")
+            # self.write_log(f"empty orders, updating last_updtime to {current_time}")
             self.last_updtime = current_time
             return
         elif orders is None:

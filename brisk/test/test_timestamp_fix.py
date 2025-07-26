@@ -61,11 +61,17 @@ def test_timestamp_fix():
             gap_down_threshold=-0.02,
             failure_threshold_gap_up=3,        # Gap Up时的VWAP failure次数阈值
             failure_threshold_gap_down=2,      # Gap Down时的VWAP failure次数阈值
-            entry_factor=1.5,
-            max_daily_trades=3,
+            entry_factor_gap_up=1.5,
+            entry_factor_gap_down=1.2,
+            max_daily_trades_gap_up=3,
+            max_daily_trades_gap_down=2,
             latest_entry_time="23:59:50",
-            exit_factor=1.0,
-            max_exit_wait_time=5
+            exit_factor_gap_up=1.0,
+            exit_factor_gap_down=0.8,
+            max_exit_wait_time_gap_up=5,
+            max_exit_wait_time_gap_down=3,
+            max_vol_ma5_ratio_threshold_gap_up=2.0,
+            max_vol_ma5_ratio_threshold_gap_down=1.5
         )
         
         # 配置Mock Gateway的replay模式

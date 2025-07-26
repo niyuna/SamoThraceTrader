@@ -481,6 +481,7 @@ class MockTradingEngine:
         # 更新订单状态
         order.status = Status.ALLTRADED
         order.traded = order.volume
+        order.datetime = datetime.now()
         
         # 创建成交记录
         trade_id = f"MOCK_TRADE_{self.trade_id_counter}"
