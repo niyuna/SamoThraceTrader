@@ -10,10 +10,10 @@ from zoneinfo import ZoneInfo
 import websockets
 from websockets.exceptions import ConnectionClosed, WebSocketException
 
-from vnpy.trader.object import Exchange, Product, ContractData, TickData, OrderRequest, CancelRequest, HistoryRequest, SubscribeRequest, BarData
+from vnpy.trader.object import Exchange, Product, ContractData, TickData, OrderRequest, CancelRequest, HistoryRequest, SubscribeRequest, BarData, OrderData
 from vnpy.trader.gateway import BaseGateway
 from vnpy.event import EventEngine
-from vnpy.trader.constant import Exchange, Interval
+from vnpy.trader.constant import Exchange, Interval, Direction, Offset, Status, OrderType
 
 from common import kabus_api
 from common.trading_common import TradingSide
@@ -47,6 +47,7 @@ class BriskGateway(BaseGateway):
         "reconnect_interval": 5,
         "heartbeat_interval": 30,
         "max_reconnect_attempts": 10,
+        "polling_interval": 1,  # 订单状态轮询间隔（秒）
     }
     exchanges: List[Exchange] = [Exchange.TSE]
 
@@ -68,6 +69,7 @@ class BriskGateway(BaseGateway):
         # 线程相关
         self._ws_thread: Optional[threading.Thread] = None
         self._heartbeat_thread: Optional[threading.Thread] = None
+        self._polling_thread: Optional[threading.Thread] = None
         self._active: bool = False
 
         # 数据缓存
@@ -88,6 +90,16 @@ class BriskGateway(BaseGateway):
         #   }
         # }
 
+        # 订单状态轮询相关
+        self.local_orders: Dict[str, OrderData] = {}  # key: orderid (ID字段)
+        # 设置初始时间为当天的早上8点50分，确保获取当天所有订单
+        today = datetime.now()
+        # self.last_updtime: str = today.strftime("%Y%m%d") + "085000"  # 格式: yyyyMMddHHmmss
+        self.last_updtime: str = "20250725085000"  # temporarily setting this for testing
+
+        self.polling_interval: int = 1  # 轮询间隔（秒）
+        self._polling_active: bool = False
+
         token = kabus_api.init_trading_api()
         if token is None:
             self.write_log("Kabus API token is None")
@@ -104,12 +116,16 @@ class BriskGateway(BaseGateway):
         self._reconnect_interval = setting.get("reconnect_interval", self.default_setting["reconnect_interval"])
         self._heartbeat_interval = setting.get("heartbeat_interval", self.default_setting["heartbeat_interval"])
         self._max_reconnect_attempts = setting.get("max_reconnect_attempts", self.default_setting["max_reconnect_attempts"])
+        self.polling_interval = setting.get("polling_interval", self.default_setting["polling_interval"])
 
         self._active = True
         
         self._ws_thread = threading.Thread(target=self._run_websocket)
         self._ws_thread.daemon = True
         self._ws_thread.start()
+
+        # 启动订单状态轮询线程
+        self._start_polling_thread()
 
         # 对于本地连接，禁用心跳检测
         # self._heartbeat_thread = threading.Thread(target=self._run_heartbeat)
@@ -122,6 +138,7 @@ class BriskGateway(BaseGateway):
         """关闭连接"""
         self._active = False
         self._connected = False
+        self._polling_active = False
 
         # 不直接关闭WebSocket，让线程自然结束
         # if self._ws:
@@ -155,6 +172,27 @@ class BriskGateway(BaseGateway):
             order_id = kabus_api.send_close_position_order(req.symbol, Direction_to_TradingSide[req.direction], req.price, req.volume)
         else:
             raise Exception(f"不支持的委托方向: {req.offset}")
+        
+        # 创建初始订单对象并添加到本地缓存
+        if order_id:
+            initial_order = OrderData(
+                gateway_name=self.gateway_name,
+                symbol=req.symbol,
+                exchange=req.exchange,
+                orderid=order_id,
+                type=req.type,
+                direction=req.direction,
+                offset=req.offset,
+                price=req.price,
+                volume=req.volume,
+                traded=0.0,  # 初始成交量为0
+                status=Status.SUBMITTING,  # 初始状态为提交中
+                datetime=datetime.now(),
+                reference=req.reference
+            )
+            self.add_order(initial_order)
+            self.write_log(f"订单已发送并添加到缓存: {order_id}")
+        
         return order_id
 
     def cancel_order(self, req: CancelRequest) -> None:
@@ -183,7 +221,6 @@ class BriskGateway(BaseGateway):
         except Exception as e:
             self.write_log(f"查询历史数据失败: {e}")
             return []
-
 
     def _run_websocket(self) -> None:
         """运行WebSocket连接"""
@@ -363,6 +400,142 @@ class BriskGateway(BaseGateway):
             except Exception as e:
                 self.write_log(f"心跳检测异常: {e}")
 
+    def _start_polling_thread(self):
+        """启动订单状态轮询线程"""
+        self._polling_active = True
+        self._polling_thread = threading.Thread(target=self._run_polling)
+        self._polling_thread.daemon = True
+        self._polling_thread.start()
+        self.write_log("订单状态轮询线程已启动")
+
+    def _run_polling(self):
+        """运行订单状态轮询"""
+        while self._polling_active:
+            try:
+                self._poll_orders()
+                time.sleep(self.polling_interval)
+            except Exception as e:
+                self.write_log(f"订单轮询错误: {e}")
+                time.sleep(self.polling_interval)
+
+    def _poll_orders(self):
+        """轮询订单状态"""
+        # 1. 记录当前时间作为本次查询的updtime
+        current_time = datetime.now().strftime("%Y%m%d%H%M%S")
+        
+        # 2. 拉取所有 self.last_updtime 之后的订单
+        orders = kabus_api.query_orders_after(self.last_updtime)
+        # None means API call quota exceeded, we should retry later
+        if orders == list():
+            # 即使没有订单，也要更新时间，避免重复查询
+            self.write_log(f"empty orders, updating last_updtime to {current_time}")
+            self.last_updtime = current_time
+            return
+        elif orders is None:
+            self.write_log(f"API call quota exceeded, updating last_updtime to {current_time}")
+            return
+
+        # 3. 遍历订单，转换格式，检测状态变化
+        for broker_order in orders:
+            try:
+                order = self._convert_broker_order_to_vnpy(broker_order)
+                orderid = order.orderid  # 使用broker_order['ID']
+                old_order = self.local_orders.get(orderid)
+                # 检测状态变化：状态不同 或 成交量不同
+                if (not old_order) or (old_order.status != order.status or old_order.traded != order.traded):
+                    self.local_orders[orderid] = order
+                    self.on_order(order)  # 推送事件
+                    self.write_log(f"订单状态更新: {orderid} {old_order.status if old_order else 'NEW'} -> {order.status}")
+            except Exception as e:
+                self.write_log(f"订单转换失败: {e}")
+
+        # 4. 更新last_updtime为当前时间
+        self.last_updtime = current_time
+
+    def _convert_broker_order_to_vnpy(self, broker_order: Dict) -> OrderData:
+        """将kabus API订单格式转换为vnpy格式"""
+        volume = float(broker_order["OrderQty"])
+        traded = float(broker_order["CumQty"])
+
+        state = Status.SUBMITTING
+        if broker_order["State"] in [1, 2, 4]:
+            state = Status.SUBMITTING
+        elif broker_order["State"] == 3:
+            if traded == 0:
+                state = Status.NOTTRADED
+            else:
+                state = Status.PARTTRADED
+        elif broker_order["State"] == 5:
+            if traded == volume and traded > 0:
+                state = Status.ALLTRADED
+            else:
+                # in cancelled state, traded could > 0
+                state = Status.CANCELLED
+        
+        # 方向映射 (基于broker_order['Side'])
+        direction_mapping = {
+            "1": Direction.SHORT,    # 1=卖出
+            "2": Direction.LONG,     # 2=买入
+        }
+        
+        # 订单类型映射 (基于broker_order['OrdType'])
+        order_type_mapping = {
+            1: OrderType.MARKET,     # 假设1=市价单
+            2: OrderType.LIMIT,      # 假设2=限价单
+        }
+        
+        # 交易所映射 (基于broker_order['Exchange'])
+        exchange_mapping = {
+            1: Exchange.TSE,         # 1: TSE
+            9: Exchange.TSE,         # 9: SOR
+            27: Exchange.TSE,        # 27: TSE+
+        }
+        
+        # 解析时间
+        recv_time = broker_order["RecvTime"]
+        # recv_time is in JST
+        dt = datetime.fromisoformat(recv_time)
+        
+        # avg traded price
+        trades = list(filter(lambda x: x.get("ExecutionID") != None, broker_order["Details"]))
+        avg_price = sum(float(trade["Price"]) * float(trade["Qty"]) for trade in trades) / sum(float(trade["Qty"]) for trade in trades) if trades else 0
+        self.write_log(f"updating order: symbol: {broker_order['Symbol']}, traded: {traded}, avg_price: {avg_price}")
+
+        order = OrderData(
+            gateway_name=self.gateway_name,
+            symbol=broker_order["Symbol"],
+            exchange=exchange_mapping.get(broker_order["Exchange"], Exchange.TSE),
+            orderid=broker_order["ID"],  # 直接使用ID字段
+            type=OrderType.LIMIT if broker_order['Price'] > 0 else OrderType.MARKET,
+            direction=direction_mapping.get(broker_order["Side"], Direction.LONG),
+            offset=Offset.OPEN if broker_order['CashMargin'] == 2 else Offset.CLOSE,  # 暂时设为NONE，后续可根据CashMargin和DelivType判断
+            price=float(broker_order["Price"]),
+            volume=volume,
+            traded=traded,  # 累计成交量
+            status=state,
+            datetime=dt,
+            reference=""  # 可以根据需要设置
+        )
+        
+        return order
+
+    def add_order(self, order: OrderData):
+        """添加新订单到本地缓存"""
+        self.local_orders[order.orderid] = order
+        self.write_log(f"添加订单到缓存: {order.orderid}")
+
+    # not used for now
+    def update_order(self, order: OrderData):
+        """更新订单状态"""
+        orderid = order.orderid
+        old_order = self.local_orders.get(orderid)
+        if old_order and (old_order.status != order.status or old_order.traded != order.traded):
+            # 状态发生变化，需要推送事件
+            return True
+        self.local_orders[orderid] = order
+        return False
+
+    # not used for now
     def _create_contract(self, symbol: str) -> ContractData:
         """创建合约信息"""
         contract = ContractData(
