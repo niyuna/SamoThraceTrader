@@ -16,6 +16,7 @@ from vnpy.event import EventEngine
 from vnpy.trader.constant import Exchange, Interval
 
 from common import kabus_api
+from common.trading_common import TradingSide
 
 # 日股交易所映射
 JAPANESE_EXCHANGES = {
@@ -29,6 +30,10 @@ JAPANESE_EXCHANGES = {
 # 默认交易所
 DEFAULT_EXCHANGE = Exchange.TSE
 
+Direction_to_TradingSide = {
+    Direction.LONG: TradingSide.LONG,
+    Direction.SHORT: TradingSide.SHORT,
+}
 
 class BriskGateway(BaseGateway):
     """
@@ -143,15 +148,19 @@ class BriskGateway(BaseGateway):
                 self.write_log(f"发送订阅消息失败: {e}")
 
     def send_order(self, req: OrderRequest) -> str:
-        """发送委托"""
-        # 日股交易功能暂未实现
-        self.write_log("日股交易功能暂未实现")
-        return ""
+        self.write_log(f"send_order: {req}")
+        if req.offset == Offset.OPEN:
+            order_id = kabus_api.send_normal_trading_order(req.symbol, Direction_to_TradingSide[req.direction], req.price, req.volume)
+        elif req.offset == Offset.CLOSE:
+            order_id = kabus_api.send_close_position_order(req.symbol, Direction_to_TradingSide[req.direction], req.price, req.volume)
+        else:
+            raise Exception(f"不支持的委托方向: {req.offset}")
+        return order_id
 
     def cancel_order(self, req: CancelRequest) -> None:
-        """撤销委托"""
-        # 日股交易功能暂未实现
-        self.write_log("日股交易功能暂未实现")
+        cancel_result = kabus_api.cancel_order(req.orderid)
+        if not cancel_result:
+            raise Exception(f"撤销委托失败: {req.orderid}")
 
     def query_account(self) -> None:
         """查询资金"""
@@ -224,8 +233,6 @@ class BriskGateway(BaseGateway):
         }
         self.write_log(f"发送订阅消息: {subscribe_msg}")
         await self._ws.send(json.dumps(subscribe_msg))
-
-
 
     async def _on_message(self, message: str) -> None:
         """处理接收到的消息"""

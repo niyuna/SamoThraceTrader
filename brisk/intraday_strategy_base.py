@@ -25,7 +25,7 @@ from vnpy.trader.object import OrderRequest, CancelRequest
 from vnpy.trader.constant import Direction, Offset, OrderType
 
 from loguru import logger
-
+from common.trading_common import normalize_price
 
 class StrategyState(Enum):
     """策略状态枚举"""
@@ -227,18 +227,21 @@ class IntradayStrategyBase:
             self.write_log(f"撤单失败: {order_id}, 错误: {e}")
             return False
 
-    def _update_entry_order_price(self, context, bar, indicators):
+    def _update_entry_order_price(self, context, bar, indicators, change_only: bool = False):
         """更新 entry 订单价格 - 子类可以重写"""
         vwap = indicators['vwap']
         atr = indicators['atr_14']
         
         # 计算新的 entry 价格 - 子类需要实现具体的价格计算逻辑
-        new_entry_price = self._calculate_entry_price(context, bar, indicators)
-        
-        # 撤单并重新下单
-        if self._cancel_order_safely(context.entry_order_id, context.symbol):
-            # 撤单成功，重新下单 - 子类需要实现具体的下单逻辑
-            self._execute_entry_with_direction(context, bar, new_entry_price)
+        old_entry_price = normalize_price(context.symbol, context.entry_price)
+        new_entry_price = normalize_price(context.symbol, self._calculate_entry_price(context, bar, indicators))
+
+        if old_entry_price != new_entry_price or not change_only:
+            self.write_log(f"更新 entry 订单价格: {context.symbol} 旧价格: {old_entry_price:.2f} 新价格: {new_entry_price:.2f}")
+            # 撤单并重新下单
+            if self._cancel_order_safely(context.entry_order_id, context.symbol):
+                # 撤单成功，重新下单 - 子类需要实现具体的下单逻辑
+                self._execute_entry_with_direction(context, bar, new_entry_price)
 
     def _update_exit_order_price(self, context, bar, indicators):
         """更新 exit 订单价格 - 子类可以重写"""
@@ -483,7 +486,7 @@ def main():
         # strategy.print_summary()
         
         # 或者开始历史数据回放
-        strategy.start_replay("20250718", symbols)
+        strategy.start_replay("20250725", symbols)
         # time.sleep(30)
         # strategy.stop_replay()
         
