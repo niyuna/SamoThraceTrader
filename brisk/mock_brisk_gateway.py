@@ -358,6 +358,7 @@ class MockTradingEngine:
         self.commission_rate = config.get("mock_commission_rate", 0.001)
         self.slippage = config.get("mock_slippage", 0.0)
         self.fill_delay = config.get("mock_fill_delay", 0.1)
+        self.auto_process_orders = config.get("mock_auto_process_orders", True)
         
         # 创建模拟账户
         self.account = self._create_mock_account()
@@ -386,9 +387,11 @@ class MockTradingEngine:
         # 推送订单事件
         self.gateway.on_order(order)
         
-        # 模拟订单处理
-        self._process_order(order)
+        # 只有在启用自动处理时才模拟订单处理
+        if self.auto_process_orders:
+            self._process_order(order)
         
+        print(f'send_order: {order}')
         return order_id
         
     def cancel_order(self, req: CancelRequest) -> None:
@@ -421,6 +424,25 @@ class MockTradingEngine:
         self.account = self._create_mock_account()
         self.order_id_counter = 0
         self.trade_id_counter = 0
+    
+    def manually_process_order(self, order_id: str, target_status: Status) -> bool:
+        """手动处理订单状态（用于测试）"""
+        if order_id not in self.orders:
+            return False
+        
+        order = self.orders[order_id]
+        # 如果订单成交，生成成交事件
+        if target_status == Status.ALLTRADED:
+            # no need to trigger on_order here because _fill_order will do that
+            self._fill_order(order)
+        else:
+            self.gateway.on_order(order)
+        
+        return True
+    
+    def get_order_by_id(self, order_id: str) -> Optional[OrderData]:
+        """根据订单ID获取订单（用于测试）"""
+        return self.orders.get(order_id)
         
     def _create_mock_account(self) -> AccountData:
         """创建模拟账户"""
@@ -602,6 +624,7 @@ class MockBriskGateway(BaseGateway):
         "mock_commission_rate": 0.001,   # 模拟手续费率
         "mock_slippage": 0.0,            # 模拟滑点
         "mock_fill_delay": 0.1,          # 模拟成交延迟(秒)
+        "mock_auto_process_orders": True,  # 是否自动处理订单状态
     }
     exchanges: List[Exchange] = [Exchange.TSE]
 
@@ -749,4 +772,17 @@ class MockBriskGateway(BaseGateway):
     def resume_replay(self) -> None:
         """恢复回放"""
         if self.tick_mode == "replay" and self.replay_engine:
-            self.replay_engine.resume() 
+            self.replay_engine.resume()
+    
+    def manually_process_order(self, order_id: str, target_status: Status) -> bool:
+        """手动处理订单状态（用于测试）"""
+        if self.mock_trading_engine:
+            self.write_log(f"mock brisk gateway manually_process_order: {order_id} -> {target_status}")
+            return self.mock_trading_engine.manually_process_order(order_id, target_status)
+        return False
+    
+    def get_order_by_id(self, order_id: str) -> Optional[OrderData]:
+        """根据订单ID获取订单（用于测试）"""
+        if self.mock_trading_engine:
+            return self.mock_trading_engine.get_order_by_id(order_id)
+        return None 

@@ -4,8 +4,11 @@ Brisk Gateway Demo V3
 """
 
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import defaultdict
+from dataclasses import dataclass, field
+from typing import Dict, Optional
+from enum import Enum
 
 from vnpy.event import EventEngine
 from vnpy.trader.engine import MainEngine
@@ -20,9 +23,36 @@ try:
     from mock_brisk_gateway import MockBriskGateway
 except ImportError:
     MockBriskGateway = None
-from vnpy.trader.event import EVENT_TICK, EVENT_LOG
+from vnpy.trader.event import EVENT_TICK, EVENT_LOG, EVENT_ORDER, EVENT_TRADE
 from vnpy.event import Event
 from technical_indicators import TechnicalIndicatorManager
+from vnpy.trader.object import OrderRequest, CancelRequest
+from vnpy.trader.constant import Direction, Offset, OrderType
+
+from loguru import logger
+
+
+class StrategyState(Enum):
+    """策略状态枚举"""
+    IDLE = "idle"                    # 空闲状态，等待 entry 信号
+    WAITING_ENTRY = "waiting_entry"  # 等待 entry 订单成交
+    HOLDING = "holding"              # 持仓中，等待 exit 信号
+    WAITING_EXIT = "waiting_exit"    # 等待 exit 订单成交
+
+
+@dataclass
+class StockContext:
+    """股票 Context 数据结构"""
+    symbol: str
+    state: StrategyState = StrategyState.IDLE
+    trade_count: int = 0                    # 当日交易次数
+    entry_order_id: str = ""                # entry订单ID
+    exit_order_id: str = ""                 # exit订单ID
+    entry_price: float = 0.0                # entry成交价格
+    entry_time: datetime = None             # entry成交时间
+    exit_start_time: datetime = None        # exit订单开始时间
+    max_exit_wait_time: timedelta = timedelta(minutes=5)  # exit订单最大等待时间
+    position_size: int = 100                # 持仓数量
 
 
 class IntradayStrategyBase:
@@ -39,8 +69,221 @@ class IntradayStrategyBase:
         self.bar_generators = {}
         self.indicator_managers = {}
         self.bars_count = defaultdict(int)
-        # 事件注册延后到connect
+        
+        # 新增：Context 管理
+        self.contexts: Dict[str, StockContext] = {}
+        # from vnpy_logging_config import setup_strategy_logging
+        # setup_strategy_logging(self.__class__.__name__)
+        
+    def get_context(self, symbol: str) -> StockContext:
+        """获取或创建股票 Context"""
+        if symbol not in self.contexts:
+            self.contexts[symbol] = StockContext(symbol=symbol)
+        return self.contexts[symbol]
+    
+    def update_context_state(self, symbol: str, new_state: StrategyState):
+        """更新 Context 状态"""
+        context = self.get_context(symbol)
+        old_state = context.state
+        context.state = new_state
+        self.write_log(f"Context state changed for {symbol}: {old_state.value} -> {new_state.value}")
+    
+    def get_context_by_order_id(self, order_id: str) -> Optional[StockContext]:
+        """根据订单ID查找对应的 Context"""
+        for context in self.contexts.values():
+            if context.entry_order_id == order_id or context.exit_order_id == order_id:
+                return context
+        return None
+    
+    def write_log(self, msg: str):
+        """写日志"""
+        logger.info(msg)
+        # self.main_engine.write_log(msg, self.__class__.__name__)
+    
+    def reset_all_contexts(self):
+        """重置所有 Context 状态 - 子类可以重写"""
+        for context in self.contexts.values():
+            context.state = StrategyState.IDLE
+            context.trade_count = 0
+            context.entry_order_id = ""
+            context.exit_order_id = ""
+            context.entry_price = 0.0
+            context.entry_time = None
+            context.exit_start_time = None
+        self.write_log("All contexts reset")
 
+    # ==================== 核心交易执行方法 ====================
+    
+    def _execute_order(self, context, bar, price: float, direction: Direction, offset: Offset, order_type: OrderType = OrderType.LIMIT, reference_prefix: str = "order"):
+        """统一的订单执行方法"""
+        # 创建OrderRequest
+        order_req = OrderRequest(
+            symbol=context.symbol,
+            exchange=bar.exchange if bar else Exchange.TSE,
+            direction=direction,
+            type=order_type,
+            volume=context.position_size,
+            price=price,
+            offset=offset,
+            reference=f"{reference_prefix}_{context.symbol}_{datetime.now().strftime('%H%M%S')}"
+        )
+        
+        # 执行下单
+        order_id = self.gateway.send_order(order_req)
+        
+        if order_id:
+            self.write_log(f"订单已提交: {context.symbol} {direction.value} {offset.value} 价格: {price:.2f} 订单ID: {order_id}")
+            return order_id
+        else:
+            self.write_log(f"订单被拒绝: {context.symbol} {direction.value} {offset.value}")
+            return None
+
+    def _execute_trade(self, context, bar, price: float, direction: Direction, offset: Offset, order_type: OrderType = OrderType.LIMIT, trade_type: str = "order"):
+        """统一的交易执行方法 - 合并 entry 和 exit"""
+        # 确定交易类型和日志信息
+        if offset == Offset.OPEN:
+            action = "开仓"
+            reference_prefix = f"entry_{direction.value.lower()}"
+        else:  # Offset.CLOSE
+            action = "平仓"
+            reference_prefix = f"exit_{direction.value.lower()}"
+        
+        order_type_str = "市价" if order_type == OrderType.MARKET else "限价"
+        time_str = bar.datetime.strftime('%H:%M:%S') if bar and bar.datetime else 'N/A'
+        print(f"执行{action}({order_type_str}): {context.symbol} 价格: {price:.2f} "
+              f"时间: {time_str}")
+        
+        # 执行订单
+        order_id = self._execute_order(
+            context=context,
+            bar=bar,
+            price=price,
+            direction=direction,
+            offset=offset,
+            order_type=order_type,
+            reference_prefix=reference_prefix
+        )
+        
+        if order_id:
+            if offset == Offset.OPEN:
+                # Entry 订单
+                context.entry_order_id = order_id
+                self.update_context_state(context.symbol, StrategyState.WAITING_ENTRY)
+            else:
+                # Exit 订单
+                context.exit_order_id = order_id
+                context.exit_start_time = datetime.now()
+                self.update_context_state(context.symbol, StrategyState.WAITING_EXIT)
+        
+        return order_id
+
+    def _execute_entry(self, context, bar, price, direction: Direction):
+        """统一的 entry 订单执行方法"""
+        action = "做空" if direction == Direction.SHORT else "做多"
+        time_str = bar.datetime.strftime('%H:%M:%S') if bar and bar.datetime else 'N/A'
+        print(f"执行{action}开仓: {context.symbol} 价格: {price:.2f} "
+              f"时间: {time_str}")
+        
+        order_id = self._execute_trade(
+            context=context,
+            bar=bar,
+            price=price,
+            direction=direction,
+            offset=Offset.OPEN
+        )
+        
+        if not order_id:
+            # 订单被拒绝，回到 IDLE 状态
+            self.update_context_state(bar.symbol, StrategyState.IDLE)
+            context.entry_order_id = ""
+
+    def _execute_exit(self, context, bar, price, direction: Direction, order_type: OrderType = OrderType.LIMIT):
+        """统一的 exit 订单执行方法"""
+        return self._execute_trade(
+            context=context,
+            bar=bar,
+            price=price,
+            direction=direction,
+            offset=Offset.CLOSE,
+            order_type=order_type
+        )
+
+    def _cancel_order_safely(self, order_id: str, symbol: str) -> bool:
+        """安全撤单，返回是否撤单成功"""
+        if not order_id:
+            return True  # 没有订单需要撤单
+        
+        try:
+            # 创建 CancelRequest 对象
+            cancel_req = CancelRequest(
+                orderid=order_id,
+                symbol=symbol,
+                exchange=Exchange.TSE
+            )
+            self.gateway.cancel_order(cancel_req)
+            self.write_log(f"Cancel order: {order_id}")
+            
+            # 等待一小段时间确保撤单处理
+            import time
+            time.sleep(0.1)
+            
+            return True
+        except Exception as e:
+            self.write_log(f"撤单失败: {order_id}, 错误: {e}")
+            return False
+
+    def _update_entry_order_price(self, context, bar, indicators):
+        """更新 entry 订单价格 - 子类可以重写"""
+        vwap = indicators['vwap']
+        atr = indicators['atr_14']
+        
+        # 计算新的 entry 价格 - 子类需要实现具体的价格计算逻辑
+        new_entry_price = self._calculate_entry_price(context, bar, indicators)
+        
+        # 撤单并重新下单
+        if self._cancel_order_safely(context.entry_order_id, context.symbol):
+            # 撤单成功，重新下单 - 子类需要实现具体的下单逻辑
+            self._execute_entry_with_direction(context, bar, new_entry_price)
+
+    def _update_exit_order_price(self, context, bar, indicators):
+        """更新 exit 订单价格 - 子类可以重写"""
+        vwap = indicators['vwap']
+        atr = indicators['atr_14']
+        
+        # 计算新的 exit 价格 - 子类需要实现具体的价格计算逻辑
+        new_exit_price = self._calculate_exit_price(context, bar, indicators)
+        
+        # 撤单并重新下单
+        if self._cancel_order_safely(context.exit_order_id, context.symbol):
+            # 撤单成功，重新下单 - 子类需要实现具体的下单逻辑
+            self._execute_exit_with_direction(context, bar, new_exit_price)
+
+    # ==================== 子类需要实现的抽象方法 ====================
+    
+    def _calculate_entry_price(self, context, bar, indicators) -> float:
+        """计算 entry 价格 - 子类必须实现"""
+        raise NotImplementedError("子类必须实现 _calculate_entry_price 方法")
+    
+    def _calculate_exit_price(self, context, bar, indicators) -> float:
+        """计算 exit 价格 - 子类必须实现"""
+        raise NotImplementedError("子类必须实现 _calculate_exit_price 方法")
+    
+    def _execute_entry_with_direction(self, context, bar, price):
+        """根据策略逻辑执行 entry 订单 - 子类必须实现"""
+        raise NotImplementedError("子类必须实现 _execute_entry_with_direction 方法")
+    
+    def _execute_exit_with_direction(self, context, bar, price):
+        """根据策略逻辑执行 exit 订单 - 子类必须实现"""
+        raise NotImplementedError("子类必须实现 _execute_exit_with_direction 方法")
+    
+    def on_order(self, event):
+        """订单状态变化回调 - 子类可以重写"""
+        pass
+    
+    def on_trade(self, event):
+        """成交回调 - 子类可以重写"""
+        pass
+    
     def add_symbol(self, symbol: str):
         """为指定股票创建BarGenerator和技术指标管理器"""
         # 创建增强版1分钟K线生成器
@@ -95,6 +338,7 @@ class IntradayStrategyBase:
             print(f"累计数据:")
             print(f"  当日累计成交量: {indicators['daily_acc_volume']:.0f}")
             print(f"  当日累计成交额: {indicators['daily_acc_turnover']:.0f}")
+            print(f"=== ===\n")
             
             # 计算一些额外的指标
             if indicators['daily_acc_volume'] > 0:
@@ -136,6 +380,8 @@ class IntradayStrategyBase:
             # 注册事件
             self.event_engine.register(EVENT_TICK, self.on_tick)
             self.event_engine.register(EVENT_LOG, self.on_log)
+            self.event_engine.register(EVENT_ORDER, self.on_order)
+            self.event_engine.register(EVENT_TRADE, self.on_trade)
 
         if setting is None:
             if self.use_mock_gateway:
