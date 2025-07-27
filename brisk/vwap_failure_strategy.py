@@ -40,6 +40,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         self.max_exit_wait_time_gap_down = 20  # Gap Down时的最大平仓等待时间（分钟）
         self.max_vol_ma5_ratio_threshold_gap_up = 2.0    # Gap Up时当前bar的vol/vol_ma5比例上限
         self.max_vol_ma5_ratio_threshold_gap_down = 1.5  # Gap Down时当前bar的vol/vol_ma5比例上限
+        self.timeout_exit_max_period = 5       # timeout exit limit order最大等待时间（分钟）
         
         # 股票状态管理
         self.stock_master = {}          # 股票基础信息
@@ -160,7 +161,6 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         self.write_log(f"Order event: {order.orderid} for {context.symbol}, "
                       f"entry_order_id: {context.entry_order_id}, "
                       f"exit_order_id: {context.exit_order_id}")
-        # self.write_log(f"order: {order}")
         
         if order.orderid == context.entry_order_id:
             self._handle_entry_order_update(order, context)
@@ -216,7 +216,12 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             context.trade_count += 1
             self.update_context_state(context.symbol, StrategyState.IDLE)
             context.exit_order_id = ""
-            self.write_log(f"Trade completed for {context.symbol}, count: {context.trade_count}")
+            self.write_log(f"_handle_exit_order_update: Trade completed for {context.symbol}, count: {context.trade_count}")
+            
+        elif order.status == Status.CANCELLED:
+            # 订单被取消 - 只记录日志，不处理逻辑
+            # 因为cancel是同步的，逻辑已经在cancel成功后处理
+            self.write_log(f"_handle_exit_order_update: Exit order cancelled for {context.symbol}")
 
     def _handle_entry_trade(self, trade: TradeData, context):
         """处理 entry 成交（简化版本，主要逻辑在on_order中处理）"""
@@ -367,7 +372,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             self._update_entry_order_price(context, bar, indicators)
         
         # 更新 exit 订单
-        elif context.state == StrategyState.WAITING_EXIT and context.exit_order_id:
+        elif (context.state == StrategyState.WAITING_EXIT or context.state == StrategyState.WAITING_TIMEOUT_EXIT) and context.exit_order_id:
             # check timeout first 
             if not self._check_exit_timeout(context):
                 self._update_exit_order_price(context, bar, indicators)
@@ -377,22 +382,76 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         if not context.exit_start_time or not context.exit_order_id:
             return False
         
-        # 使用策略参数而不是 Context 中的固定值
+        current_time = datetime.now()
         max_wait_time = timedelta(minutes=self._get_exit_wait_time(context.symbol) - 1)
-        if (datetime.now() - context.exit_start_time) >= max_wait_time:
-            # 超时，撤单并以市价单平仓
+        print(f"current_time: {current_time}, context.exit_start_time: {context.exit_start_time}, max_wait_time: {max_wait_time}, context: {context}")
+        
+        # 第一阶段：检查是否达到初始timeout
+        if context.state == StrategyState.WAITING_EXIT and (current_time - context.exit_start_time) >= max_wait_time:
+            # 撤单并进入timeout exit阶段
             if self._cancel_order_safely(context.exit_order_id, context.symbol):
-                # 根据 gap 方向使用对应的市价平仓方法
-                if self._is_gap_up(context.symbol):
-                    # Gap Up 策略是做空，平仓需要买入
-                    self._execute_exit(context, None, 0, Direction.LONG, OrderType.MARKET)
-                else:
-                    # Gap Down 策略是做多，平仓需要卖出
-                    self._execute_exit(context, None, 0, Direction.SHORT, OrderType.MARKET)
-                
-                self.write_log(f"Exit order timeout for {context.symbol}, switching to market order")
+                self._start_timeout_exit(context)
                 return True
+        
+        # 第二阶段：检查timeout exit limit order是否超时
+        elif context.state == StrategyState.WAITING_TIMEOUT_EXIT:
+            timeout_exit_max_period = timedelta(minutes=self.timeout_exit_max_period)
+            if (current_time - context.timeout_exit_start_time) >= timeout_exit_max_period:
+                # 最终使用market order平仓
+                self._force_market_exit(context)
+                return True
+        
         return False
+
+    def _start_timeout_exit(self, context):
+        """开始timeout exit流程"""
+        # 获取当前last price
+        current_bar = self._get_current_bar(context.symbol)
+        if not current_bar:
+            # 如果没有bar数据，直接使用market order
+            self.write_log(f"_start_timeout_exit: No bar data, use last tick price instead")
+            bar_gen = self.bar_generators.get(context.symbol)
+            limit_price = None
+            if bar_gen:
+                # this branch will be reached when force_flush_bar is called
+                limit_price = bar_gen.get_last_tick_price()
+            if limit_price is None:
+                self._force_market_exit(context)
+                return
+        else:
+            # 使用last price挂limit order
+            limit_price = current_bar.close_price
+        
+        # 根据gap方向确定平仓方向
+        # note _execute_exit will update context.exit_order_id and context.exit_start_time
+        if self._is_gap_up(context.symbol):
+            # Gap Up策略是做空，平仓需要买入
+            self._execute_exit(context, current_bar, limit_price, Direction.LONG, OrderType.LIMIT)
+        else:
+            # Gap Down策略是做多，平仓需要卖出
+            self._execute_exit(context, current_bar, limit_price, Direction.SHORT, OrderType.LIMIT)
+        
+        # 更新状态和时间
+        self.update_context_state(context.symbol, StrategyState.WAITING_TIMEOUT_EXIT)
+        context.timeout_exit_start_time = datetime.now()
+        
+        self.write_log(f"Started timeout exit for {context.symbol} with limit price: {limit_price}")
+
+    def _force_market_exit(self, context):
+        """强制使用market order平仓"""
+        # 先取消当前的limit order（如果存在）
+        if context.exit_order_id:
+            self._cancel_order_safely(context.exit_order_id, context.symbol)
+        
+        # 然后使用market order平仓
+        if self._is_gap_up(context.symbol):
+            # Gap Up策略是做空，平仓需要买入
+            self._execute_exit(context, None, 0, Direction.LONG, OrderType.MARKET)
+        else:
+            # Gap Down策略是做多，平仓需要卖出
+            self._execute_exit(context, None, 0, Direction.SHORT, OrderType.MARKET)
+        
+        self.write_log(f"Force market exit for {context.symbol} after timeout exit period")
 
     def _generate_trading_signal(self, bar, indicators):
         """生成交易信号 - 基于 Context 状态"""
@@ -507,7 +566,8 @@ class VWAPFailureStrategy(IntradayStrategyBase):
                           max_exit_wait_time_gap_up=30,
                           max_exit_wait_time_gap_down=20,
                           max_vol_ma5_ratio_threshold_gap_up=2.0,
-                          max_vol_ma5_ratio_threshold_gap_down=1.5):
+                          max_vol_ma5_ratio_threshold_gap_down=1.5,
+                          timeout_exit_max_period=5):
         """设置策略参数"""
         self.market_cap_threshold = market_cap_threshold
         self.gap_up_threshold = gap_up_threshold
@@ -525,6 +585,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         self.max_exit_wait_time_gap_down = max_exit_wait_time_gap_down
         self.max_vol_ma5_ratio_threshold_gap_up = max_vol_ma5_ratio_threshold_gap_up
         self.max_vol_ma5_ratio_threshold_gap_down = max_vol_ma5_ratio_threshold_gap_down
+        self.timeout_exit_max_period = timeout_exit_max_period
         
         print(f"策略参数设置完成:")
         print(f"  市值阈值: {market_cap_threshold:,.0f} 日元")
@@ -543,6 +604,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         print(f"  Gap Down 最大平仓等待时间: {max_exit_wait_time_gap_down} 分钟")
         print(f"  Gap Up 当前bar的vol/vol_ma5比例上限: {max_vol_ma5_ratio_threshold_gap_up}")
         print(f"  Gap Down 当前bar的vol/vol_ma5比例上限: {max_vol_ma5_ratio_threshold_gap_down}")
+        print(f"  Timeout Exit最大等待时间: {timeout_exit_max_period} 分钟")
     
     def print_strategy_status(self):
         """打印策略状态"""
@@ -561,6 +623,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         self.write_log(f"  等待入场: {context_summary['waiting_entry_count']}")
         self.write_log(f"  持仓中: {context_summary['holding_count']}")
         self.write_log(f"  等待出场: {context_summary['waiting_exit_count']}")
+        self.write_log(f"  等待timeout出场: {context_summary['waiting_timeout_exit_count']}")
         self.write_log(f"  总交易次数: {context_summary['total_trades']}")
         
         # 显示符合条件的股票详情
@@ -600,6 +663,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             'waiting_entry_count': 0,
             'holding_count': 0,
             'waiting_exit_count': 0,
+            'waiting_timeout_exit_count': 0,
             'total_trades': 0
         }
         
@@ -638,7 +702,8 @@ def main():
             exit_factor_gap_down=1.9,          # Exit ATR倍数
             max_daily_trades_gap_down=2,       # 单日最大交易次数
             max_exit_wait_time_gap_down=40,    # 最大平仓等待时间（分钟）
-            max_vol_ma5_ratio_threshold_gap_down=3.0 # Gap Down时的成交量MA5阈值
+            max_vol_ma5_ratio_threshold_gap_down=3.0, # Gap Down时的成交量MA5阈值
+            timeout_exit_max_period=5 # 超时退出最大等待时间
         )
         
         # 配置Mock Gateway的replay模式

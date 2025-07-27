@@ -391,7 +391,7 @@ class MockTradingEngine:
         if self.auto_process_orders:
             self._process_order(order)
         
-        print(f'send_order: {order}')
+        self.gateway.write_log(f'send_order: {order}')
         return order_id
         
     def cancel_order(self, req: CancelRequest) -> None:

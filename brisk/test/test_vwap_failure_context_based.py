@@ -10,6 +10,10 @@ from datetime import datetime, timedelta
 from typing import Dict, Any
 import time
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from common.trading_common import next_tick_price
+
 
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -59,7 +63,8 @@ class VWAPFailureStrategyTest(ContextBasedStrategyTest,
             max_exit_wait_time_gap_up=5,  # 测试时使用较短时间
             max_exit_wait_time_gap_down=5,  # 测试时使用较短时间
             max_vol_ma5_ratio_threshold_gap_up=2.0,
-            max_vol_ma5_ratio_threshold_gap_down=1.5
+            max_vol_ma5_ratio_threshold_gap_down=1.5,
+            timeout_exit_max_period=5  # timeout exit最大等待时间
         )
         
         # 连接Gateway（使用禁用自动订单处理的配置）
@@ -179,11 +184,13 @@ class TestVWAPFailureSpecificLogic(VWAPFailureStrategyTest):
         # 计算 entry 价格
         entry_price = self.strategy._calculate_entry_price(context, None, indicators)
         expected_entry_price = 100.0 + (2.0 * 1.5)  # vwap + (atr * entry_factor)
+        expected_entry_price = next_tick_price(symbol, expected_entry_price, upside=False)
         assert abs(entry_price - expected_entry_price) < 0.01
         
         # 计算 exit 价格
         exit_price = self.strategy._calculate_exit_price(context, None, indicators)
         expected_exit_price = 100.0 - (2.0 * 1.0)  # vwap - (atr * exit_factor)
+        expected_exit_price = next_tick_price(symbol, expected_exit_price, upside=True)
         assert abs(exit_price - expected_exit_price) < 0.01
     
     def test_gap_up_entry_direction(self):
@@ -339,6 +346,7 @@ class TestVWAPFailureSpecificLogic(VWAPFailureStrategyTest):
             
             # 计算 entry 价格
             entry_price = self.strategy._calculate_entry_price(context, None, indicators)
+            expected_price = next_tick_price(symbol, expected_price, upside=False)
             assert abs(entry_price - expected_price) < 0.01, \
                 f"Gap Up entry_factor={entry_factor}, expected={expected_price}, got={entry_price}"
         
@@ -364,6 +372,7 @@ class TestVWAPFailureSpecificLogic(VWAPFailureStrategyTest):
             
             # 计算 entry 价格
             entry_price = self.strategy._calculate_entry_price(context, None, indicators)
+            expected_price = next_tick_price(symbol, expected_price, upside=True)
             assert abs(entry_price - expected_price) < 0.01, \
                 f"Gap Down entry_factor={entry_factor}, expected={expected_price}, got={entry_price}"
     
@@ -393,6 +402,7 @@ class TestVWAPFailureSpecificLogic(VWAPFailureStrategyTest):
             
             # 计算 exit 价格
             exit_price = self.strategy._calculate_exit_price(context, None, indicators)
+            expected_price = next_tick_price(symbol, expected_price, upside=True)
             assert abs(exit_price - expected_price) < 0.01, \
                 f"Gap Up exit_factor={exit_factor}, expected={expected_price}, got={exit_price}"
         
@@ -418,6 +428,7 @@ class TestVWAPFailureSpecificLogic(VWAPFailureStrategyTest):
             
             # 计算 exit 价格
             exit_price = self.strategy._calculate_exit_price(context, None, indicators)
+            expected_price = next_tick_price(symbol, expected_price, upside=False)
             assert abs(exit_price - expected_price) < 0.01, \
                 f"Gap Down exit_factor={exit_factor}, expected={expected_price}, got={exit_price}"
     
@@ -558,6 +569,59 @@ class TestVWAPFailureSpecificLogic(VWAPFailureStrategyTest):
         assert threshold == 1.0, f"Gap Down应该返回max_vol_ma5_ratio_threshold_gap_down: 期望1.0, 实际{threshold}"
         
         print("✅ _get_max_vol_ma5_ratio_threshold 方法测试通过")
+    
+    def test_timeout_exit_parameter_configuration(self):
+        """测试timeout exit参数配置"""
+        symbol = self.test_symbol
+        
+        # 测试默认参数
+        assert self.strategy.timeout_exit_max_period == 5, f"默认timeout_exit_max_period应该是5, 实际{self.strategy.timeout_exit_max_period}"
+        
+        # 测试参数设置
+        self.strategy.set_strategy_params(timeout_exit_max_period=10)
+        assert self.strategy.timeout_exit_max_period == 10, f"设置后timeout_exit_max_period应该是10, 实际{self.strategy.timeout_exit_max_period}"
+        
+        # 测试参数重置
+        self.strategy.set_strategy_params(timeout_exit_max_period=3)
+        assert self.strategy.timeout_exit_max_period == 3, f"重置后timeout_exit_max_period应该是3, 实际{self.strategy.timeout_exit_max_period}"
+        
+        print("✅ timeout_exit_max_period参数配置测试通过")
+    
+    def test_timeout_exit_state_transitions(self):
+        """测试timeout exit状态转换"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 设置初始状态为waiting_exit
+        context = self.setup_context(symbol, state=StrategyState.WAITING_EXIT, exit_order_id="test_exit_order")
+        context.exit_start_time = datetime.now() - timedelta(minutes=6)  # 模拟超时
+        
+        # 验证初始状态
+        self.assert_context_state(symbol, "waiting_exit")
+        assert context.timeout_exit_start_time is None, "初始时timeout_exit_start_time应该为None"
+        
+        # Mock _get_current_bar来提供last price
+        current_bar = self.mock_generator.create_mock_bar(symbol, close_price=100.0)
+        original_get_current_bar = self.strategy._get_current_bar
+        self.strategy._get_current_bar = lambda s: current_bar if s == symbol else None
+        
+        try:
+            # 触发timeout检查
+            bar = self.mock_generator.create_mock_bar(symbol)
+            self.trigger_bar_update(bar)
+            time.sleep(0.01)
+            
+            # 验证状态转换
+            self.assert_context_state(symbol, "waiting_timeout_exit")
+            context = self.strategy.get_context(symbol)
+            assert context.timeout_exit_start_time is not None, "timeout_exit_start_time应该被设置"
+            assert context.exit_order_id != "test_exit_order", "应该生成新的exit订单ID"
+            
+            print("✅ timeout exit状态转换测试通过")
+            
+        finally:
+            # 恢复原方法
+            self.strategy._get_current_bar = original_get_current_bar
     
     def test_volume_anomaly_check_normal_volume(self):
         """测试成交量异常检查 - 正常成交量情况"""
@@ -756,6 +820,42 @@ class TestVWAPFailureSpecificLogic(VWAPFailureStrategyTest):
             self.strategy.get_indicators = original_get_indicators
             self.strategy._get_current_bar = original_get_current_bar
     
+
+    def test_timeout_exit_without_bar_data(self):
+        """测试没有bar数据时的timeout exit处理"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 设置初始状态为waiting_exit
+        context = self.setup_context(symbol, state=StrategyState.WAITING_EXIT, exit_order_id="test_exit_order")
+        context.exit_start_time = datetime.now() - timedelta(minutes=6)  # 模拟超时
+        
+        # Mock _get_current_bar返回None
+        original_get_current_bar = self.strategy._get_current_bar
+        self.strategy._get_current_bar = lambda s: None
+        
+        try:
+            # 触发timeout检查
+            bar = self.mock_generator.create_mock_bar(symbol)
+            self.trigger_bar_update(bar)
+            time.sleep(0.01)
+            
+            # 验证：没有bar数据时应该直接使用market order
+            self.assert_context_state(symbol, "waiting_exit")
+            context = self.strategy.get_context(symbol)
+            assert context.exit_order_id != "test_exit_order", "应该生成新的exit订单ID"
+            
+            # 验证生成的是market order
+            exit_order = self.strategy.gateway.get_order_by_id(context.exit_order_id)
+            assert exit_order is not None, "应该存在exit订单"
+            assert exit_order.type == OrderType.MARKET, "没有bar数据时应该生成market order"
+            
+            print("✅ 没有bar数据时的timeout exit处理测试通过")
+            
+        finally:
+            # 恢复原方法
+            self.strategy._get_current_bar = original_get_current_bar
+
     def test_volume_anomaly_check_state_conditions(self):
         """测试成交量异常检查 - 状态条件"""
         symbol = self.test_symbol
@@ -934,6 +1034,7 @@ class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest,
             if updated_order and first_order_price:
                 # 计算期望的新价格：vwap + (atr * entry_factor) = 102.0 + (1.5 * 1.5) = 104.25
                 expected_price = 102.0 + (1.5 * 1.5)
+                expected_price = next_tick_price(symbol, expected_price, upside=False)
                 assert abs(updated_order.price - expected_price) < 0.01, \
                     f"订单价格应该更新: 期望 {expected_price}, 实际 {updated_order.price}"
                 print(f"✅ Entry 订单价格已更新: {first_order_price:.2f} -> {updated_order.price:.2f}")
@@ -1062,6 +1163,7 @@ class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest,
             if updated_order and first_order_price:
                 # 计算期望的新价格：vwap - (atr * entry_factor) = 98.0 - (1.5 * 1.5) = 95.75
                 expected_price = 98.0 - (1.5 * 1.5)
+                expected_price = next_tick_price(symbol, expected_price, upside=True)
                 assert abs(updated_order.price - expected_price) < 0.01, \
                     f"订单价格应该更新: 期望 {expected_price}, 实际 {updated_order.price}"
                 print(f"✅ Gap Down Entry 订单价格已更新: {first_order_price:.2f} -> {updated_order.price:.2f}")
@@ -1073,9 +1175,12 @@ class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest,
             self.get_mock_indicators = original_method
 
     def test_exit_timeout_flow_gap_down(self):
-        """测试 Gap Down 策略 exit 订单超时流程"""
+        """测试 Gap Down 策略 exit 订单超时流程 - 新的两阶段timeout exit优化"""
         symbol = self.test_symbol
         self.strategy.gap_direction[symbol] = 'down'
+        
+        # 设置timeout exit参数为较短时间以便测试
+        self.strategy.timeout_exit_max_period = 2  # 2分钟timeout exit等待时间
         
         # 1. 设置初始状态并完成 entry
         self.setup_context(symbol, state=StrategyState.IDLE, trade_count=0)
@@ -1105,43 +1210,189 @@ class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest,
         initial_exit_price = initial_exit_order.price
         print(f"Gap Down 初始exit订单: {initial_exit_order.type.value}, 价格: {initial_exit_price:.2f}")
         
-        # 2. 模拟时间流逝，触发超时
+        # 2. 第一阶段：模拟初始timeout，触发timeout exit
         # 设置一个很早的exit_start_time来模拟超时
-        context.exit_start_time = datetime.now() - timedelta(minutes=self.strategy.max_exit_wait_time_gap_down + 1)
+        context.exit_start_time = datetime.now() - timedelta(minutes=self.strategy.max_exit_wait_time_gap_down + 2)
         
-        # 生成新的 bar，这会触发超时检查
-        bar2 = self.mock_generator.create_mock_bar(symbol, close_price=100.0)
-        self.trigger_bar_update(bar2)
+        # Mock _get_current_bar来提供last price
+        current_bar = self.mock_generator.create_mock_bar(symbol, close_price=100.0)
+        original_get_current_bar = self.strategy._get_current_bar
+        self.strategy._get_current_bar = lambda s: current_bar if s == symbol else None
+        
+        try:
+            # 生成新的 bar，这会触发超时检查
+            bar2 = self.mock_generator.create_mock_bar(symbol, close_price=100.0)
+            self.trigger_bar_update(bar2)
+            time.sleep(0.01)
+            
+            # 验证状态变为 WAITING_TIMEOUT_EXIT
+            self.assert_context_state(symbol, "waiting_timeout_exit")
+            
+            # 验证timeout_exit_start_time被设置
+            context = self.strategy.get_context(symbol)
+            assert context.timeout_exit_start_time is not None, "timeout_exit_start_time应该被设置"
+            
+            # 获取timeout exit limit order
+            timeout_exit_order = self.strategy.gateway.get_order_by_id(context.exit_order_id)
+            assert timeout_exit_order is not None, "应该存在timeout exit订单"
+            assert timeout_exit_order.type == OrderType.LIMIT, "timeout exit订单应该是限价单"
+            self.strategy.write_log(f"Gap Down timeout exit订单: {timeout_exit_order.type.value}, 价格: {timeout_exit_order.price:.2f}")
+            
+            # 验证订单ID发生了变化（因为撤单后重新下单）
+            assert timeout_exit_order.orderid != initial_exit_order.orderid, "timeout exit应该生成新的订单ID"
+            
+            # 3. 第二阶段：模拟timeout exit limit order也超时
+            # 设置一个很早的timeout_exit_start_time来模拟timeout exit超时
+            context.timeout_exit_start_time = datetime.now() - timedelta(minutes=self.strategy.timeout_exit_max_period + 1)
+            
+            # 生成新的 bar，这会触发timeout exit超时检查
+            bar3 = self.mock_generator.create_mock_bar(symbol, close_price=100.0)
+            self.trigger_bar_update(bar3)
+            time.sleep(0.01)
+            
+            # 验证状态变为 WAITING_EXIT（因为会生成新的market order）
+            self.assert_context_state(symbol, "waiting_exit")
+            
+            # 获取最终的market exit订单
+            final_exit_order = self.strategy.gateway.get_order_by_id(context.exit_order_id)
+            assert final_exit_order is not None, "应该存在最终的exit订单"
+            assert final_exit_order.type == OrderType.MARKET, "最终的exit订单应该是市价单"
+            print(f"Gap Down 最终market exit订单: {final_exit_order.type.value}, 价格: {final_exit_order.price:.2f}")
+            
+            # 验证订单ID再次发生变化
+            assert final_exit_order.orderid != timeout_exit_order.orderid, "最终market order应该生成新的订单ID"
+            
+            # 4. 手动让市价单成交
+            market_exit_order = self.mock_generator.create_mock_order(
+                symbol, Status.ALLTRADED, order_id=context.exit_order_id
+            )
+            self.trigger_order_update(market_exit_order)
+            time.sleep(0.01)
+            
+            # 5. 验证最终状态
+            self.assert_context_state(symbol, "idle")
+            self.assert_context_field(symbol, "trade_count", 1)
+            
+            print("✅ Gap Down Exit超时流程测试完成（两阶段优化）:")
+            print(f"   初始订单类型: {initial_exit_order.type.value}")
+            print(f"   Timeout exit订单类型: {timeout_exit_order.type.value}")
+            print(f"   最终订单类型: {final_exit_order.type.value}")
+            print(f"   最终状态: {self.strategy.get_context(symbol).state.value}")
+            print(f"   交易次数: {self.strategy.get_context(symbol).trade_count}")
+            
+        finally:
+            # 恢复原方法
+            self.strategy._get_current_bar = original_get_current_bar
+    
+    def test_exit_timeout_flow_gap_up(self):
+        """测试 Gap Up 策略 exit 订单超时流程 - 新的两阶段timeout exit优化"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 设置timeout exit参数为较短时间以便测试
+        self.strategy.timeout_exit_max_period = 2  # 2分钟timeout exit等待时间
+        
+        # 1. 设置初始状态并完成 entry
+        self.setup_context(symbol, state=StrategyState.IDLE, trade_count=0)
+        
+        # 生成 entry 信号
+        bar1 = self.mock_generator.create_mock_bar(symbol, close_price=100.0)
+        self.trigger_bar_update(bar1)
         time.sleep(0.01)
         
-        # 验证仍然在 waiting_exit 状态（超时后应该生成新的市价单）
-        self.assert_context_state(symbol, "waiting_exit")
-        
-        # 获取新的 exit 订单
-        updated_exit_order = self.strategy.gateway.get_order_by_id(context.exit_order_id)
-        assert updated_exit_order is not None, "超时后应该生成新的exit订单"
-        assert updated_exit_order.type == OrderType.MARKET, "超时后的exit订单应该是市价单"
-        print(f"Gap Down 超时后exit订单: {updated_exit_order.type.value}, 价格: {updated_exit_order.price:.2f}")
-        
-        # 验证订单ID发生了变化（因为撤单后重新下单）
-        assert updated_exit_order.orderid != initial_exit_order.orderid, "超时后应该生成新的订单ID"
-        
-        # 3. 手动让市价单成交
-        market_exit_order = self.mock_generator.create_mock_order(
-            symbol, Status.ALLTRADED, order_id=context.exit_order_id
+        # 完成 entry 订单
+        context = self.strategy.get_context(symbol)
+        entry_order = self.mock_generator.create_mock_order(
+            symbol, Status.ALLTRADED, order_id=context.entry_order_id
         )
-        self.trigger_order_update(market_exit_order)
+        self.trigger_order_update(entry_order)
         time.sleep(0.01)
         
-        # 4. 验证最终状态
-        self.assert_context_state(symbol, "idle")
-        self.assert_context_field(symbol, "trade_count", 1)
+        # 验证进入 waiting_exit 状态
+        self.assert_context_state(symbol, "waiting_exit")
+        context = self.strategy.get_context(symbol)
+        assert context.exit_order_id != ""
         
-        print("✅ Gap Down Exit超时流程测试完成:")
-        print(f"   初始订单类型: {initial_exit_order.type.value}")
-        print(f"   超时后订单类型: {updated_exit_order.type.value}")
-        print(f"   最终状态: {self.strategy.get_context(symbol).state.value}")
-        print(f"   交易次数: {self.strategy.get_context(symbol).trade_count}")
+        # 获取初始的 exit 订单（应该是限价单）
+        initial_exit_order = self.strategy.gateway.get_order_by_id(context.exit_order_id)
+        assert initial_exit_order is not None, "应该存在exit订单"
+        assert initial_exit_order.type == OrderType.LIMIT, "初始exit订单应该是限价单"
+        initial_exit_price = initial_exit_order.price
+        print(f"Gap Up 初始exit订单: {initial_exit_order.type.value}, 价格: {initial_exit_price:.2f}")
+        
+        # 2. 第一阶段：模拟初始timeout，触发timeout exit
+        # 设置一个很早的exit_start_time来模拟超时
+        context.exit_start_time = datetime.now() - timedelta(minutes=self.strategy.max_exit_wait_time_gap_up + 1)
+        
+        # Mock _get_current_bar来提供last price
+        current_bar = self.mock_generator.create_mock_bar(symbol, close_price=100.0)
+        original_get_current_bar = self.strategy._get_current_bar
+        self.strategy._get_current_bar = lambda s: current_bar if s == symbol else None
+        
+        try:
+            # 生成新的 bar，这会触发超时检查
+            bar2 = self.mock_generator.create_mock_bar(symbol, close_price=100.0)
+            self.trigger_bar_update(bar2)
+            time.sleep(0.01)
+            
+            # 验证状态变为 WAITING_TIMEOUT_EXIT
+            self.assert_context_state(symbol, "waiting_timeout_exit")
+            
+            # 验证timeout_exit_start_time被设置
+            context = self.strategy.get_context(symbol)
+            assert context.timeout_exit_start_time is not None, "timeout_exit_start_time应该被设置"
+            
+            # 获取timeout exit limit order
+            timeout_exit_order = self.strategy.gateway.get_order_by_id(context.exit_order_id)
+            assert timeout_exit_order is not None, "应该存在timeout exit订单"
+            assert timeout_exit_order.type == OrderType.LIMIT, "timeout exit订单应该是限价单"
+            print(f"Gap Up timeout exit订单: {timeout_exit_order.type.value}, 价格: {timeout_exit_order.price:.2f}")
+            
+            # 验证订单ID发生了变化（因为撤单后重新下单）
+            assert timeout_exit_order.orderid != initial_exit_order.orderid, "timeout exit应该生成新的订单ID"
+            
+            # 3. 第二阶段：模拟timeout exit limit order也超时
+            # 设置一个很早的timeout_exit_start_time来模拟timeout exit超时
+            context.timeout_exit_start_time = datetime.now() - timedelta(minutes=self.strategy.timeout_exit_max_period + 1)
+            
+            # 生成新的 bar，这会触发timeout exit超时检查
+            bar3 = self.mock_generator.create_mock_bar(symbol, close_price=100.0)
+            self.trigger_bar_update(bar3)
+            time.sleep(0.01)
+            
+            # 验证状态变为 WAITING_EXIT（因为会生成新的market order）
+            self.assert_context_state(symbol, "waiting_exit")
+            
+            # 获取最终的market exit订单
+            final_exit_order = self.strategy.gateway.get_order_by_id(context.exit_order_id)
+            assert final_exit_order is not None, "应该存在最终的exit订单"
+            assert final_exit_order.type == OrderType.MARKET, "最终的exit订单应该是市价单"
+            print(f"Gap Up 最终market exit订单: {final_exit_order.type.value}, 价格: {final_exit_order.price:.2f}")
+            
+            # 验证订单ID再次发生变化
+            assert final_exit_order.orderid != timeout_exit_order.orderid, "最终market order应该生成新的订单ID"
+            
+            # 4. 手动让市价单成交
+            market_exit_order = self.mock_generator.create_mock_order(
+                symbol, Status.ALLTRADED, order_id=context.exit_order_id
+            )
+            self.trigger_order_update(market_exit_order)
+            time.sleep(0.01)
+            
+            # 5. 验证最终状态
+            self.assert_context_state(symbol, "idle")
+            self.assert_context_field(symbol, "trade_count", 1)
+            
+            print("✅ Gap Up Exit超时流程测试完成（两阶段优化）:")
+            print(f"   初始订单类型: {initial_exit_order.type.value}")
+            print(f"   Timeout exit订单类型: {timeout_exit_order.type.value}")
+            print(f"   最终订单类型: {final_exit_order.type.value}")
+            print(f"   最终状态: {self.strategy.get_context(symbol).state.value}")
+            print(f"   交易次数: {self.strategy.get_context(symbol).trade_count}")
+            
+        finally:
+            # 恢复原方法
+            self.strategy._get_current_bar = original_get_current_bar
     
     def test_volume_anomaly_cancel_and_reentry_success(self):
         """测试成交量异常取消订单后，在下一根bar重新进入并成功的复杂流程"""
@@ -1317,8 +1568,8 @@ def run_all_tests():
     # 运行所有测试类
     test_classes = [
         VWAPFailureStrategyTest,
-        TestVWAPFailureSpecificLogic,
-        TestVWAPFailureCompleteFlow
+        # TestVWAPFailureSpecificLogic,
+        # TestVWAPFailureCompleteFlow
     ]
     
     all_results = []

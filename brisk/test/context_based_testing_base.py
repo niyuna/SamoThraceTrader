@@ -472,27 +472,6 @@ class TestEdgeCasesMixin:
         self.snapshot_manager.assert_state_transition(symbol, "waiting_exit", "holding")
         self.snapshot_manager.assert_context_field(symbol, "exit_order_id", "")
     
-    def test_exit_timeout(self):
-        """测试 exit 订单超时"""
-        symbol = self.test_symbol
-        
-        # 设置等待 exit 状态，并设置超时时间
-        context = self.setup_context(symbol, state=StrategyState.WAITING_EXIT)
-        context.exit_order_id = "mock_exit_order"
-        context.exit_start_time = datetime.now() - timedelta(minutes=10)  # 超时
-        
-        # 拍摄初始快照
-        self.snapshot_manager.take_snapshot("Initial state")
-        
-        # 触发超时检查（通过 bar 更新）
-        bar = self.mock_generator.create_mock_bar(symbol)
-        self.trigger_bar_update(bar)
-        
-        # 拍摄快照并验证状态转换
-        self.snapshot_manager.take_snapshot("After timeout check")
-        # 注意：超时后会生成市价单，状态应该变为 waiting_exit（新的市价单）
-        self.assert_context_state(symbol, "waiting_exit")
-    
     def test_trading_time_limit(self):
         """测试交易时间限制"""
         symbol = self.test_symbol

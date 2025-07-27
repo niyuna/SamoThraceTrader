@@ -22,7 +22,7 @@ __all__ = [
 def setup_logger():
     # print(f"setup_logger: {SETTINGS}")
     # Log format
-    if SETTINGS["log.format"]:
+    if SETTINGS.get("log.format"):
         format: str = SETTINGS["log.format"]
     else:
         format: str = (

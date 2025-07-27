@@ -321,3 +321,9 @@ class EnhancedBarGenerator:
     def write_log(self, msg: str):
         """写日志"""
         self.main_engine.write_log(msg, self.__class__.__name__)
+
+    def get_last_tick_price(self) -> float:
+        """获取最后一个tick的价格"""
+        if not self.last_tick:
+            return None
+        return self.last_tick.last_price

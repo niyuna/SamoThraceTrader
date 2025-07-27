@@ -32,6 +32,7 @@ class StrategyState(Enum):
     WAITING_ENTRY = "waiting_entry"  # 等待 entry 订单成交
     HOLDING = "holding"              # 持仓中，等待 exit 信号
     WAITING_EXIT = "waiting_exit"    # 等待 exit 订单成交
+    WAITING_TIMEOUT_EXIT = "waiting_timeout_exit"  # 等待timeout exit limit order
 
 
 @dataclass
@@ -45,6 +46,7 @@ class StockContext:
     entry_price: float = 0.0                # entry成交价格
     entry_time: datetime = None             # entry成交时间
     exit_start_time: datetime = None        # exit订单开始时间
+    timeout_exit_start_time: datetime = None  # timeout exit开始时间
     max_exit_wait_time: timedelta = timedelta(minutes=5)  # exit订单最大等待时间
     position_size: int = 100                # 持仓数量
 
@@ -73,6 +75,7 @@ class IntradayStrategyBase:
         SETTINGS["log.level"] = 20
         SETTINGS["log.console"] = True
         SETTINGS["log.file_name"] = self.__class__.__name__
+        # SETTINGS["log.format"] = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{extra[gateway_name]}</cyan> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
         from vnpy.trader.logger import setup_logger
         setup_logger()
         # log file will be ".vntrader/log/vt_{today_date}.log", set in logger.py
@@ -110,6 +113,7 @@ class IntradayStrategyBase:
             context.entry_price = 0.0
             context.entry_time = None
             context.exit_start_time = None
+            context.timeout_exit_start_time = None
         self.write_log("All contexts reset")
 
     # ==================== 核心交易执行方法 ====================
@@ -132,7 +136,7 @@ class IntradayStrategyBase:
         order_id = self.gateway.send_order(order_req)
         
         if order_id:
-            self.write_log(f"订单已提交: {context.symbol} {direction.value} {offset.value} 价格: {price:.2f} 订单ID: {order_id}")
+            self.write_log(f"订单已提交: {context.symbol} {direction.value} {offset.value} 价格: {price if price else 'N/A'} 订单ID: {order_id}")
             return order_id
         else:
             self.write_log(f"订单被拒绝: {context.symbol} {direction.value} {offset.value}")
@@ -151,7 +155,7 @@ class IntradayStrategyBase:
         d = "做空" if direction == Direction.SHORT else "做多"
         order_type_str = "市价" if order_type == OrderType.MARKET else "限价"
         time_str = bar.datetime.strftime('%H:%M:%S') if bar and bar.datetime else 'N/A'
-        self.write_log(f"执行{d}{action}({order_type_str}): {context.symbol} 价格: {price:.2f} "
+        self.write_log(f"执行{d}{action}({order_type_str}): {context.symbol} 价格: {price if price else 'N/A'} "
               f"时间: {time_str}")
         
         # 执行订单
@@ -252,15 +256,15 @@ class IntradayStrategyBase:
     def _update_exit_order_price(self, context, bar, indicators, change_only: bool = False):
         """更新 exit 订单价格 - 子类可以重写"""
         # 计算新的 exit 价格 - 子类需要实现具体的价格计算逻辑
-        old_exit_price = context.exit_price
+        # old_exit_price = context.exit_price
         new_exit_price = self._calculate_exit_price(context, bar, indicators)
         
         # 撤单并重新下单
-        if new_exit_price != old_exit_price or not change_only:
-            self.write_log(f"更新 exit 订单价格: {context.symbol} 旧价格: {old_exit_price:.2f} 新价格: {new_exit_price:.2f}")
-            if self._cancel_order_safely(context.exit_order_id, context.symbol):
-                # 撤单成功，重新下单 - 子类需要实现具体的下单逻辑
-                self._execute_exit_with_direction(context, bar, new_exit_price)
+        # if new_exit_price != old_exit_price or not change_only:
+        self.write_log(f"更新 exit 订单价格: {context.symbol} 新价格: {new_exit_price:.2f}")
+        if self._cancel_order_safely(context.exit_order_id, context.symbol):
+            # 撤单成功，重新下单 - 子类需要实现具体的下单逻辑
+            self._execute_exit_with_direction(context, bar, new_exit_price)
 
     # ==================== 子类需要实现的抽象方法 ====================
     
