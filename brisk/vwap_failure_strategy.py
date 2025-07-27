@@ -53,11 +53,11 @@ class VWAPFailureStrategy(IntradayStrategyBase):
     
     def initialize_stock_filter(self):
         """初始化股票筛选器"""
-        print("初始化股票筛选器...")
+        self.write_log("初始化股票筛选器...")
         
         # 1. 获取股票基础信息
         self.stock_master = get_stockmaster()
-        print(f"获取到 {len(self.stock_master)} 只股票的基础信息")
+        self.write_log(f"获取到 {len(self.stock_master)} 只股票的基础信息")
         
         # 2. 基于市值预筛选股票
         self._pre_filter_by_market_cap()
@@ -65,9 +65,9 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         # 3. 订阅市值符合条件的股票（用于获取第一个tick价格）
         if self.market_cap_eligible:
             self.subscribe(list(self.market_cap_eligible))
-            print(f"订阅了 {len(self.market_cap_eligible)} 只市值符合条件的股票")
+            self.write_log(f"订阅了 {len(self.market_cap_eligible)} 只市值符合条件的股票")
         else:
-            print("没有找到市值符合条件的股票")
+            self.write_log("没有找到市值符合条件的股票")
         
     def _pre_filter_by_market_cap(self):
         """基于市值预筛选股票"""
@@ -77,7 +77,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
                 self.market_cap_eligible.add(symbol)
                 # print(f"股票 {symbol} 通过市值筛选: {market_cap:,.0f} 日元")
         
-        print(f"市值筛选后符合条件的股票数量: {len(self.market_cap_eligible)}")
+        self.write_log(f"市值筛选后符合条件的股票数量: {len(self.market_cap_eligible)}")
     
     def on_tick(self, event):
         """重写tick处理逻辑"""
@@ -108,7 +108,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         current_date = datetime_obj.date()
         
         if self.trading_date != current_date:
-            print(f"新交易日开始: {current_date}")
+            self.write_log(f"新交易日开始: {current_date}")
             self.trading_date = current_date
             
             # 重置所有 Context - 使用父类方法
@@ -123,7 +123,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             self.signal_count = 0
             self.signals.clear()
             
-            print("策略状态已重置")
+            self.write_log("策略状态已重置")
     
     def _evaluate_gap_condition(self, symbol):
         """评估gap条件"""
@@ -140,11 +140,11 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             if gap_ratio >= self.gap_up_threshold:
                 self.gap_direction[symbol] = 'up'
                 self.eligible_stocks.add(symbol)
-                print(f"股票 {symbol} 满足 Gap Up 条件: {gap_ratio:.2%}")
+                self.write_log(f"股票 {symbol} 满足 Gap Up 条件: {gap_ratio:.2%}")
             elif gap_ratio <= self.gap_down_threshold:
                 self.gap_direction[symbol] = 'down'
                 self.eligible_stocks.add(symbol)
-                print(f"股票 {symbol} 满足 Gap Down 条件: {gap_ratio:.2%}")
+                self.write_log(f"股票 {symbol} 满足 Gap Down 条件: {gap_ratio:.2%}")
             else:
                 self.gap_direction[symbol] = 'none'
 
@@ -202,7 +202,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
 
     def _handle_exit_order_update(self, order: OrderData, context):
         """处理 exit 订单状态更新"""
-        print(f"exit order update: {order}")
+        self.write_log(f"exit order update: {order}")
         if order.status == Status.REJECTED:
             # exit 订单被拒绝，回到 HOLDING 状态
             self.update_context_state(context.symbol, StrategyState.HOLDING)
@@ -318,8 +318,6 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         vol_ma5 = indicators.get('volume_ma5', 0)
         max_ratio = self._get_max_vol_ma5_ratio_threshold(symbol)
 
-        print(f"current_bar_volume: {current_bar_volume}, vol_ma5: {vol_ma5}, max_ratio: {max_ratio}")
-        
         # 检查是否超过阈值
         if vol_ma5 > 0 and (current_bar_volume / vol_ma5) > max_ratio:
             # 取消订单
@@ -546,30 +544,30 @@ class VWAPFailureStrategy(IntradayStrategyBase):
     
     def print_strategy_status(self):
         """打印策略状态"""
-        print(f"\n=== VWAP Failure 策略状态 ===")
-        print(f"市值符合条件的股票数量: {len(self.market_cap_eligible)}")
-        print(f"真正符合条件的股票数量: {len(self.eligible_stocks)}")
-        print(f"信号计数: {self.signal_count}")
-        print(f"当前交易日期: {self.trading_date}")
+        self.write_log(f"\n=== VWAP Failure 策略状态 ===")
+        self.write_log(f"市值符合条件的股票数量: {len(self.market_cap_eligible)}")
+        self.write_log(f"真正符合条件的股票数量: {len(self.eligible_stocks)}")
+        self.write_log(f"信号计数: {self.signal_count}")
+        self.write_log(f"当前交易日期: {self.trading_date}")
         
         # 显示 Context 状态
         context_summary = self.get_context_summary()
-        print(f"\nContext 汇总:")
-        print(f"  总 Context 数量: {context_summary['total_contexts']}")
-        print(f"  符合条件的股票: {context_summary['eligible_stocks']}")
-        print(f"  空闲状态: {context_summary['idle_count']}")
-        print(f"  等待入场: {context_summary['waiting_entry_count']}")
-        print(f"  持仓中: {context_summary['holding_count']}")
-        print(f"  等待出场: {context_summary['waiting_exit_count']}")
-        print(f"  总交易次数: {context_summary['total_trades']}")
+        self.write_log(f"\nContext 汇总:")
+        self.write_log(f"  总 Context 数量: {context_summary['total_contexts']}")
+        self.write_log(f"  符合条件的股票: {context_summary['eligible_stocks']}")
+        self.write_log(f"  空闲状态: {context_summary['idle_count']}")
+        self.write_log(f"  等待入场: {context_summary['waiting_entry_count']}")
+        self.write_log(f"  持仓中: {context_summary['holding_count']}")
+        self.write_log(f"  等待出场: {context_summary['waiting_exit_count']}")
+        self.write_log(f"  总交易次数: {context_summary['total_trades']}")
         
         # 显示符合条件的股票详情
         if self.eligible_stocks:
-            print(f"\n符合条件的股票详情:")
+            self.write_log(f"\n符合条件的股票详情:")
             for symbol in self.eligible_stocks:
                 context = self.get_context(symbol)
                 gap_dir = self.gap_direction.get(symbol, 'none')
-                print(f"  {symbol}: {gap_dir} | {context.state.value} | "
+                self.write_log(f"  {symbol}: {gap_dir} | {context.state.value} | "
                       f"交易次数: {context.trade_count}/{self._get_daily_trades_for_gap(symbol)}")
     
     def get_signals_summary(self) -> dict:
@@ -583,10 +581,10 @@ class VWAPFailureStrategy(IntradayStrategyBase):
 
     def print_context_status(self):
         """打印所有 Context 状态"""
-        print(f"\n=== Context 状态监控 ===")
+        self.write_log(f"\n=== Context 状态监控 ===")
         for symbol, context in self.contexts.items():
             if symbol in self.eligible_stocks:
-                print(f"{symbol}: {context.state.value} | "
+                self.write_log(f"{symbol}: {context.state.value} | "
                       f"交易次数: {context.trade_count}/{self._get_daily_trades_for_gap(symbol)} | "
                       f"Entry订单: {context.entry_order_id[:8] if context.entry_order_id else 'None'} | "
                       f"Exit订单: {context.exit_order_id[:8] if context.exit_order_id else 'None'}")

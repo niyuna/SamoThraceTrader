@@ -1,6 +1,5 @@
 """
-Brisk Gateway Demo V3
-展示如何使用BriskGateway接收实时tick数据并自动构建K线，集成V3技术指标模块
+Intraday Strategy Base Class
 """
 
 import time
@@ -11,7 +10,7 @@ from typing import Dict, Optional
 from enum import Enum
 
 from vnpy.event import EventEngine
-from vnpy.trader.engine import MainEngine
+from vnpy.trader.engine import MainEngine, LogEngine
 from vnpy.trader.object import SubscribeRequest, Exchange, BarData, Interval
 from enhanced_bargenerator import EnhancedBarGenerator
 
@@ -24,8 +23,8 @@ from technical_indicators import TechnicalIndicatorManager
 from vnpy.trader.object import OrderRequest, CancelRequest
 from vnpy.trader.constant import Direction, Offset, OrderType
 
-from loguru import logger
 from common.trading_common import normalize_price
+
 
 class StrategyState(Enum):
     """策略状态枚举"""
@@ -67,8 +66,16 @@ class IntradayStrategyBase:
         
         # 新增：Context 管理
         self.contexts: Dict[str, StockContext] = {}
-        # from vnpy_logging_config import setup_strategy_logging
-        # setup_strategy_logging(self.__class__.__name__)
+        
+        from vnpy.trader.setting import SETTINGS
+        # by default, will read ".vntrader/vt_setting.json", set in setting.py
+        SETTINGS["log.active"] = True
+        SETTINGS["log.level"] = 20
+        SETTINGS["log.console"] = True
+        SETTINGS["log.file_name"] = self.__class__.__name__
+        from vnpy.trader.logger import setup_logger
+        setup_logger()
+        # log file will be ".vntrader/log/vt_{today_date}.log", set in logger.py
         
     def get_context(self, symbol: str) -> StockContext:
         """获取或创建股票 Context"""
@@ -91,9 +98,7 @@ class IntradayStrategyBase:
         return None
     
     def write_log(self, msg: str):
-        """写日志"""
-        logger.info(msg)
-        # self.main_engine.write_log(msg, self.__class__.__name__)
+        self.main_engine.write_log(msg, self.__class__.__name__)
     
     def reset_all_contexts(self):
         """重置所有 Context 状态 - 子类可以重写"""
@@ -356,11 +361,6 @@ class IntradayStrategyBase:
               f"开:{bar.open_price:.2f} 高:{bar.high_price:.2f} 低:{bar.low_price:.2f} "
               f"收:{bar.close_price:.2f} 量:{bar.volume}")
     
-    def on_log(self, event: Event):
-        """日志回调函数"""
-        log = event.data
-        print(f"[{log.time}] {log.level}: {log.msg}")
-    
     def connect(self, setting: dict = None):
         """连接Gateway，支持mock和真实gateway"""
         if self.use_mock_gateway:
@@ -379,9 +379,12 @@ class IntradayStrategyBase:
             self.brisk_gateway = self.gateway
             # 注册事件
             self.event_engine.register(EVENT_TICK, self.on_tick)
-            self.event_engine.register(EVENT_LOG, self.on_log)
+            # self.event_engine.register(EVENT_LOG, self.on_log)
             self.event_engine.register(EVENT_ORDER, self.on_order)
             self.event_engine.register(EVENT_TRADE, self.on_trade)
+
+        log_engine: LogEngine = self.main_engine.get_engine("log")       # type: ignore
+        self.event_engine.register(EVENT_LOG, log_engine.process_log_event)
 
         if setting is None:
             if self.use_mock_gateway:
