@@ -148,9 +148,10 @@ class IntradayStrategyBase:
             action = "平仓"
             reference_prefix = f"exit_{direction.value.lower()}"
         
+        d = "做空" if direction == Direction.SHORT else "做多"
         order_type_str = "市价" if order_type == OrderType.MARKET else "限价"
         time_str = bar.datetime.strftime('%H:%M:%S') if bar and bar.datetime else 'N/A'
-        print(f"执行{action}({order_type_str}): {context.symbol} 价格: {price:.2f} "
+        self.write_log(f"执行{d}{action}({order_type_str}): {context.symbol} 价格: {price:.2f} "
               f"时间: {time_str}")
         
         # 执行订单
@@ -179,10 +180,10 @@ class IntradayStrategyBase:
 
     def _execute_entry(self, context, bar, price, direction: Direction):
         """统一的 entry 订单执行方法"""
-        action = "做空" if direction == Direction.SHORT else "做多"
-        time_str = bar.datetime.strftime('%H:%M:%S') if bar and bar.datetime else 'N/A'
-        print(f"执行{action}开仓: {context.symbol} 价格: {price:.2f} "
-              f"时间: {time_str}")
+        # action = "做空" if direction == Direction.SHORT else "做多"
+        # time_str = bar.datetime.strftime('%H:%M:%S') if bar and bar.datetime else 'N/A'
+        # self.write_log(f"执行{action}开仓: {context.symbol} 价格: {price:.2f} "
+        #       f"时间: {time_str}")
         
         order_id = self._execute_trade(
             context=context,
@@ -234,15 +235,12 @@ class IntradayStrategyBase:
 
     def _update_entry_order_price(self, context, bar, indicators, change_only: bool = False):
         """更新 entry 订单价格 - 子类可以重写"""
-        vwap = indicators['vwap']
-        atr = indicators['atr_14']
-        
         # 计算新的 entry 价格 - 子类需要实现具体的价格计算逻辑
         old_entry_price = context.entry_price
         new_entry_price = self._calculate_entry_price(context, bar, indicators)
-        if change_only:
-            new_entry_price = normalize_price(context.symbol, new_entry_price)
-            old_entry_price = normalize_price(context.symbol, old_entry_price)
+        # not needed any more because we always ensure the price is normalized in calculate_entry_price/calculate_exit_price
+        # if change_only:
+            # old_entry_price = normalize_price(context.symbol, old_entry_price)
 
         if new_entry_price != old_entry_price or not change_only:
             self.write_log(f"更新 entry 订单价格: {context.symbol} 旧价格: {old_entry_price:.2f} 新价格: {new_entry_price:.2f}")
@@ -251,18 +249,18 @@ class IntradayStrategyBase:
                 # 撤单成功，重新下单 - 子类需要实现具体的下单逻辑
                 self._execute_entry_with_direction(context, bar, new_entry_price)
 
-    def _update_exit_order_price(self, context, bar, indicators):
+    def _update_exit_order_price(self, context, bar, indicators, change_only: bool = False):
         """更新 exit 订单价格 - 子类可以重写"""
-        vwap = indicators['vwap']
-        atr = indicators['atr_14']
-        
         # 计算新的 exit 价格 - 子类需要实现具体的价格计算逻辑
+        old_exit_price = context.exit_price
         new_exit_price = self._calculate_exit_price(context, bar, indicators)
         
         # 撤单并重新下单
-        if self._cancel_order_safely(context.exit_order_id, context.symbol):
-            # 撤单成功，重新下单 - 子类需要实现具体的下单逻辑
-            self._execute_exit_with_direction(context, bar, new_exit_price)
+        if new_exit_price != old_exit_price or not change_only:
+            self.write_log(f"更新 exit 订单价格: {context.symbol} 旧价格: {old_exit_price:.2f} 新价格: {new_exit_price:.2f}")
+            if self._cancel_order_safely(context.exit_order_id, context.symbol):
+                # 撤单成功，重新下单 - 子类需要实现具体的下单逻辑
+                self._execute_exit_with_direction(context, bar, new_exit_price)
 
     # ==================== 子类需要实现的抽象方法 ====================
     

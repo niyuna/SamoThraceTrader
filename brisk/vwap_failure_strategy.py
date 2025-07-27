@@ -14,6 +14,8 @@ from intraday_strategy_base import IntradayStrategyBase, StrategyState
 from stock_master import get_stockmaster
 from mock_brisk_gateway import MockBriskGateway
 
+from common.trading_common import next_tick_price
+
 
 class VWAPFailureStrategy(IntradayStrategyBase):
     """VWAP Failure 日内交易策略"""
@@ -376,8 +378,8 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             return False
         
         # 使用策略参数而不是 Context 中的固定值
-        max_wait_time = timedelta(minutes=self._get_exit_wait_time(context.symbol))
-        if (datetime.now() - context.exit_start_time) > max_wait_time:
+        max_wait_time = timedelta(minutes=self._get_exit_wait_time(context.symbol) - 1)
+        if (datetime.now() - context.exit_start_time) >= max_wait_time:
             # 超时，撤单并以市价单平仓
             if self._cancel_order_safely(context.exit_order_id, context.symbol):
                 # 根据 gap 方向使用对应的市价平仓方法
@@ -449,9 +451,9 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         atr = indicators['atr_14']
         
         if self._is_gap_up(context.symbol):
-            return vwap + (atr * self._get_entry_factor(context.symbol))  # 做空
+            return next_tick_price(context.symbol, vwap + (atr * self._get_entry_factor(context.symbol)), upside=False)  # 做空
         else:
-            return vwap - (atr * self._get_entry_factor(context.symbol))  # 做多
+            return next_tick_price(context.symbol, vwap - (atr * self._get_entry_factor(context.symbol)), upside=True)  # 做多
     
     def _calculate_exit_price(self, context, bar, indicators) -> float:
         """计算 exit 价格"""
@@ -459,19 +461,19 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             # 如果没有技术指标，使用简单的固定比例
             if self._is_gap_up(context.symbol):
                 # Gap Up 策略是做空，平仓需要买入
-                return context.entry_price - (self._get_exit_factor(context.symbol) * 0.01)
+                return next_tick_price(context.symbol, context.entry_price - (self._get_exit_factor(context.symbol) * 0.01), upside=True)
             else:
                 # Gap Down 策略是做多，平仓需要卖出
-                return context.entry_price + (self._get_exit_factor(context.symbol) * 0.01)
+                return next_tick_price(context.symbol, context.entry_price + (self._get_exit_factor(context.symbol) * 0.01), upside=False)
         else:
             # 使用技术指标计算
             vwap = indicators['vwap']
             atr = indicators['atr_14']
             
             if self._is_gap_up(context.symbol):
-                return vwap - (atr * self._get_exit_factor(context.symbol))  # 做空平仓
+                return next_tick_price(context.symbol, vwap - (atr * self._get_exit_factor(context.symbol)), upside=True)  # 做空平仓
             else:
-                return vwap + (atr * self._get_exit_factor(context.symbol))  # 做多平仓
+                return next_tick_price(context.symbol, vwap + (atr * self._get_exit_factor(context.symbol)), upside=False)  # 做多平仓
     
     def _execute_entry_with_direction(self, context, bar, price):
         """根据策略逻辑执行 entry 订单"""
@@ -619,21 +621,24 @@ def main():
         # 设置策略参数
         strategy.set_strategy_params(
             market_cap_threshold=100_000_000_000,  # 1000亿日元
-            gap_up_threshold=0.02,      # 2% gap up
-            gap_down_threshold=-0.02,   # -2% gap down
-            failure_threshold_gap_up=30,        # Gap Up时的VWAP failure次数阈值
-            failure_threshold_gap_down=20,      # Gap Down时的VWAP failure次数阈值
-            entry_factor_gap_up=1.5,           # Entry ATR倍数
-            entry_factor_gap_down=1.2,         # Entry ATR倍数
-            max_daily_trades_gap_up=3,         # 单日最大交易次数
-            max_daily_trades_gap_down=2,       # 单日最大交易次数
             latest_entry_time="11:23:00",  # 最晚入场时间
+
+            # disable it for now
+            gap_up_threshold=0.5,      # 2% gap up 
+            failure_threshold_gap_up=30,        # Gap Up时的VWAP failure次数阈值
+            entry_factor_gap_up=1.5,           # Entry ATR倍数
             exit_factor_gap_up=1.0,            # Exit ATR倍数
-            exit_factor_gap_down=0.8,          # Exit ATR倍数
+            max_daily_trades_gap_up=3,         # 单日最大交易次数
             max_exit_wait_time_gap_up=30,     # 最大平仓等待时间（分钟）
-            max_exit_wait_time_gap_down=20,    # 最大平仓等待时间（分钟）
             max_vol_ma5_ratio_threshold_gap_up=2.0, # Gap Up时的成交量MA5阈值
-            max_vol_ma5_ratio_threshold_gap_down=1.5 # Gap Down时的成交量MA5阈值
+            
+            gap_down_threshold=-0.02,   # -2% gap down
+            failure_threshold_gap_down=35,      # Gap Down时的VWAP failure次数阈值
+            entry_factor_gap_down=1.6,         # Entry ATR倍数
+            exit_factor_gap_down=1.9,          # Exit ATR倍数
+            max_daily_trades_gap_down=2,       # 单日最大交易次数
+            max_exit_wait_time_gap_down=40,    # 最大平仓等待时间（分钟）
+            max_vol_ma5_ratio_threshold_gap_down=3.0 # Gap Down时的成交量MA5阈值
         )
         
         # 配置Mock Gateway的replay模式

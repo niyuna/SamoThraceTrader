@@ -91,7 +91,7 @@ class EnhancedBarGenerator:
         self.on_bar(self.bar)
         self.bar = None
         
-        print(f"Warning: Force completed bar at {self.bar.datetime}")
+        self.write_log(f"Force completed bar at {self.bar.datetime} for {self.bar.symbol}")
 
     def update_tick(self, tick: TickData) -> None:
         """
@@ -317,3 +317,7 @@ class EnhancedBarGenerator:
         """清理timer事件注册"""
         if self.enable_auto_flush and self.main_engine:
             self.main_engine.event_engine.unregister(EVENT_TIMER, self._on_timer) 
+
+    def write_log(self, msg: str):
+        """写日志"""
+        self.main_engine.write_log(msg, self.__class__.__name__)
