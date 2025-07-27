@@ -94,8 +94,8 @@ class BriskGateway(BaseGateway):
         self.local_orders: Dict[str, OrderData] = {}  # key: orderid (ID字段)
         # 设置初始时间为当天的早上8点50分，确保获取当天所有订单
         today = datetime.now()
-        # self.last_updtime: str = today.strftime("%Y%m%d") + "085000"  # 格式: yyyyMMddHHmmss
-        self.last_updtime: str = "20250725085000"  # temporarily setting this for testing
+        self.last_updtime: str = today.strftime("%Y%m%d") + "085000"  # 格式: yyyyMMddHHmmss
+        # self.last_updtime: str = "20250725085000"  # temporarily setting this for testing
 
         self.polling_interval: int = 1  # 轮询间隔（秒）
         self._polling_active: bool = False

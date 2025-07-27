@@ -359,7 +359,7 @@ class IntradayStrategyBase:
     def on_5min_bar(self, bar: BarData):
         """5分钟K线回调函数"""
         self.bars_count[f"{bar.symbol}_5min"] += 1
-        print(f"生成5分钟K线: {bar.symbol} {bar.datetime.strftime('%Y-%m-%d %H:%M:%S')} - "
+        self.write_log(f"生成5分钟K线: {bar.symbol} {bar.datetime.strftime('%Y-%m-%d %H:%M:%S')} - "
               f"开:{bar.open_price:.2f} 高:{bar.high_price:.2f} 低:{bar.low_price:.2f} "
               f"收:{bar.close_price:.2f} 量:{bar.volume}")
     
@@ -400,7 +400,7 @@ class IntradayStrategyBase:
                     "tick_server_http_url": "http://127.0.0.1:8001",
                 }
         self.main_engine.connect(setting, self.gateway_name)
-        print(f"{self.gateway_name} Gateway连接成功")
+        self.write_log(f"{self.gateway_name} Gateway连接成功")
     
     def subscribe(self, symbols: list):
         """订阅股票"""
@@ -412,7 +412,7 @@ class IntradayStrategyBase:
         # 订阅行情
         req = SubscribeRequest(symbol=','.join(symbols), exchange=Exchange.TSE)
         self.main_engine.subscribe(req, self.gateway_name)
-        print(f"subscribe: {','.join(symbols)}")
+        self.write_log(f"subscribe: {','.join(symbols)}")
     
     def start_replay(self, date: str, symbols: list = None):
         """开始历史数据回放"""
