@@ -320,6 +320,7 @@ class IntradayStrategyBase:
     
     def on_1min_bar(self, bar: BarData):
         """1分钟K线回调函数"""
+        self.write_log(f"on_1min_bar triggered: {bar.symbol}")
         self.bars_count[f"{bar.symbol}_1min"] += 1
         
         # 更新技术指标

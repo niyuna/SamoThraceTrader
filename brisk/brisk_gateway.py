@@ -499,7 +499,7 @@ class BriskGateway(BaseGateway):
         # avg traded price
         trades = list(filter(lambda x: x.get("ExecutionID") != None, broker_order["Details"]))
         avg_price = sum(float(trade["Price"]) * float(trade["Qty"]) for trade in trades) / sum(float(trade["Qty"]) for trade in trades) if trades else 0
-        self.write_log(f"updating order: symbol: {broker_order['Symbol']}, traded: {traded}, avg_price: {avg_price}")
+        self.write_log(f"converting broker order to vnpy order: orderId: {broker_order['ID']}, symbol: {broker_order['Symbol']}, state: {state}, traded: {traded}, avg_price: {avg_price}")
 
         order = OrderData(
             gateway_name=self.gateway_name,
