@@ -376,15 +376,16 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         
         # 更新 exit 订单
         elif (context.state == StrategyState.WAITING_EXIT or context.state == StrategyState.WAITING_TIMEOUT_EXIT) and context.exit_order_id:
-            if not self._check_exit_timeout(context):
+            if not self._check_exit_timeout(context, bar):
                 self._update_exit_order_price(context, bar, indicators)
 
-    def _check_exit_timeout(self, context):
+    def _check_exit_timeout(self, context, bar):
         """检查 exit 订单是否超时"""
         if not context.exit_start_time or not context.exit_order_id:
             return False
         
-        current_time = datetime.now()
+        # TODO: tricky edge case which need specific test to prove. but we still prefer to use bar.datetime instead of datetime.now() to sync time
+        current_time = bar.datetime + timedelta(minutes=1)
         max_wait_time = timedelta(minutes=self._get_exit_wait_time(context.symbol) - 1)
         self.write_log(f"current_time: {current_time}, context.exit_start_time: {context.exit_start_time}, max_wait_time: {max_wait_time}, context: {context}")
         
