@@ -2,7 +2,7 @@
 VWAP Failure 日内交易策略
 基于intraday_strategy_base实现，寻找gap up/down后的VWAP failure机会
 """
-
+import time
 from datetime import datetime, timedelta
 from collections import defaultdict
 from typing import Dict, Set
@@ -13,7 +13,7 @@ from vnpy.trader.object import OrderData, OrderRequest, TradeData, CancelRequest
 from intraday_strategy_base import IntradayStrategyBase, StrategyState
 from mock_brisk_gateway import MockBriskGateway
 
-from common.trading_common import next_tick_price
+from common.trading_common import next_tick_price, TypicalTimes
 
 
 class VWAPFailureStrategy(IntradayStrategyBase):
@@ -363,16 +363,19 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         symbol = bar.symbol
         context = self.get_context(symbol)
         
-        # TODO: for entry case, if it's alreadsy past the latest_entry_time, cancenl the the existing order if any instead of updating the price
-        # TODO: for exit case, if it's alreadsy past the latest_entry_time, enter the timeout exit flow
 
         # 更新 entry 订单
+        # for entry case, if it's alreadsy past the latest_entry_time, cancel the the existing order if any instead of updating the price
         if context.state == StrategyState.WAITING_ENTRY and context.entry_order_id:
+            if not self._is_within_trading_time(bar.datetime):
+                self._cancel_order_safely(context.entry_order_id, symbol)
+                context.entry_order_id = ""
+                self.update_context_state(symbol, StrategyState.IDLE)
+                return
             self._update_entry_order_price(context, bar, indicators)
         
         # 更新 exit 订单
         elif (context.state == StrategyState.WAITING_EXIT or context.state == StrategyState.WAITING_TIMEOUT_EXIT) and context.exit_order_id:
-            # check timeout first 
             if not self._check_exit_timeout(context):
                 self._update_exit_order_price(context, bar, indicators)
 
@@ -383,10 +386,11 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         
         current_time = datetime.now()
         max_wait_time = timedelta(minutes=self._get_exit_wait_time(context.symbol) - 1)
-        print(f"current_time: {current_time}, context.exit_start_time: {context.exit_start_time}, max_wait_time: {max_wait_time}, context: {context}")
+        self.write_log(f"current_time: {current_time}, context.exit_start_time: {context.exit_start_time}, max_wait_time: {max_wait_time}, context: {context}")
         
+        # for exit case, if it's alreadsy past the latest_entry_time, enter the timeout exit flow
         # 第一阶段：检查是否达到初始timeout
-        if context.state == StrategyState.WAITING_EXIT and (current_time - context.exit_start_time) >= max_wait_time:
+        if context.state == StrategyState.WAITING_EXIT and ((current_time - context.exit_start_time) >= max_wait_time or not self._is_within_trading_time(current_time)):
             # 撤单并进入timeout exit阶段
             if self._cancel_order_safely(context.exit_order_id, context.symbol):
                 self._start_timeout_exit(context)
@@ -395,8 +399,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         # 第二阶段：检查timeout exit limit order是否超时
         elif context.state == StrategyState.WAITING_TIMEOUT_EXIT:
             timeout_exit_max_period = timedelta(minutes=self.timeout_exit_max_period)
-            if (current_time - context.timeout_exit_start_time) >= timeout_exit_max_period:
-                # 最终使用market order平仓
+            if (current_time - context.timeout_exit_start_time) >= timeout_exit_max_period or current_time.time() >= datetime.strptime(TypicalTimes.MORNING_CLOSING_START, "%H:%M:%S").time():
                 self._force_market_exit(context)
                 return True
         
@@ -680,7 +683,6 @@ def main():
     """主函数 - 测试VWAP Failure策略"""
     print("启动VWAP Failure策略 ...")
     
-    # 创建策略实例（使用Mock Gateway）
     strategy = VWAPFailureStrategy(use_mock_gateway=False)
     
     try:
@@ -688,6 +690,8 @@ def main():
         strategy.set_strategy_params(
             market_cap_threshold=100_000_000_000,  # 1000亿日元
             latest_entry_time="11:23:00",  # 最晚入场时间
+            timeout_exit_max_period=5, # 超时退出最大等待时间
+            single_stock_max_position=1_000_000 # 单只股票最大持仓量
 
             # disable it for now
             gap_up_threshold=0.5,      # 2% gap up 
@@ -705,8 +709,6 @@ def main():
             max_daily_trades_gap_down=2,       # 单日最大交易次数
             max_exit_wait_time_gap_down=40,    # 最大平仓等待时间（分钟）
             max_vol_ma5_ratio_threshold_gap_down=3.0, # Gap Down时的成交量MA5阈值
-            timeout_exit_max_period=5, # 超时退出最大等待时间
-            single_stock_max_position=1_000_000 # 单只股票最大持仓量
         )
         
         # 配置Mock Gateway的replay模式
@@ -720,15 +722,14 @@ def main():
         
         # 连接Gateway
         # strategy.connect(mock_setting)
+        
         strategy.connect()
-
         
         # 初始化股票筛选器
         strategy.initialize_stock_filter()
         
         # 等待一段时间接收数据
         print("等待接收数据...")
-        import time
         time.sleep(5)
         
         # 保持运行
