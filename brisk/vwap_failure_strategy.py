@@ -390,7 +390,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         
         # for exit case, if it's alreadsy past the latest_entry_time, enter the timeout exit flow
         # 第一阶段：检查是否达到初始timeout
-        if context.state == StrategyState.WAITING_EXIT and ((current_time - context.exit_start_time) >= max_wait_time or not self._is_within_trading_time(current_time)):
+        if context.state == StrategyState.WAITING_EXIT and ((current_time - context.exit_start_time) >= max_wait_time or (not self._is_within_trading_time(current_time) and self._is_within_morning_closing_time(current_time))):
             # 撤单并进入timeout exit阶段
             if self._cancel_order_safely(context.exit_order_id, context.symbol):
                 self._start_timeout_exit(context)
@@ -399,7 +399,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         # 第二阶段：检查timeout exit limit order是否超时
         elif context.state == StrategyState.WAITING_TIMEOUT_EXIT:
             timeout_exit_max_period = timedelta(minutes=self.timeout_exit_max_period)
-            if (current_time - context.timeout_exit_start_time) >= timeout_exit_max_period or current_time.time() >= datetime.strptime(TypicalTimes.MORNING_CLOSING_START, "%H:%M:%S").time():
+            if (current_time - context.timeout_exit_start_time) >= timeout_exit_max_period or self._is_within_morning_closing_time(current_time):
                 self._force_market_exit(context)
                 return True
         
@@ -504,6 +504,20 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         latest_time = datetime.strptime(self.latest_entry_time, "%H:%M:%S").time()
         return current_time <= latest_time
     
+    def _is_within_morning_closing_time(self, bar_datetime):
+        """检查是否在早盘收盘时间范围内"""
+        current_time = bar_datetime.time()
+        return current_time >= datetime.strptime(TypicalTimes.MORNING_CLOSING_START, "%H:%M:%S").time() and current_time <= datetime.strptime(TypicalTimes.MORNING_CLOSING, "%H:%M:%S").time()
+    
+    def _is_within_morning_trading_time(self, bar_datetime):
+        """检查是否在早盘交易时间范围内"""
+        current_time = bar_datetime.time()
+        return current_time >= datetime.strptime(TypicalTimes.MORNING_START, "%H:%M:%S").time() and current_time < datetime.strptime(TypicalTimes.MORNING_CLOSING, "%H:%M:%S").time()
+
+    def _is_within_afternoon_closing_time(self, bar_datetime):
+        """检查是否在午后收盘时间范围内"""
+        pass
+
     # ==================== 实现抽象方法 ====================
     
     def _calculate_entry_price(self, context, bar, indicators) -> float:
@@ -691,7 +705,7 @@ def main():
             market_cap_threshold=100_000_000_000,  # 1000亿日元
             latest_entry_time="11:23:00",  # 最晚入场时间
             timeout_exit_max_period=5, # 超时退出最大等待时间
-            single_stock_max_position=1_000_000 # 单只股票最大持仓量
+            single_stock_max_position=1_000_000, # 单只股票最大持仓量
 
             # disable it for now
             gap_up_threshold=0.5,      # 2% gap up 
