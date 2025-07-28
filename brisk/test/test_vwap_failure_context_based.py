@@ -23,7 +23,8 @@ from vnpy.trader.object import OrderData, TradeData, BarData
 
 from context_based_testing_base import (
     ContextBasedStrategyTest, ContextSnapshotManager, MockDataGenerator,
-    TestBasicStateTransitionsMixin, TestEdgeCasesMixin, TestCompleteFlowMixin, TestMultipleSymbolsMixin
+    TestBasicStateTransitionsMixin, TestEdgeCasesMixin, TestCompleteFlowMixin, TestMultipleSymbolsMixin,
+    TestPositionSizeMixin
 )
 from vwap_failure_strategy import VWAPFailureStrategy
 from intraday_strategy_base import StrategyState
@@ -33,7 +34,8 @@ class VWAPFailureStrategyTest(ContextBasedStrategyTest,
                              TestBasicStateTransitionsMixin,
                              TestEdgeCasesMixin,
                              TestCompleteFlowMixin,
-                             TestMultipleSymbolsMixin):
+                             TestMultipleSymbolsMixin,
+                             TestPositionSizeMixin):
     """VWAP Failure 策略测试"""
     
     def setUp(self):
@@ -1567,9 +1569,9 @@ def run_all_tests():
     
     # 运行所有测试类
     test_classes = [
-        VWAPFailureStrategyTest,
-        # TestVWAPFailureSpecificLogic,
-        # TestVWAPFailureCompleteFlow
+        # VWAPFailureStrategyTest,
+        TestVWAPFailureSpecificLogic,
+        TestVWAPFailureCompleteFlow
     ]
     
     all_results = []

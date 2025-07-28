@@ -577,6 +577,288 @@ class TestMultipleSymbolsMixin:
         assert context1.entry_order_id != context2.entry_order_id
 
 
+class TestPositionSizeMixin:
+    """持仓数量测试混入类"""
+    
+    def test_calculate_position_size_basic(self):
+        """测试基本持仓数量计算"""
+        symbol = self.test_symbol
+        
+        # Mock stock_master数据
+        mock_stock_data = {
+            symbol: {
+                'basePrice10': 1500,  # 150.0日元
+                'market_cap': 200_000_000_000,  # 2000亿日元
+                'calcSharesOutstanding': 1000000
+            }
+        }
+        
+        # Mock get_stockmaster函数
+        original_get_stockmaster = None
+        try:
+            import stock_master
+            original_get_stockmaster = stock_master.get_stockmaster
+            stock_master.get_stockmaster = lambda: mock_stock_data
+        except ImportError:
+            # 如果无法导入stock_master，直接mock策略的stock_master
+            self.strategy.stock_master = mock_stock_data
+        
+        try:
+            # 初始化stock_master
+            self.strategy.initialize_stock_master()
+            
+            # 测试持仓数量计算
+            position_size = self.strategy.calculate_position_size(symbol)
+            
+            # 验证计算结果
+            # 预期: 1000_000 / 150.0 / 100 = 66.67，round(66.67) = 67，67 * 100 = 6700
+            expected_position = 6700
+            assert position_size == expected_position, f"持仓数量应该是{expected_position}，实际是{position_size}"
+            
+        finally:
+            # 恢复原始函数
+            if original_get_stockmaster:
+                stock_master.get_stockmaster = original_get_stockmaster
+    
+    def test_calculate_position_size_different_prices(self):
+        """测试不同价格下的持仓数量计算"""
+        symbol = self.test_symbol
+        
+        # Mock stock_master数据
+        mock_stock_data = {
+            symbol: {
+                'basePrice10': 5000,  # 500.0日元
+                'market_cap': 200_000_000_000,
+                'calcSharesOutstanding': 1000000
+            }
+        }
+        
+        # Mock get_stockmaster函数
+        original_get_stockmaster = None
+        try:
+            import stock_master
+            original_get_stockmaster = stock_master.get_stockmaster
+            stock_master.get_stockmaster = lambda: mock_stock_data
+        except ImportError:
+            self.strategy.stock_master = mock_stock_data
+        
+        try:
+            # 初始化stock_master
+            self.strategy.initialize_stock_master()
+            
+            # 测试不同价格的情况
+            position_size = self.strategy.calculate_position_size(symbol)
+            expected_position = 2000  # 1000_000 / 500.0 / 100 = 20，round(20) = 20，20 * 100 = 2000
+            assert position_size == expected_position, f"持仓数量应该是{expected_position}，实际是{position_size}"
+            
+            # 测试价格过高的情况（应该返回最小持仓数量）
+            mock_stock_data[symbol]['basePrice10'] = 500000  # 50000.0日元
+            position_size2 = self.strategy.calculate_position_size(symbol)
+            expected_position2 = 100  # 最小持仓数量
+            assert position_size2 == expected_position2, f"持仓数量应该是{expected_position2}，实际是{position_size2}"
+            
+        finally:
+            # 恢复原始函数
+            if original_get_stockmaster:
+                stock_master.get_stockmaster = original_get_stockmaster
+    
+    def test_calculate_position_size_invalid_data(self):
+        """测试无效数据时的持仓数量计算"""
+        symbol = self.test_symbol
+        
+        # Mock无效的stock_master数据
+        mock_stock_data = {
+            symbol: {
+                'basePrice10': 0,  # 无效价格
+                'market_cap': 0,
+                'calcSharesOutstanding': 0
+            }
+        }
+        
+        # Mock get_stockmaster函数
+        original_get_stockmaster = None
+        try:
+            import stock_master
+            original_get_stockmaster = stock_master.get_stockmaster
+            stock_master.get_stockmaster = lambda: mock_stock_data
+        except ImportError:
+            self.strategy.stock_master = mock_stock_data
+        
+        try:
+            # 初始化stock_master
+            self.strategy.initialize_stock_master()
+            
+            # 测试无效数据时的持仓数量计算
+            position_size = self.strategy.calculate_position_size(symbol)
+            
+            # 应该返回默认持仓数量
+            expected_position = 100
+            assert position_size == expected_position, f"无效数据时持仓数量应该是{expected_position}，实际是{position_size}"
+            
+        finally:
+            # 恢复原始函数
+            if original_get_stockmaster:
+                stock_master.get_stockmaster = original_get_stockmaster
+    
+    def test_calculate_position_size_missing_symbol(self):
+        """测试缺失股票时的持仓数量计算"""
+        symbol = "NONEXISTENT"
+        
+        # Mock空的stock_master数据
+        mock_stock_data = {}
+        
+        # Mock get_stockmaster函数
+        original_get_stockmaster = None
+        try:
+            import stock_master
+            original_get_stockmaster = stock_master.get_stockmaster
+            stock_master.get_stockmaster = lambda: mock_stock_data
+        except ImportError:
+            self.strategy.stock_master = mock_stock_data
+        
+        try:
+            # 初始化stock_master
+            self.strategy.initialize_stock_master()
+            
+            # 测试缺失股票时的持仓数量计算
+            position_size = self.strategy.calculate_position_size(symbol)
+            
+            # 应该返回默认持仓数量
+            expected_position = 100
+            assert position_size == expected_position, f"缺失股票时持仓数量应该是{expected_position}，实际是{position_size}"
+            
+        finally:
+            # 恢复原始函数
+            if original_get_stockmaster:
+                stock_master.get_stockmaster = original_get_stockmaster
+    
+    def test_single_stock_max_position_parameter(self):
+        """测试single_stock_max_position参数"""
+        # 测试默认值
+        assert self.strategy.single_stock_max_position == 1000_000, f"默认值应该是1000_000，实际是{self.strategy.single_stock_max_position}"
+        
+        # 测试参数设置（如果策略支持set_strategy_params）
+        if hasattr(self.strategy, 'set_strategy_params'):
+            self.strategy.set_strategy_params(single_stock_max_position=500_000)
+            assert self.strategy.single_stock_max_position == 500_000, f"设置后应该是500_000，实际是{self.strategy.single_stock_max_position}"
+            
+            # 测试参数重置
+            self.strategy.set_strategy_params(single_stock_max_position=2000_000)
+            assert self.strategy.single_stock_max_position == 2000_000, f"重置后应该是2000_000，实际是{self.strategy.single_stock_max_position}"
+    
+    def test_position_size_rounding(self):
+        """测试持仓数量的取整逻辑"""
+        symbol = self.test_symbol
+        
+        # Mock stock_master数据，测试取整逻辑
+        mock_stock_data = {
+            symbol: {
+                'basePrice10': 3333,  # 333.3日元，测试取整
+                'market_cap': 200_000_000_000,
+                'calcSharesOutstanding': 1000000
+            }
+        }
+        
+        # Mock get_stockmaster函数
+        original_get_stockmaster = None
+        try:
+            import stock_master
+            original_get_stockmaster = stock_master.get_stockmaster
+            stock_master.get_stockmaster = lambda: mock_stock_data
+        except ImportError:
+            self.strategy.stock_master = mock_stock_data
+        
+        try:
+            # 初始化stock_master
+            self.strategy.initialize_stock_master()
+            
+            # 测试取整逻辑
+            # 1000_000 / 333.3 / 100 = 30.003，round(30.003) = 30，30 * 100 = 3000
+            position_size = self.strategy.calculate_position_size(symbol)
+            expected_position = 3000  # 应该取整到3000
+            assert position_size == expected_position, f"持仓数量应该是{expected_position}，实际是{position_size}"
+            
+            # 测试另一个取整案例
+            mock_stock_data[symbol]['basePrice10'] = 2500  # 250.0日元
+            position_size2 = self.strategy.calculate_position_size(symbol)
+            expected_position2 = 4000  # 1000_000 / 250.0 / 100 = 40，round(40) = 40，40 * 100 = 4000
+            assert position_size2 == expected_position2, f"持仓数量应该是{expected_position2}，实际是{position_size2}"
+            
+        finally:
+            # 恢复原始函数
+            if original_get_stockmaster:
+                stock_master.get_stockmaster = original_get_stockmaster
+    
+    def test_stock_master_initialization(self):
+        """测试stock_master初始化"""
+        # 测试初始化方法存在
+        assert hasattr(self.strategy, 'initialize_stock_master'), "策略应该有initialize_stock_master方法"
+        assert hasattr(self.strategy, 'stock_master'), "策略应该有stock_master属性"
+        
+        # 测试辅助方法存在
+        assert hasattr(self.strategy, 'get_stock_info'), "策略应该有get_stock_info方法"
+        assert hasattr(self.strategy, 'get_stock_market_cap'), "策略应该有get_stock_market_cap方法"
+        assert hasattr(self.strategy, 'get_stock_prev_close'), "策略应该有get_stock_prev_close方法"
+        assert hasattr(self.strategy, 'calculate_position_size'), "策略应该有calculate_position_size方法"
+        
+        # 测试初始化调用
+        try:
+            self.strategy.initialize_stock_master()
+            print(f"✅ Stock master初始化成功，获取到 {len(self.strategy.stock_master)} 只股票")
+        except Exception as e:
+            print(f"⚠️ Stock master初始化失败（预期）: {e}")
+    
+    def test_position_size_round_logic_detailed(self):
+        """详细测试持仓数量的round逻辑"""
+        symbol = self.test_symbol
+        
+        # Mock stock_master数据
+        mock_stock_data = {
+            symbol: {
+                'basePrice10': 0,  # 将在测试中修改
+                'market_cap': 200_000_000_000,
+                'calcSharesOutstanding': 1000000
+            }
+        }
+        
+        # Mock get_stockmaster函数
+        original_get_stockmaster = None
+        try:
+            import stock_master
+            original_get_stockmaster = stock_master.get_stockmaster
+            stock_master.get_stockmaster = lambda: mock_stock_data
+        except ImportError:
+            self.strategy.stock_master = mock_stock_data
+        
+        try:
+            # 初始化stock_master
+            self.strategy.initialize_stock_master()
+            
+            # 测试各种round情况
+            test_cases = [
+                # (basePrice10, expected_position, description)
+                (1000, 10000, "100日元: 1000_000/100/100=100, round(100)=100, 100*100=10000"),  # 100日元
+                (1500, 6700, "150日元: 1000_000/150/100=66.67, round(66.67)=67, 67*100=6700"),   # 150日元
+                (2000, 5000, "200日元: 1000_000/200/100=50, round(50)=50, 50*100=5000"),         # 200日元
+                (2500, 4000, "250日元: 1000_000/250/100=40, round(40)=40, 40*100=4000"),         # 250日元
+                (3333, 3000, "333.3日元: 1000_000/333.3/100=30.003, round(30.003)=30, 30*100=3000"), # 333.3日元
+                (5000, 2000, "500日元: 1000_000/500/100=20, round(20)=20, 20*100=2000"),         # 500日元
+                (10000, 1000, "1000日元: 1000_000/1000/100=10, round(10)=10, 10*100=1000"),      # 1000日元
+                (500000, 100, "50000日元: 1000_000/50000/100=0.2, round(2)=2, 2*100=200") # 50000日元
+            ]
+            
+            for base_price, expected_position, description in test_cases:
+                mock_stock_data[symbol]['basePrice10'] = base_price
+                position_size = self.strategy.calculate_position_size(symbol)
+                assert position_size == expected_position, f"{description}，实际得到{position_size}"
+                print(f"✅ {description} -> {position_size}")
+            
+        finally:
+            # 恢复原始函数
+            if original_get_stockmaster:
+                stock_master.get_stockmaster = original_get_stockmaster 
+
+
 def run_context_based_tests(test_class):
     """运行基于 Context 的测试"""
     # 创建测试套件

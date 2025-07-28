@@ -11,7 +11,6 @@ from vnpy.trader.constant import Direction, Offset, Status, OrderType, Exchange
 from vnpy.trader.object import OrderData, OrderRequest, TradeData, CancelRequest
 
 from intraday_strategy_base import IntradayStrategyBase, StrategyState
-from stock_master import get_stockmaster
 from mock_brisk_gateway import MockBriskGateway
 
 from common.trading_common import next_tick_price
@@ -43,7 +42,6 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         self.timeout_exit_max_period = 5       # timeout exit limit order最大等待时间（分钟）
         
         # 股票状态管理
-        self.stock_master = {}          # 股票基础信息
         self.market_cap_eligible = set()  # 仅满足市值条件的股票
         self.eligible_stocks = set()    # 真正满足所有条件的股票
         self.first_tick_prices = {}     # 记录每个股票当天第一个tick价格
@@ -59,8 +57,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         self.write_log("初始化股票筛选器...")
         
         # 1. 获取股票基础信息
-        self.stock_master = get_stockmaster()
-        self.write_log(f"获取到 {len(self.stock_master)} 只股票的基础信息")
+        self.initialize_stock_master()
         
         # 2. 基于市值预筛选股票
         self._pre_filter_by_market_cap()
@@ -134,8 +131,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             return
         
         first_price = self.first_tick_prices[symbol]
-        prev_close = self.stock_master[symbol].get('basePrice10', 0) / 10
-        
+        prev_close = self.get_stock_prev_close(symbol)
         
         if prev_close > 0:
             gap_ratio = (first_price - prev_close) / prev_close
@@ -367,6 +363,9 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         symbol = bar.symbol
         context = self.get_context(symbol)
         
+        # TODO: for entry case, if it's alreadsy past the latest_entry_time, cancenl the the existing order if any instead of updating the price
+        # TODO: for exit case, if it's alreadsy past the latest_entry_time, enter the timeout exit flow
+
         # 更新 entry 订单
         if context.state == StrategyState.WAITING_ENTRY and context.entry_order_id:
             self._update_entry_order_price(context, bar, indicators)
@@ -567,7 +566,8 @@ class VWAPFailureStrategy(IntradayStrategyBase):
                           max_exit_wait_time_gap_down=20,
                           max_vol_ma5_ratio_threshold_gap_up=2.0,
                           max_vol_ma5_ratio_threshold_gap_down=1.5,
-                          timeout_exit_max_period=5):
+                          timeout_exit_max_period=5,
+                          single_stock_max_position=1_000_000):
         """设置策略参数"""
         self.market_cap_threshold = market_cap_threshold
         self.gap_up_threshold = gap_up_threshold
@@ -586,6 +586,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         self.max_vol_ma5_ratio_threshold_gap_up = max_vol_ma5_ratio_threshold_gap_up
         self.max_vol_ma5_ratio_threshold_gap_down = max_vol_ma5_ratio_threshold_gap_down
         self.timeout_exit_max_period = timeout_exit_max_period
+        self.single_stock_max_position = single_stock_max_position
         
         print(f"策略参数设置完成:")
         print(f"  市值阈值: {market_cap_threshold:,.0f} 日元")
@@ -605,6 +606,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         print(f"  Gap Up 当前bar的vol/vol_ma5比例上限: {max_vol_ma5_ratio_threshold_gap_up}")
         print(f"  Gap Down 当前bar的vol/vol_ma5比例上限: {max_vol_ma5_ratio_threshold_gap_down}")
         print(f"  Timeout Exit最大等待时间: {timeout_exit_max_period} 分钟")
+        print(f"  单只股票最大持仓量: {single_stock_max_position:,.0f} 日元")
     
     def print_strategy_status(self):
         """打印策略状态"""
@@ -703,7 +705,8 @@ def main():
             max_daily_trades_gap_down=2,       # 单日最大交易次数
             max_exit_wait_time_gap_down=40,    # 最大平仓等待时间（分钟）
             max_vol_ma5_ratio_threshold_gap_down=3.0, # Gap Down时的成交量MA5阈值
-            timeout_exit_max_period=5 # 超时退出最大等待时间
+            timeout_exit_max_period=5, # 超时退出最大等待时间
+            single_stock_max_position=1_000_000 # 单只股票最大持仓量
         )
         
         # 配置Mock Gateway的replay模式

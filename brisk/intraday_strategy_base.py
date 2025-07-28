@@ -24,6 +24,7 @@ from vnpy.trader.object import OrderRequest, CancelRequest
 from vnpy.trader.constant import Direction, Offset, OrderType
 
 from common.trading_common import normalize_price
+from vnpy.trader.logger import setup_logger
 
 
 class StrategyState(Enum):
@@ -69,6 +70,12 @@ class IntradayStrategyBase:
         # 新增：Context 管理
         self.contexts: Dict[str, StockContext] = {}
         
+        # 新增：股票基础信息管理
+        self.stock_master = {}  # 股票基础信息
+        
+        # 新增：单只股票最大持仓量
+        self.single_stock_max_position = 1000_000
+        
         from vnpy.trader.setting import SETTINGS
         # by default, will read ".vntrader/vt_setting.json", set in setting.py
         SETTINGS["log.active"] = True
@@ -76,7 +83,6 @@ class IntradayStrategyBase:
         SETTINGS["log.console"] = True
         SETTINGS["log.file_name"] = self.__class__.__name__
         # SETTINGS["log.format"] = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{extra[gateway_name]}</cyan> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
-        from vnpy.trader.logger import setup_logger
         setup_logger()
         # log file will be ".vntrader/log/vt_{today_date}.log", set in logger.py
         
@@ -84,6 +90,7 @@ class IntradayStrategyBase:
         """获取或创建股票 Context"""
         if symbol not in self.contexts:
             self.contexts[symbol] = StockContext(symbol=symbol)
+            self.contexts[symbol].position_size = self.calculate_position_size(symbol)
         return self.contexts[symbol]
     
     def update_context_state(self, symbol: str, new_state: StrategyState):
@@ -93,12 +100,49 @@ class IntradayStrategyBase:
         context.state = new_state
         self.write_log(f"Context state changed for {symbol}: {old_state.value} -> {new_state.value}")
     
+    # TODO: having lots of contexts will lead to performance issue, need optimization here
     def get_context_by_order_id(self, order_id: str) -> Optional[StockContext]:
         """根据订单ID查找对应的 Context"""
         for context in self.contexts.values():
             if context.entry_order_id == order_id or context.exit_order_id == order_id:
                 return context
         return None
+    
+    def initialize_stock_master(self):
+        """初始化股票基础信息 - 子类可以重写"""
+        try:
+            from stock_master import get_stockmaster
+            self.stock_master = get_stockmaster()
+            self.write_log(f"获取到 {len(self.stock_master)} 只股票的基础信息")
+        except ImportError:
+            self.write_log("警告: 无法导入stock_master模块，stock_master将为空")
+            self.stock_master = {}
+    
+    def get_stock_info(self, symbol: str) -> dict:
+        """获取股票基础信息"""
+        return self.stock_master.get(symbol, {})
+    
+    def get_stock_market_cap(self, symbol: str) -> float:
+        """获取股票市值"""
+        stock_info = self.get_stock_info(symbol)
+        return stock_info.get('market_cap', 0)
+    
+    def get_stock_prev_close(self, symbol: str) -> float:
+        """获取股票前一日收盘价"""
+        stock_info = self.get_stock_info(symbol)
+        base_price = stock_info.get('basePrice10', 0)
+        return base_price / 10 if base_price > 0 else 0
+    
+    def calculate_position_size(self, symbol: str) -> int:
+        """计算持仓数量，基于单只股票最大持仓量"""
+        price = self.get_stock_prev_close(symbol)
+        if price <= 0:
+            return 100  # 默认持仓数量
+        
+        # 计算基于价格的持仓数量
+        position_size = round(self.single_stock_max_position / price / 100) * 100
+                
+        return max(position_size, 100)
     
     def write_log(self, msg: str):
         self.main_engine.write_log(msg, self.__class__.__name__)
