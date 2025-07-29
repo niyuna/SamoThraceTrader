@@ -1562,6 +1562,388 @@ class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest,
         print("✅ 第五阶段：exit订单成交，完成交易周期测试通过")
         print("✅ 复杂流程测试：成交量异常取消订单后重新进入并成功完成交易")
 
+    def test_complete_morning_closing_flow(self):
+        """测试完整的上午收盘流程"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 设置较短的超时时间
+        self.strategy.max_exit_wait_time_gap_up = 2  # 2分钟超时
+        self.strategy.timeout_exit_max_period = 1     # 1分钟timeout exit等待时间
+        
+        # 1. 设置初始状态为waiting_exit
+        context = self.setup_context(symbol, state=StrategyState.WAITING_EXIT, exit_order_id="test_exit_order")
+        context.exit_start_time = datetime.now() - timedelta(minutes=3)  # 模拟超时
+        
+        # 2. 第一阶段：在11:27:30触发timeout exit（晚于11:27:00）
+        first_bar = self.mock_generator.create_mock_bar(
+            symbol, 
+            datetime_obj=datetime.now().replace(hour=11, minute=27, second=30, microsecond=0)  # 11:27:30
+        )
+        
+        # Mock _get_current_bar
+        current_bar = self.mock_generator.create_mock_bar(symbol, close_price=100.0)
+        original_get_current_bar = self.strategy._get_current_bar
+        self.strategy._get_current_bar = lambda s: current_bar if s == symbol else None
+        
+        try:
+            self.trigger_bar_update(first_bar)
+            time.sleep(0.01)
+            
+            # 验证：应该进入WAITING_TIMEOUT_EXIT状态
+            self.assert_context_state(symbol, "waiting_timeout_exit")
+            
+            # 3. 第二阶段：在11:29:00触发market exit（在morning_closing_time范围内）
+            context = self.strategy.get_context(symbol)
+            context.timeout_exit_start_time = datetime.now() - timedelta(minutes=2)  # 模拟timeout exit超时
+            
+            second_bar = self.mock_generator.create_mock_bar(
+                symbol, 
+                datetime_obj=datetime.now().replace(hour=11, minute=29, second=0, microsecond=0)  # 11:29:00
+            )
+            
+            self.trigger_bar_update(second_bar)
+            time.sleep(0.01)
+            
+            # 验证：应该进入WAITING_EXIT状态（生成market order）
+            self.assert_context_state(symbol, "waiting_exit")
+            
+            # 验证：最终应该是market order
+            final_exit_order = self.strategy.gateway.get_order_by_id(context.exit_order_id)
+            assert final_exit_order is not None, "应该存在最终的exit订单"
+            assert final_exit_order.type == OrderType.MARKET, "morning_closing_time时应该使用market order"
+            
+            print("✅ 完整上午收盘流程测试通过:")
+            print(f"   11:27:30 - 进入WAITING_TIMEOUT_EXIT状态")
+            print(f"   11:29:00 - 生成market order")
+            print(f"   最终订单类型: {final_exit_order.type.value}")
+            
+        finally:
+            self.strategy._get_current_bar = original_get_current_bar
+
+    def test_waiting_entry_cancel_after_latest_entry_time(self):
+        """测试在WAITING_ENTRY状态下，当时间超过latest_entry_time时取消订单"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 设置较短的latest_entry_time以便测试
+        self.strategy.latest_entry_time = "09:01:00"  # 设置为很早的时间
+        
+        # 设置初始状态为waiting_entry
+        context = self.setup_context(symbol, state=StrategyState.WAITING_ENTRY, entry_order_id="test_entry_order")
+        
+        # 创建超过latest_entry_time的bar
+        late_bar = self.mock_generator.create_mock_bar(
+            symbol, 
+            datetime_obj=datetime.now().replace(hour=9, minute=2, second=0, microsecond=0)  # 09:02:00
+        )
+        
+        # 触发bar更新
+        self.trigger_bar_update(late_bar)
+        time.sleep(0.01)
+        
+        # 验证：应该取消订单，状态变为idle
+        context = self.strategy.get_context(symbol)
+        assert context.state == StrategyState.IDLE, "超过latest_entry_time时应该取消订单并变为idle状态"
+        assert context.entry_order_id == "", "超过latest_entry_time时应该清空订单ID"
+        
+        print("✅ WAITING_ENTRY状态下超过latest_entry_time时取消订单测试通过")
+
+    def test_waiting_entry_continue_before_latest_entry_time(self):
+        """测试在WAITING_ENTRY状态下，当时间未超过latest_entry_time时继续更新价格"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 设置较晚的latest_entry_time
+        self.strategy.latest_entry_time = "09:05:00"
+        
+        # 设置初始状态为waiting_entry
+        context = self.setup_context(symbol, state=StrategyState.WAITING_ENTRY, entry_order_id="test_entry_order")
+        
+        # 记录初始订单价格
+        initial_order = self.strategy.gateway.get_order_by_id(context.entry_order_id)
+        initial_price = initial_order.price if initial_order else None
+        
+        # 创建未超过latest_entry_time的bar
+        early_bar = self.mock_generator.create_mock_bar(
+            symbol, 
+            datetime_obj=datetime.now().replace(hour=9, minute=2, second=0, microsecond=0)  # 09:02:00
+        )
+        
+        # 触发bar更新
+        self.trigger_bar_update(early_bar)
+        time.sleep(0.01)
+        
+        # 验证：应该保持waiting_entry状态，订单ID不变
+        context = self.strategy.get_context(symbol)
+        print("context: ", context)
+        assert context.state == StrategyState.WAITING_ENTRY, "未超过latest_entry_time时应该保持waiting_entry状态"
+        assert context.entry_order_id == "MOCK_0", "未超过latest_entry_time时应该更新订单价格和ID"
+        
+        print("✅ WAITING_ENTRY状态下未超过latest_entry_time时继续更新价格测试通过")
+
+    def test_waiting_exit_timeout_before_morning_closing(self):
+        """测试在WAITING_EXIT状态下，当时间晚于one_min_before_morning_closing_start时进入WAITING_TIMEOUT_EXIT流程"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 设置初始状态为waiting_exit
+        context = self.setup_context(symbol, state=StrategyState.WAITING_EXIT, exit_order_id="test_exit_order")
+        context.exit_start_time = datetime.now() - timedelta(minutes=1)  # 设置较早的开始时间
+        
+        # 创建接近上午收盘时间的bar（one_min_before_morning_closing_start是11:27:00）
+        closing_bar = self.mock_generator.create_mock_bar(
+            symbol, 
+            datetime_obj=datetime.now().replace(hour=11, minute=27, second=30, microsecond=0)  # 11:27:30
+        )
+        
+        # Mock _get_current_bar来提供last price
+        current_bar = self.mock_generator.create_mock_bar(symbol, close_price=100.0)
+        original_get_current_bar = self.strategy._get_current_bar
+        self.strategy._get_current_bar = lambda s: current_bar if s == symbol else None
+        
+        try:
+            # 触发bar更新
+            self.trigger_bar_update(closing_bar)
+            time.sleep(0.01)
+            
+            # 验证：应该进入WAITING_TIMEOUT_EXIT状态
+            self.assert_context_state(symbol, "waiting_timeout_exit")
+            
+            # 验证：timeout_exit_start_time应该被设置
+            context = self.strategy.get_context(symbol)
+            assert context.timeout_exit_start_time is not None, "timeout_exit_start_time应该被设置"
+            
+            # 验证：应该生成新的exit订单ID
+            assert context.exit_order_id != "test_exit_order", "应该生成新的exit订单ID"
+            
+            # 验证：新订单应该是limit order
+            timeout_exit_order = self.strategy.gateway.get_order_by_id(context.exit_order_id)
+            assert timeout_exit_order is not None, "应该存在timeout exit订单"
+            assert timeout_exit_order.type == OrderType.LIMIT, "timeout exit订单应该是限价单"
+            
+            print("✅ WAITING_EXIT状态下进入timeout exit流程测试通过")
+            
+        finally:
+            # 恢复原方法
+            self.strategy._get_current_bar = original_get_current_bar
+
+    def test_waiting_timeout_exit_market_exit_during_morning_closing(self):
+        """测试在WAITING_TIMEOUT_EXIT状态下，当处于morning_closing_time时直接使用market order平仓"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 设置初始状态为waiting_timeout_exit
+        context = self.setup_context(symbol, state=StrategyState.WAITING_TIMEOUT_EXIT, exit_order_id="test_timeout_exit_order")
+        
+        # 创建morning_closing_time的bar（morning_closing_start是11:28:00，morning_closing是11:30:00）
+        morning_closing_bar = self.mock_generator.create_mock_bar(
+            symbol, 
+            datetime_obj=datetime.now().replace(hour=11, minute=29, second=0, microsecond=0)  # 11:29:00
+        )
+        context.exit_start_time = morning_closing_bar.datetime - timedelta(minutes=5)
+        context.timeout_exit_start_time = morning_closing_bar.datetime - timedelta(minutes=2)
+        
+        # 触发bar更新
+        self.trigger_bar_update(morning_closing_bar)
+        time.sleep(0.01)
+        print("context: ", context)
+        # 验证：应该进入WAITING_EXIT状态（因为会生成新的market order）
+        self.assert_context_state(symbol, "waiting_exit")
+        
+        # 验证：应该生成新的exit订单ID
+        context = self.strategy.get_context(symbol)
+        assert context.exit_order_id != "test_timeout_exit_order", "应该生成新的exit订单ID"
+        
+        # 验证：新订单应该是market order
+        market_exit_order = self.strategy.gateway.get_order_by_id(context.exit_order_id)
+        assert market_exit_order is not None, "应该存在market exit订单"
+        assert market_exit_order.type == OrderType.MARKET, "morning_closing_time时应该使用market order"
+        
+        print("✅ WAITING_TIMEOUT_EXIT状态下在morning_closing_time时使用market order测试通过")
+
+    def test_waiting_exit_normal_timeout(self):
+        """测试在WAITING_EXIT状态下的正常超时流程（不涉及上午收盘时间）"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 设置较短的超时时间
+        self.strategy.max_exit_wait_time_gap_up = 2  # 2分钟超时
+        self.strategy.timeout_exit_max_period = 1     # 1分钟timeout exit等待时间
+        
+        # 设置初始状态为waiting_exit
+        context = self.setup_context(symbol, state=StrategyState.WAITING_EXIT, exit_order_id="test_exit_order")
+        
+        # 创建正常时间的bar（不在上午收盘时间范围内）
+        normal_bar = self.mock_generator.create_mock_bar(
+            symbol, 
+            datetime_obj=datetime.now().replace(hour=10, minute=30, second=0, microsecond=0)  # 10:30:00
+        )
+
+        # use bar.datetime instead of datetime.now() to sync time
+        context.exit_start_time = normal_bar.datetime - timedelta(minutes=3)  # 模拟超时
+
+        # Mock _get_current_bar来提供last price
+        current_bar = self.mock_generator.create_mock_bar(symbol, close_price=100.0)
+        original_get_current_bar = self.strategy._get_current_bar
+        self.strategy._get_current_bar = lambda s: current_bar if s == symbol else None
+        
+        try:
+            # 第一阶段：触发正常超时，进入WAITING_TIMEOUT_EXIT
+            self.trigger_bar_update(normal_bar)
+            time.sleep(0.01)
+            
+            # 验证：应该进入WAITING_TIMEOUT_EXIT状态
+            self.assert_context_state(symbol, "waiting_timeout_exit")
+            
+            # 第二阶段：模拟timeout exit也超时
+            context = self.strategy.get_context(symbol)
+            context.timeout_exit_start_time = normal_bar.datetime - timedelta(minutes=2)  # 模拟timeout exit超时
+            
+            # 再次触发bar更新
+            self.trigger_bar_update(normal_bar)
+            time.sleep(0.01)
+            
+            # 验证：应该进入WAITING_EXIT状态（生成market order）
+            self.assert_context_state(symbol, "waiting_exit")
+            
+            # 验证：最终应该是market order
+            final_exit_order = self.strategy.gateway.get_order_by_id(context.exit_order_id)
+            assert final_exit_order is not None, "应该存在最终的exit订单"
+            assert final_exit_order.type == OrderType.MARKET, "正常超时流程最终应该使用market order"
+            
+            print("✅ WAITING_EXIT状态下的正常超时流程测试通过")
+            
+        finally:
+            # 恢复原方法
+            self.strategy._get_current_bar = original_get_current_bar
+
+    def test_time_boundary_conditions(self):
+        """测试时间边界条件"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 测试1：刚好等于latest_entry_time时
+        self.strategy.latest_entry_time = "09:30:00"
+        context = self.setup_context(symbol, state=StrategyState.WAITING_ENTRY, entry_order_id="test_order")
+        
+        exact_time_bar = self.mock_generator.create_mock_bar(
+            symbol, 
+            datetime_obj=datetime.now().replace(hour=9, minute=30, second=1, microsecond=0)
+        )
+        
+        self.trigger_bar_update(exact_time_bar)
+        time.sleep(0.01)
+        
+        # 验证：应该取消订单
+        context = self.strategy.get_context(symbol)
+        assert context.state == StrategyState.IDLE, "等于latest_entry_time时应该取消订单"
+        
+        # 测试2：刚好等于one_min_before_morning_closing_start时（11:27:00）
+        context = self.setup_context(symbol, state=StrategyState.WAITING_EXIT, exit_order_id="test_exit_order")
+        context.exit_start_time = datetime.now() - timedelta(minutes=1)
+        
+        exact_closing_bar = self.mock_generator.create_mock_bar(
+            symbol, 
+            datetime_obj=datetime.now().replace(hour=11, minute=27, second=0, microsecond=0)  # 11:27:00
+        )
+        
+        # Mock _get_current_bar
+        current_bar = self.mock_generator.create_mock_bar(symbol, close_price=100.0)
+        original_get_current_bar = self.strategy._get_current_bar
+        self.strategy._get_current_bar = lambda s: current_bar if s == symbol else None
+        
+        try:
+            self.trigger_bar_update(exact_closing_bar)
+            time.sleep(0.01)
+            
+            # 验证：应该进入WAITING_TIMEOUT_EXIT状态
+            self.assert_context_state(symbol, "waiting_timeout_exit")
+            
+        finally:
+            self.strategy._get_current_bar = original_get_current_bar
+        
+        # 测试3：刚好等于morning_closing_start时（11:28:00）
+        context = self.setup_context(symbol, state=StrategyState.WAITING_TIMEOUT_EXIT, exit_order_id="test_timeout_exit_order")
+        context.timeout_exit_start_time = datetime.now() - timedelta(minutes=1)
+        
+        exact_morning_closing_bar = self.mock_generator.create_mock_bar(
+            symbol, 
+            datetime_obj=datetime.now().replace(hour=11, minute=28, second=0, microsecond=0)  # 11:28:00
+        )
+        
+        self.trigger_bar_update(exact_morning_closing_bar)
+        time.sleep(0.01)
+        
+        # 验证：应该进入WAITING_EXIT状态（生成market order）
+        self.assert_context_state(symbol, "waiting_exit")
+        
+        # 验证：应该是market order
+        final_exit_order = self.strategy.gateway.get_order_by_id(context.exit_order_id)
+        assert final_exit_order is not None, "应该存在最终的exit订单"
+        assert final_exit_order.type == OrderType.MARKET, "morning_closing_start时应该使用market order"
+        
+        print("✅ 时间边界条件测试通过")
+
+    def test_gap_down_morning_closing_flow(self):
+        """测试Gap Down策略的上午收盘流程"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'down'
+        
+        # 设置较短的超时时间
+        self.strategy.max_exit_wait_time_gap_down = 2  # 2分钟超时
+        self.strategy.timeout_exit_max_period = 1      # 1分钟timeout exit等待时间
+        
+        # 1. 设置初始状态为waiting_exit
+        context = self.setup_context(symbol, state=StrategyState.WAITING_EXIT, exit_order_id="test_exit_order")
+        
+        # 2. 第一阶段：在11:27:30触发timeout exit（晚于11:27:00）
+        first_bar = self.mock_generator.create_mock_bar(
+            symbol, 
+            datetime_obj=datetime.now().replace(hour=11, minute=27, second=30, microsecond=0)  # 11:27:30
+        )
+        context.exit_start_time = first_bar.datetime - timedelta(minutes=3)  # 模拟超时
+        
+        # Mock _get_current_bar
+        current_bar = self.mock_generator.create_mock_bar(symbol, close_price=100.0)
+        original_get_current_bar = self.strategy._get_current_bar
+        self.strategy._get_current_bar = lambda s: current_bar if s == symbol else None
+        
+        try:
+            self.trigger_bar_update(first_bar)
+            time.sleep(0.01)
+            
+            # 验证：应该进入WAITING_TIMEOUT_EXIT状态
+            self.assert_context_state(symbol, "waiting_timeout_exit")
+            
+            # 3. 第二阶段：在11:29:00触发market exit（在morning_closing_time范围内）
+            context = self.strategy.get_context(symbol)
+            context.timeout_exit_start_time = datetime.now() - timedelta(minutes=2)  # 模拟timeout exit超时
+            
+            second_bar = self.mock_generator.create_mock_bar(
+                symbol, 
+                datetime_obj=datetime.now().replace(hour=11, minute=29, second=0, microsecond=0)  # 11:29:00
+            )
+            
+            self.trigger_bar_update(second_bar)
+            time.sleep(0.01)
+            
+            # 验证：应该进入WAITING_EXIT状态（生成market order）
+            self.assert_context_state(symbol, "waiting_exit")
+            
+            # 验证：最终应该是market order
+            final_exit_order = self.strategy.gateway.get_order_by_id(context.exit_order_id)
+            assert final_exit_order is not None, "应该存在最终的exit订单"
+            assert final_exit_order.type == OrderType.MARKET, "morning_closing_time时应该使用market order"
+            
+            print("✅ Gap Down策略的上午收盘流程测试通过:")
+            print(f"   11:27:30 - 进入WAITING_TIMEOUT_EXIT状态")
+            print(f"   11:29:00 - 生成market order")
+            print(f"   最终订单类型: {final_exit_order.type.value}")
+            
+        finally:
+            self.strategy._get_current_bar = original_get_current_bar
+
 
 def run_all_tests():
     """运行所有 VWAP Failure 策略测试"""
@@ -1569,9 +1951,9 @@ def run_all_tests():
     
     # 运行所有测试类
     test_classes = [
-        # VWAPFailureStrategyTest,
+        VWAPFailureStrategyTest,
         TestVWAPFailureSpecificLogic,
-        TestVWAPFailureCompleteFlow
+        # TestVWAPFailureCompleteFlow
     ]
     
     all_results = []
