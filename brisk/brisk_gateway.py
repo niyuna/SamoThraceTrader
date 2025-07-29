@@ -322,7 +322,8 @@ class BriskGateway(BaseGateway):
                 date_str = datetime.now(ZoneInfo("Asia/Tokyo")).strftime("%Y%m%d")
             
             # 创建当天0点的时间
-            base_date = datetime.strptime(date_str, "%Y%m%d").replace(tzinfo=ZoneInfo("Asia/Tokyo"))
+            base_date = datetime.strptime(date_str, "%Y%m%d")
+            #.replace(tzinfo=ZoneInfo("Asia/Tokyo"))
             
             # 将微秒转换为秒，然后加到基础时间上
             seconds = micro_seconds / 1_000_000  # 微秒转秒

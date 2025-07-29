@@ -711,7 +711,7 @@ def main():
             market_cap_threshold=100_000_000_000,  # 1000亿日元
             latest_entry_time="11:23:00",  # 最晚入场时间
             timeout_exit_max_period=5, # 超时退出最大等待时间
-            single_stock_max_position=1_000_000, # 单只股票最大持仓量
+            single_stock_max_position=500_000, # 单只股票最大持仓量
 
             # disable it for now
             gap_up_threshold=0.5,      # 2% gap up 
