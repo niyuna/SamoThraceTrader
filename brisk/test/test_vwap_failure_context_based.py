@@ -1986,6 +1986,97 @@ class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest,
         finally:
             self.strategy._get_current_bar = original_get_current_bar
 
+    def test_timeout_trade_count_entry_price_check(self):
+        """测试timeout_trade_count > 0时的entry价格范围检查"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 设置初始状态为idle，但timeout_trade_count > 0
+        context = self.setup_context(symbol, state=StrategyState.IDLE, timeout_trade_count=1)
+        
+        # 创建技术指标
+        indicators = self.mock_generator.create_mock_indicators(
+            vwap=100.0, atr_14=1.0, below_vwap_count=3
+        )
+        
+        # 测试1：entry_price在bar范围内，应该允许entry
+        bar_in_range = self.mock_generator.create_mock_bar(
+            symbol, 
+            open_price=99.0, 
+            high_price=102.0, 
+            low_price=98.0, 
+            close_price=100.5
+        )
+        
+        # 计算entry价格（应该在98-102范围内）
+        entry_price = self.strategy._calculate_entry_price(context, bar_in_range, indicators)
+        print(f"Entry price: {entry_price:.2f}, Bar range: [{bar_in_range.low_price:.2f}, {bar_in_range.high_price:.2f}]")
+        
+        # 触发bar更新
+        self.trigger_bar_update(bar_in_range)
+        time.sleep(0.01)
+        
+        # 验证：应该生成entry订单
+        context = self.strategy.get_context(symbol)
+        assert context.state == StrategyState.WAITING_ENTRY, "entry_price在范围内时应该允许entry"
+        assert context.entry_order_id != "", "应该生成entry订单"
+        
+        # 重置状态
+        self.setup_context(symbol, state=StrategyState.IDLE, timeout_trade_count=1, entry_order_id="")
+        
+        # 测试2：entry_price超出bar范围，应该跳过entry
+        bar_out_of_range = self.mock_generator.create_mock_bar(
+            symbol, 
+            open_price=95.0, 
+            high_price=97.0, 
+            low_price=94.0, 
+            close_price=96.0
+        )
+        
+        # 触发bar更新
+        self.trigger_bar_update(bar_out_of_range)
+        time.sleep(0.01)
+        
+        # 验证：应该跳过entry
+        context = self.strategy.get_context(symbol)
+        assert context.state == StrategyState.IDLE, "entry_price超出范围时应该跳过entry"
+        assert context.entry_order_id == "", "不应该生成entry订单"
+        
+        print("✅ timeout_trade_count > 0时的entry价格范围检查测试通过")
+
+    def test_timeout_trade_count_zero_no_check(self):
+        """测试timeout_trade_count = 0时不影响正常entry"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 设置初始状态为idle，timeout_trade_count = 0
+        context = self.setup_context(symbol, state=StrategyState.IDLE, timeout_trade_count=0)
+        
+        # 创建技术指标
+        indicators = self.mock_generator.create_mock_indicators(
+            vwap=100.0, atr_14=1.0, below_vwap_count=3
+        )
+        
+        # 创建bar（无论价格范围如何）
+        bar = self.mock_generator.create_mock_bar(
+            symbol, 
+            open_price=95.0, 
+            high_price=97.0, 
+            low_price=94.0, 
+            close_price=96.0
+        )
+        
+        # 触发bar更新
+        self.trigger_bar_update(bar)
+        time.sleep(0.01)
+        
+        # 验证：应该正常生成entry订单（不受价格范围限制）
+        context = self.strategy.get_context(symbol)
+        assert context.state == StrategyState.WAITING_ENTRY, "timeout_trade_count = 0时应该正常允许entry"
+        assert context.entry_order_id != "", "应该生成entry订单"
+        
+        print("✅ timeout_trade_count = 0时不影响正常entry测试通过")
+
 
 def run_all_tests():
     """运行所有 VWAP Failure 策略测试"""
@@ -1993,9 +2084,9 @@ def run_all_tests():
     
     # 运行所有测试类
     test_classes = [
-        # VWAPFailureStrategyTest,
-        # TestVWAPFailureSpecificLogic,
-        TestVWAPFailureCompleteFlow
+        VWAPFailureStrategyTest,
+        TestVWAPFailureSpecificLogic,
+        # TestVWAPFailureCompleteFlow
     ]
     
     all_results = []

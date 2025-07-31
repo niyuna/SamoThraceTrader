@@ -375,7 +375,6 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         symbol = bar.symbol
         context = self.get_context(symbol)
         
-
         # 更新 entry 订单
         # for entry case, if it's alreadsy past the latest_entry_time, cancel the the existing order if any instead of updating the price
         if context.state == StrategyState.WAITING_ENTRY and context.entry_order_id:
@@ -489,6 +488,19 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         gap_dir = self.gap_direction.get(bar.symbol, 'none')
         if gap_dir == 'none':
             return
+        
+        # 新增：timeout_trade_count 检查
+        if context.timeout_trade_count > 0:
+            # 计算当前entry价格
+            entry_price = self._calculate_entry_price(context, bar, indicators)
+            
+            # 检查entry_price是否在当前bar的high和low范围内
+            if not (bar.low_price <= entry_price <= bar.high_price):
+                self.write_log(f"跳过entry信号: {context.symbol}, "
+                              f"entry_price: {entry_price:.2f}, "
+                              f"bar range: [{bar.low_price:.2f}, {bar.high_price:.2f}], "
+                              f"timeout_trade_count: {context.timeout_trade_count}")
+                return
         
         vwap = indicators['vwap']
         atr = indicators['atr_14']
