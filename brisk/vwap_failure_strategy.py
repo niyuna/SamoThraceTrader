@@ -210,6 +210,18 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         elif order.status == Status.ALLTRADED:
             # exit 订单完全成交，交易完成，增加交易次数
             context.trade_count += 1
+            
+            # 检查是否应该增加timeout_trade_count
+            should_increment_timeout_count = (
+                order.type == OrderType.MARKET or 
+                context.state == StrategyState.WAITING_TIMEOUT_EXIT
+            )
+            
+            if should_increment_timeout_count:
+                context.timeout_trade_count += 1
+                self.write_log(f"Timeout trade completed for {context.symbol}, "
+                              f"timeout_trade_count: {context.timeout_trade_count}")
+            
             self.update_context_state(context.symbol, StrategyState.IDLE)
             context.exit_order_id = ""
             self.write_log(f"_handle_exit_order_update: Trade completed for {context.symbol}, count: {context.trade_count}")

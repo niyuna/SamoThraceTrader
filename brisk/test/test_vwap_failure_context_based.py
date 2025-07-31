@@ -979,6 +979,8 @@ class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest,
         # 5. 验证最终状态
         self.assert_context_state(symbol, "idle")
         self.assert_context_field(symbol, "trade_count", 1)
+        # 新增：验证timeout_trade_count
+        self.assert_context_field(symbol, "timeout_trade_count", 0)
         
         # 6. 验证状态转换序列
         self.snapshot_manager.assert_state_transition(symbol, "idle", "waiting_entry", 1)
@@ -1618,6 +1620,14 @@ class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest,
             print(f"   11:29:00 - 生成market order")
             print(f"   最终订单类型: {final_exit_order.type.value}")
             
+            # 新增：模拟market order成交并验证timeout_trade_count
+            final_trade = self.mock_generator.create_mock_order(
+                symbol, Status.ALLTRADED, order_id=context.exit_order_id
+            )
+            self.trigger_order_update(final_trade)
+            time.sleep(0.01)
+            self.assert_context_field(symbol, "timeout_trade_count", 1)
+            
         finally:
             self.strategy._get_current_bar = original_get_current_bar
 
@@ -1722,6 +1732,14 @@ class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest,
             assert timeout_exit_order is not None, "应该存在timeout exit订单"
             assert timeout_exit_order.type == OrderType.LIMIT, "timeout exit订单应该是限价单"
             
+            # 新增：模拟timeout exit limit order成交并验证timeout_trade_count
+            timeout_trade = self.mock_generator.create_mock_order(
+                symbol, Status.ALLTRADED, order_id=context.exit_order_id
+            )
+            self.trigger_order_update(timeout_trade)
+            time.sleep(0.01)
+            self.assert_context_field(symbol, "timeout_trade_count", 1)
+            
             print("✅ WAITING_EXIT状态下进入timeout exit流程测试通过")
             
         finally:
@@ -1759,6 +1777,14 @@ class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest,
         market_exit_order = self.strategy.gateway.get_order_by_id(context.exit_order_id)
         assert market_exit_order is not None, "应该存在market exit订单"
         assert market_exit_order.type == OrderType.MARKET, "morning_closing_time时应该使用market order"
+        
+        # 新增：模拟market order成交并验证timeout_trade_count
+        market_trade = self.mock_generator.create_mock_order(
+            symbol, Status.ALLTRADED, order_id=context.exit_order_id
+        )
+        self.trigger_order_update(market_trade)
+        time.sleep(0.01)
+        self.assert_context_field(symbol, "timeout_trade_count", 1)
         
         print("✅ WAITING_TIMEOUT_EXIT状态下在morning_closing_time时使用market order测试通过")
 
@@ -1811,6 +1837,14 @@ class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest,
             final_exit_order = self.strategy.gateway.get_order_by_id(context.exit_order_id)
             assert final_exit_order is not None, "应该存在最终的exit订单"
             assert final_exit_order.type == OrderType.MARKET, "正常超时流程最终应该使用market order"
+            
+            # 新增：模拟market order成交并验证timeout_trade_count
+            final_trade = self.mock_generator.create_mock_order(
+                symbol, Status.ALLTRADED, order_id=context.exit_order_id
+            )
+            self.trigger_order_update(final_trade)
+            time.sleep(0.01)
+            self.assert_context_field(symbol, "timeout_trade_count", 1)
             
             print("✅ WAITING_EXIT状态下的正常超时流程测试通过")
             
@@ -1941,6 +1975,14 @@ class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest,
             print(f"   11:29:00 - 生成market order")
             print(f"   最终订单类型: {final_exit_order.type.value}")
             
+            # 新增：模拟market order成交并验证timeout_trade_count
+            final_trade = self.mock_generator.create_mock_order(
+                symbol, Status.ALLTRADED, order_id=context.exit_order_id
+            )
+            self.trigger_order_update(final_trade)
+            time.sleep(0.01)
+            self.assert_context_field(symbol, "timeout_trade_count", 1)
+            
         finally:
             self.strategy._get_current_bar = original_get_current_bar
 
@@ -1951,9 +1993,9 @@ def run_all_tests():
     
     # 运行所有测试类
     test_classes = [
-        VWAPFailureStrategyTest,
-        TestVWAPFailureSpecificLogic,
-        # TestVWAPFailureCompleteFlow
+        # VWAPFailureStrategyTest,
+        # TestVWAPFailureSpecificLogic,
+        TestVWAPFailureCompleteFlow
     ]
     
     all_results = []

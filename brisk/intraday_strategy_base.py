@@ -42,6 +42,7 @@ class StockContext:
     symbol: str
     state: StrategyState = StrategyState.IDLE
     trade_count: int = 0                    # 当日交易次数
+    timeout_trade_count: int = 0            # 完成的timeout exit交易数量
     entry_order_id: str = ""                # entry订单ID
     exit_order_id: str = ""                 # exit订单ID
     entry_price: float = 0.0                # entry成交价格
@@ -152,6 +153,7 @@ class IntradayStrategyBase:
         for context in self.contexts.values():
             context.state = StrategyState.IDLE
             context.trade_count = 0
+            context.timeout_trade_count = 0
             context.entry_order_id = ""
             context.exit_order_id = ""
             context.entry_price = 0.0
@@ -273,7 +275,6 @@ class IntradayStrategyBase:
             self.write_log(f"Cancel order: {order_id}")
             
             # 等待一小段时间确保撤单处理
-            import time
             time.sleep(0.1)
             
             return True
