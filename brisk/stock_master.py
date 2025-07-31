@@ -1,11 +1,18 @@
 import requests
 import json
-import logging
+# import logging
+from datetime import datetime
+from loguru import logger
 
-logger = logging.getLogger(__name__)
+# logger = logging.getLogger(__name__)
 
-def get_stockmaster(url = 'http://127.0.0.1:8001/metadata/stockmaster'):
+def get_stockmaster(url = 'http://127.0.0.1:8001/metadata/stockmaster', date = None):
     try:
+        if date is None:
+            current_date = datetime.now()
+            date = current_date.strftime("%Y%m%d")
+        url = url + f"_{date}"
+        logger.info(f"getting stockmaster from {url}")
         response = requests.get(url)
         j = response.json()
         j = json.loads(j)
