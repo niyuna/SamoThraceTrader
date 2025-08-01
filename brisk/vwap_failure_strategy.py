@@ -389,7 +389,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         # 更新 exit 订单
         elif (context.state == StrategyState.WAITING_EXIT or context.state == StrategyState.WAITING_TIMEOUT_EXIT) and context.exit_order_id:
             if not self._check_exit_timeout(context, bar):
-                self._update_exit_order_price(context, bar, indicators)
+                self._update_exit_order_price(context, bar, indicators, change_only=True)
 
     def _check_exit_timeout(self, context, bar):
         """检查 exit 订单是否超时"""
@@ -414,7 +414,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             timeout_exit_max_period = timedelta(minutes=self.timeout_exit_max_period)
             if (current_time - context.timeout_exit_start_time) >= timeout_exit_max_period or self._is_within_morning_closing_time(current_time):
                 self._force_market_exit(context)
-                return True
+            return True
         
         return False
 

@@ -51,6 +51,7 @@ class StockContext:
     timeout_exit_start_time: datetime = None  # timeout exit开始时间
     max_exit_wait_time: timedelta = timedelta(minutes=5)  # exit订单最大等待时间
     position_size: int = 100                # 持仓数量
+    exit_price: float = 0.0                # exit成交价格
 
 
 class IntradayStrategyBase:
@@ -312,16 +313,26 @@ class IntradayStrategyBase:
 
     def _update_exit_order_price(self, context, bar, indicators, change_only: bool = False):
         """更新 exit 订单价格 - 子类可以重写"""
-        # 计算新的 exit 价格 - 子类需要实现具体的价格计算逻辑
-        # old_exit_price = context.exit_price
+        # 安全性验证：确保在 WAITING_EXIT 状态下调用
+        if context.state != StrategyState.WAITING_EXIT:
+            self.write_log(f"Warning: _update_exit_order_price called in state {context.state.value} for {context.symbol}")
+            return
+        
+        # 安全性验证：确保 exit_price 和 exit_order_id 已正确设置
+        if context.exit_price <= 0 or not context.exit_order_id:
+            self.write_log(f"Warning: Invalid exit_price ({context.exit_price}) or exit_order_id ({context.exit_order_id}) for {context.symbol}")
+            return
+        
+        # 计算新的 exit 价格
+        old_exit_price = context.exit_price  # 当前未成交订单的下单价格
         new_exit_price = self._calculate_exit_price(context, bar, indicators)
         
-        # 撤单并重新下单
-        # if new_exit_price != old_exit_price or not change_only:
-        self.write_log(f"更新 exit 订单价格: {context.symbol} 新价格: {new_exit_price:.2f}")
-        if self._cancel_order_safely(context.exit_order_id, context.symbol):
-            # 撤单成功，重新下单 - 子类需要实现具体的下单逻辑
-            self._execute_exit_with_direction(context, bar, new_exit_price)
+        self.write_log(f"updating exit price for {context.symbol} old exit price: {old_exit_price:.2f} new exit price: {new_exit_price:.2f}")
+        if new_exit_price != old_exit_price or not change_only:
+            # 撤单并重新下单
+            if self._cancel_order_safely(context.exit_order_id, context.symbol):
+                # 撤单成功，重新下单 - 子类需要实现具体的下单逻辑
+                self._execute_exit_with_direction(context, bar, new_exit_price)
 
     # ==================== 子类需要实现的抽象方法 ====================
     

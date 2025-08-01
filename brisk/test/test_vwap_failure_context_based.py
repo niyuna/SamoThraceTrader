@@ -2202,6 +2202,138 @@ class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest,
         
         print("✅ _update_entry_order_price的安全性验证测试通过")
 
+    def test_update_exit_order_price_change_only(self):
+        """测试_update_exit_order_price的change_only参数"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 设置初始状态为 WAITING_EXIT，并确保 exit_price 和 exit_order_id 正确设置
+        context = self.setup_context(symbol, state=StrategyState.WAITING_EXIT, exit_order_id="MOCK_EXIT_0")
+        context.exit_price = 99.1  # 当前未成交订单的下单价格
+        
+        # 创建初始技术指标
+        indicators_initial = self.mock_generator.create_mock_indicators(
+            vwap=100.0, atr_14=1.0, below_vwap_count=3
+        )
+        
+        # 测试1：价格相同的情况（使用相同的技术指标）
+        bar_same_price = self.mock_generator.create_mock_bar(
+            symbol, 
+            open_price=100.0, 
+            high_price=101.0, 
+            low_price=99.0, 
+            close_price=100.0
+        )
+        
+        # 记录更新前的订单ID
+        original_order_id = context.exit_order_id
+        print(f"context: {context}")
+        
+        # 调用_update_exit_order_price with change_only=True
+        self.strategy._update_exit_order_price(context, bar_same_price, indicators_initial, change_only=True)
+        
+        # 验证：价格相同时订单ID应该保持不变
+        print(f"context.exit_order_id: {context.exit_order_id}, original_order_id: {original_order_id}, context: {context}")
+        assert context.exit_order_id == original_order_id, "价格相同时订单ID应该保持不变"
+        
+        # 测试2：价格不同的情况（使用更新的技术指标）
+        indicators_updated = self.mock_generator.create_mock_indicators(
+            vwap=98.0, atr_14=1.5, below_vwap_count=3  # 更新VWAP和ATR
+        )
+        
+        bar_different_price = self.mock_generator.create_mock_bar(
+            symbol, 
+            open_price=98.0, 
+            high_price=99.0, 
+            low_price=97.0, 
+            close_price=98.0
+        )
+        
+        # 调用_update_exit_order_price with change_only=True
+        self.strategy._update_exit_order_price(context, bar_different_price, indicators_updated, change_only=True)
+        
+        # 验证：价格不同时订单ID应该发生变化
+        assert context.exit_order_id != original_order_id, "价格不同时订单ID应该发生变化"
+        
+        # 测试3：对比测试（不使用change_only=True）
+        # 重置状态
+        context = self.setup_context(symbol, state=StrategyState.WAITING_EXIT, exit_order_id="MOCK_EXIT_1")
+        context.exit_price = 98.0  # 设置相同的下单价格
+        
+        # 调用_update_exit_order_price without change_only=True
+        self.strategy._update_exit_order_price(context, bar_same_price, indicators_initial)
+        
+        # 验证：即使价格相同，不使用change_only=True时订单ID也会变化
+        assert context.exit_order_id != "MOCK_EXIT_1", "不使用change_only=True时，即使价格相同订单ID也会变化"
+        
+        print("✅ _update_exit_order_price的change_only参数测试通过")
+
+    def test_update_exit_order_price_safety_checks(self):
+        """测试_update_exit_order_price的安全性验证"""
+        symbol = self.test_symbol
+        
+        # 测试1：在非 WAITING_EXIT 状态下调用
+        context = self.setup_context(symbol, state=StrategyState.IDLE, exit_order_id="MOCK_EXIT_0")
+        context.exit_price = 98.0
+        
+        indicators = self.mock_generator.create_mock_indicators(vwap=100.0, atr_14=1.0)
+        bar = self.mock_generator.create_mock_bar(symbol, close_price=100.0)
+        
+        # 调用_update_exit_order_price
+        self.strategy._update_exit_order_price(context, bar, indicators)
+        
+        # 验证：应该被安全验证阻止，订单ID不变
+        assert context.exit_order_id == "MOCK_EXIT_0", "在非 WAITING_EXIT 状态下应该被阻止"
+        
+        # 测试2：exit_price 未正确设置
+        context = self.setup_context(symbol, state=StrategyState.WAITING_EXIT, exit_order_id="MOCK_EXIT_1")
+        context.exit_price = 0.0  # 未正确设置
+        
+        # 调用_update_exit_order_price
+        self.strategy._update_exit_order_price(context, bar, indicators)
+        
+        # 验证：应该被安全验证阻止，订单ID不变
+        assert context.exit_order_id == "MOCK_EXIT_1", "exit_price 未正确设置时应该被阻止"
+        
+        # 测试3：exit_order_id 未正确设置
+        context = self.setup_context(symbol, state=StrategyState.WAITING_EXIT, exit_order_id="")
+        context.exit_price = 98.0
+        
+        # 调用_update_exit_order_price
+        self.strategy._update_exit_order_price(context, bar, indicators)
+        
+        # 验证：应该被安全验证阻止
+        assert context.exit_order_id == "", "exit_order_id 未正确设置时应该被阻止"
+        
+        print("✅ _update_exit_order_price的安全性验证测试通过")
+
+    def test_update_exit_order_price_waiting_timeout_exit_state(self):
+        """测试在 WAITING_TIMEOUT_EXIT 状态下不会调用价格更新"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 设置初始状态为 WAITING_TIMEOUT_EXIT
+        context = self.setup_context(symbol, state=StrategyState.WAITING_TIMEOUT_EXIT, exit_order_id="MOCK_TIMEOUT_EXIT_0")
+        context.exit_price = 99.0  # timeout exit 订单的下单价格
+        
+        # 创建技术指标
+        indicators = self.mock_generator.create_mock_indicators(
+            vwap=100.0, atr_14=1.0, below_vwap_count=3
+        )
+        
+        bar = self.mock_generator.create_mock_bar(symbol, close_price=100.0)
+        
+        # 记录更新前的订单ID
+        original_order_id = context.exit_order_id
+        
+        # 调用_update_exit_order_price
+        self.strategy._update_exit_order_price(context, bar, indicators)
+        
+        # 验证：在 WAITING_TIMEOUT_EXIT 状态下应该被安全验证阻止
+        assert context.exit_order_id == original_order_id, "在 WAITING_TIMEOUT_EXIT 状态下应该被阻止"
+        
+        print("✅ _update_exit_order_price在WAITING_TIMEOUT_EXIT状态下的测试通过")
+
 
 def run_all_tests():
     """运行所有 VWAP Failure 策略测试"""
@@ -2209,8 +2341,8 @@ def run_all_tests():
     
     # 运行所有测试类
     test_classes = [
-        # VWAPFailureStrategyTest,
-        # TestVWAPFailureSpecificLogic,
+        VWAPFailureStrategyTest,
+        TestVWAPFailureSpecificLogic,
         TestVWAPFailureCompleteFlow
     ]
     
