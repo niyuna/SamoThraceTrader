@@ -219,10 +219,13 @@ class IntradayStrategyBase:
             if offset == Offset.OPEN:
                 # Entry 订单
                 context.entry_order_id = order_id
+                context.entry_price = price
+                context.entry_time = datetime.now()
                 self.update_context_state(context.symbol, StrategyState.WAITING_ENTRY)
             else:
                 # Exit 订单
                 context.exit_order_id = order_id
+                context.exit_price = price
                 context.exit_start_time = datetime.now()
                 self.update_context_state(context.symbol, StrategyState.WAITING_EXIT)
         
@@ -284,19 +287,28 @@ class IntradayStrategyBase:
 
     def _update_entry_order_price(self, context, bar, indicators, change_only: bool = False):
         """更新 entry 订单价格 - 子类可以重写"""
+        # 安全性验证：确保在 WAITING_ENTRY 状态下调用
+        if context.state != StrategyState.WAITING_ENTRY:
+            self.write_log(f"Warning: _update_entry_order_price called in state {context.state.value} for {context.symbol}")
+            return
+        
+        # 安全性验证：确保 entry_price 和 entry_order_id 已正确设置
+        if context.entry_price <= 0 or not context.entry_order_id:
+            self.write_log(f"Warning: Invalid entry_price ({context.entry_price}) or entry_order_id ({context.entry_order_id}) for {context.symbol}")
+            return
+        
         # 计算新的 entry 价格 - 子类需要实现具体的价格计算逻辑
-        old_entry_price = context.entry_price
+        old_entry_price = context.entry_price  # 当前未成交订单的下单价格
         new_entry_price = self._calculate_entry_price(context, bar, indicators)
-        # not needed any more because we always ensure the price is normalized in calculate_entry_price/calculate_exit_price
-        # if change_only:
-            # old_entry_price = normalize_price(context.symbol, old_entry_price)
 
+        self.write_log(f"updating entry price for {context.symbol} old entry price: {old_entry_price:.2f} new entry price: {new_entry_price:.2f}")
         if new_entry_price != old_entry_price or not change_only:
-            self.write_log(f"更新 entry 订单价格: {context.symbol} 旧价格: {old_entry_price:.2f} 新价格: {new_entry_price:.2f}")
             # 撤单并重新下单
             if self._cancel_order_safely(context.entry_order_id, context.symbol):
                 # 撤单成功，重新下单 - 子类需要实现具体的下单逻辑
                 self._execute_entry_with_direction(context, bar, new_entry_price)
+        else:
+            self.write_log(f"entry price not changed for {context.symbol}, no need to update")
 
     def _update_exit_order_price(self, context, bar, indicators, change_only: bool = False):
         """更新 exit 订单价格 - 子类可以重写"""
