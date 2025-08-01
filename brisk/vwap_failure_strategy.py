@@ -384,7 +384,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
                 context.entry_order_id = ""
                 self.update_context_state(symbol, StrategyState.IDLE)
                 return
-            self._update_entry_order_price(context, bar, indicators)
+            self._update_entry_order_price(context, bar, indicators, change_only=True)
         
         # 更新 exit 订单
         elif (context.state == StrategyState.WAITING_EXIT or context.state == StrategyState.WAITING_TIMEOUT_EXIT) and context.exit_order_id:
@@ -512,7 +512,8 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             
             if below_vwap_count >= self._get_failure_threshold(bar.symbol):
                 # 在VWAP + ATR * entry_factor位置做空
-                short_price = vwap + (atr * self._get_entry_factor(bar.symbol))
+                # short_price = vwap + (atr * self._get_entry_factor(bar.symbol))
+                short_price = self._calculate_entry_price(context, bar, indicators)
                 self._execute_entry(context, bar, short_price, Direction.SHORT)
                 
         elif gap_dir == 'down':
@@ -521,7 +522,8 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             
             if above_vwap_count >= self._get_failure_threshold(bar.symbol):
                 # 在VWAP - ATR * entry_factor位置做多
-                long_price = vwap - (atr * self._get_entry_factor(bar.symbol))
+                # long_price = vwap - (atr * self._get_entry_factor(bar.symbol))
+                long_price = self._calculate_entry_price(context, bar, indicators)
                 self._execute_entry(context, bar, long_price, Direction.LONG)
     
     def _is_within_trading_time(self, bar_datetime):
