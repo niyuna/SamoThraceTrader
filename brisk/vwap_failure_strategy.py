@@ -73,7 +73,8 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         """基于市值预筛选股票"""
         for symbol, stock_info in self.stock_master.items():
             market_cap = stock_info.get('market_cap', 0)
-            if market_cap >= self.market_cap_threshold:
+            prefix = stock_info.get('prefix', '')
+            if market_cap >= self.market_cap_threshold and prefix != 'E':
                 self.market_cap_eligible.add(symbol)
                 # print(f"股票 {symbol} 通过市值筛选: {market_cap:,.0f} 日元")
         
