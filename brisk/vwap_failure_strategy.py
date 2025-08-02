@@ -19,8 +19,11 @@ from common.trading_common import next_tick_price, TypicalTimes
 class VWAPFailureStrategy(IntradayStrategyBase):
     """VWAP Failure 日内交易策略"""
     
-    def __init__(self, use_mock_gateway=True):
+    def __init__(self, use_mock_gateway=True, enable_delayed_entry=False):
         super().__init__(use_mock_gateway=use_mock_gateway)
+        
+        # 设置延迟执行标志
+        self.enable_delayed_entry = enable_delayed_entry
         
         # 策略参数
         self.market_cap_threshold = 100_000_000_000  # 1000亿日元
@@ -83,14 +86,14 @@ class VWAPFailureStrategy(IntradayStrategyBase):
     def on_tick(self, event):
         """重写tick处理逻辑"""
         tick = event.data
-        
+
         # 检查是否是新的一天（在第一个tick时就检查）
         self._check_new_trading_day(tick.datetime)
         
         # 只处理市值符合条件的股票
         if tick.symbol not in self.market_cap_eligible:
             return
-            
+
         # 记录第一个tick价格并评估gap条件
         if tick.symbol not in self.first_tick_prices:
             self.first_tick_prices[tick.symbol] = tick.last_price
@@ -511,20 +514,48 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             below_vwap_count = indicators['below_vwap_count']
             
             if below_vwap_count >= self._get_failure_threshold(bar.symbol):
-                # 在VWAP + ATR * entry_factor位置做空
-                # short_price = vwap + (atr * self._get_entry_factor(bar.symbol))
-                short_price = self._calculate_entry_price(context, bar, indicators)
-                self._execute_entry(context, bar, short_price, Direction.SHORT)
+                # 计算目标价格
+                target_price = self._calculate_entry_price(context, bar, indicators)
+                
+                # 新增：延迟执行逻辑
+                if self.enable_delayed_entry:
+                    # 检查价格距离
+                    current_price = bar.close_price
+                    if self._is_price_within_atr_range(current_price, target_price, atr, atr_multiplier=2.0):
+                        # 距离在2个ATR以内，直接执行
+                        self._execute_entry(context, bar, target_price, Direction.SHORT)
+                        # self.write_log(f"execute entry: {context.symbol} 当前价格={current_price:.2f} 目标价格={target_price:.2f}")
+                    else:
+                        # 距离超过2个ATR，设置触发价格
+                        self._set_trigger_prices(context, bar, indicators, target_price)
+                        self.write_log(f"设置延迟执行: {context.symbol} 当前价格={current_price:.2f} 目标价格={target_price:.2f}")
+                else:
+                    # 原有逻辑：直接执行
+                    self._execute_entry(context, bar, target_price, Direction.SHORT)
                 
         elif gap_dir == 'down':
             # Gap Down策略：寻找VWAP failure做多机会
             above_vwap_count = indicators['above_vwap_count']
             
             if above_vwap_count >= self._get_failure_threshold(bar.symbol):
-                # 在VWAP - ATR * entry_factor位置做多
-                # long_price = vwap - (atr * self._get_entry_factor(bar.symbol))
-                long_price = self._calculate_entry_price(context, bar, indicators)
-                self._execute_entry(context, bar, long_price, Direction.LONG)
+                # 计算目标价格
+                target_price = self._calculate_entry_price(context, bar, indicators)
+                
+                # 新增：延迟执行逻辑
+                if self.enable_delayed_entry:
+                    # 检查价格距离
+                    current_price = bar.close_price
+                    if self._is_price_within_atr_range(current_price, target_price, atr, atr_multiplier=2.0):
+                        # 距离在2个ATR以内，直接执行
+                        self._execute_entry(context, bar, target_price, Direction.LONG)
+                        # self.write_log(f"execute entry: {context.symbol} 当前价格={current_price:.2f} 目标价格={target_price:.2f}")
+                    else:
+                        # 距离超过2个ATR，设置触发价格
+                        self._set_trigger_prices(context, bar, indicators, target_price)
+                        self.write_log(f"设置延迟执行: {context.symbol} 当前价格={current_price:.2f} 目标价格={target_price:.2f}")
+                else:
+                    # 原有逻辑：直接执行
+                    self._execute_entry(context, bar, target_price, Direction.LONG)
     
     def _is_within_trading_time(self, bar_datetime):
         """检查是否在允许交易的时间范围内"""
@@ -730,7 +761,7 @@ def main():
     """主函数 - 测试VWAP Failure策略"""
     print("启动VWAP Failure策略 ...")
     
-    strategy = VWAPFailureStrategy(use_mock_gateway=False)
+    strategy = VWAPFailureStrategy(use_mock_gateway=False, enable_delayed_entry=True)
     
     try:
         # 设置策略参数

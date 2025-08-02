@@ -52,6 +52,9 @@ class StockContext:
     max_exit_wait_time: timedelta = timedelta(minutes=5)  # exit订单最大等待时间
     position_size: int = 100                # 持仓数量
     exit_price: float = 0.0                # exit成交价格
+    # 新增：延迟执行相关字段
+    entry_trigger_price: float = 0.0        # 触发价格（距离目标价格2个ATR）
+    entry_trigger_order_price: float = 0.0  # 触发时的订单价格
 
 
 class IntradayStrategyBase:
@@ -77,6 +80,9 @@ class IntradayStrategyBase:
         
         # 新增：单只股票最大持仓量
         self.single_stock_max_position = 1000_000
+        
+        # 新增：延迟执行标志
+        self.enable_delayed_entry = False
         
         from vnpy.trader.setting import SETTINGS
         # by default, will read ".vntrader/vt_setting.json", set in setting.py
@@ -222,6 +228,9 @@ class IntradayStrategyBase:
                 context.entry_order_id = order_id
                 context.entry_price = price
                 context.entry_time = datetime.now()
+                # 新增：重置触发价格字段
+                context.entry_trigger_price = 0.0
+                context.entry_trigger_order_price = 0.0
                 self.update_context_state(context.symbol, StrategyState.WAITING_ENTRY)
             else:
                 # Exit 订单
@@ -232,12 +241,90 @@ class IntradayStrategyBase:
         
         return order_id
 
+    # 新增：延迟执行相关方法
+    
+    def _is_price_within_atr_range(self, current_price: float, target_price: float, atr: float, atr_multiplier: float = 2.0) -> bool:
+        """检查当前价格是否在目标价格的ATR范围内"""
+        if atr <= 0:
+            return True  # 如果ATR无效，默认允许交易
+        
+        distance = abs(current_price - target_price)
+        threshold = atr * atr_multiplier
+        return distance <= threshold
+    
+    def _set_trigger_prices(self, context, bar, indicators, target_price: float):
+        """设置触发价格和订单价格"""
+        atr = indicators.get('atr_14', 100.0)
+        gap_direction = getattr(self, 'gap_direction', {}).get(context.symbol, 'none')
+        
+        if gap_direction == 'up':
+            # Gap Up做空：触发价格 = 目标价格 - 2*ATR
+            context.entry_trigger_price = target_price - (2 * atr)
+            context.entry_trigger_order_price = target_price
+        elif gap_direction == 'down':
+            # Gap Down做多：触发价格 = 目标价格 + 2*ATR
+            context.entry_trigger_price = target_price + (2 * atr)
+            context.entry_trigger_order_price = target_price
+        
+        self.write_log(f"设置触发价格: {context.symbol} 触发价格={context.entry_trigger_price:.2f} 订单价格={context.entry_trigger_order_price:.2f}")
+    
+    def _check_and_execute_trigger(self, tick) -> bool:
+        """检查并执行触发条件"""
+        symbol = tick.symbol
+        context = self.get_context(symbol)
+        # 检查是否有有效的触发条件
+        if context.entry_trigger_price <= 0 or context.entry_trigger_order_price <= 0:
+            return False
+        
+        # 检查当前状态
+        if context.state != StrategyState.IDLE:
+            return False
+        
+        # 检查是否在eligible_stocks中（如果存在该属性）
+        if hasattr(self, 'eligible_stocks') and symbol not in self.eligible_stocks:
+            return False
+        
+        # 检查价格是否满足触发条件
+        current_price = tick.last_price
+        gap_direction = getattr(self, 'gap_direction', {}).get(symbol, 'none')
+        
+        if gap_direction == 'up':
+            # Gap Up做空：当前价格 <= 触发价格时触发
+            if current_price >= context.entry_trigger_price:
+                self._execute_triggered_entry(context, tick, context.entry_trigger_order_price, Direction.SHORT)
+                return True
+        elif gap_direction == 'down':
+            # Gap Down做多：当前价格 >= 触发价格时触发
+            if current_price <= context.entry_trigger_price:
+                self._execute_triggered_entry(context, tick, context.entry_trigger_order_price, Direction.LONG)
+                return True
+        
+        return False
+    
+    def _execute_triggered_entry(self, context, tick, price: float, direction: Direction):
+        """执行触发的entry订单"""
+        # 创建模拟的bar用于订单执行
+        from vnpy.trader.object import BarData
+        bar = BarData(
+            symbol=context.symbol,
+            exchange=tick.exchange,
+            datetime=tick.datetime,
+            interval=None,
+            volume=0,
+            turnover=0,
+            open_price=tick.last_price,
+            high_price=tick.last_price,
+            low_price=tick.last_price,
+            close_price=tick.last_price,
+            gateway_name=tick.gateway_name
+        )
+        
+        # 执行entry订单
+        self._execute_entry(context, bar, price, direction)
+        self.write_log(f"触发执行entry订单: {context.symbol} 价格={price:.2f} 方向={direction.value}")
+
     def _execute_entry(self, context, bar, price, direction: Direction):
         """统一的 entry 订单执行方法"""
-        # action = "做空" if direction == Direction.SHORT else "做多"
-        # time_str = bar.datetime.strftime('%H:%M:%S') if bar and bar.datetime else 'N/A'
-        # self.write_log(f"执行{action}开仓: {context.symbol} 价格: {price:.2f} "
-        #       f"时间: {time_str}")
         
         order_id = self._execute_trade(
             context=context,
@@ -380,8 +467,11 @@ class IntradayStrategyBase:
     def on_tick(self, event: Event):
         """Tick数据回调函数"""
         tick = event.data
-        # self.brisk_gateway.write_log(f"收到Tick数据: {tick.symbol} - 价格: {tick.last_price}, 成交量: {tick.last_volume}, 时间: {tick.datetime}, 累计成交量: {tick.volume}, 累计成交额: {tick.turnover}")
         
+        # 新增：在更新bar和技术指标之前检查触发条件
+        if self.enable_delayed_entry:
+            self._check_and_execute_trigger(tick)
+            
         # 更新对应的BarGenerator
         if tick.symbol in self.bar_generators:
             self.bar_generators[tick.symbol].update_tick(tick)

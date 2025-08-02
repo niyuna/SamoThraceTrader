@@ -931,6 +931,239 @@ class TestVWAPFailureSpecificLogic(VWAPFailureStrategyTest):
         # 恢复gap方向
         self.strategy.gap_direction[symbol] = 'up'
 
+    def test_delayed_entry_disabled_by_default(self):
+        """测试延迟执行功能默认禁用"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 验证默认情况下延迟执行被禁用
+        assert not self.strategy.enable_delayed_entry, "延迟执行功能应该默认禁用"
+        
+        # 设置初始状态
+        self.setup_context(symbol, state=StrategyState.IDLE, trade_count=0)
+        
+        # 触发 entry 信号
+        bar = self.mock_generator.create_mock_bar(symbol)
+        self.trigger_bar_update(bar)
+        time.sleep(0.01)
+        
+        # 验证：应该直接执行订单（不设置触发价格）
+        context = self.strategy.get_context(symbol)
+        assert context.entry_order_id != "", "应该生成entry订单"
+        assert context.entry_trigger_price == 0.0, "不应该设置触发价格"
+        assert context.entry_trigger_order_price == 0.0, "不应该设置触发订单价格"
+        self.assert_context_state(symbol, "waiting_entry")
+        
+        print("✅ 延迟执行功能默认禁用测试通过")
+    
+    def test_delayed_entry_enabled_but_price_within_range(self):
+        """测试启用延迟执行但价格在范围内时直接执行"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 启用延迟执行功能
+        self.strategy.enable_delayed_entry = True
+        
+        # 设置初始状态
+        self.setup_context(symbol, state=StrategyState.IDLE, trade_count=0)
+        
+        # 创建技术指标：VWAP=100.0, ATR=0.1，这样目标价格接近当前价格
+        def get_mock_indicators_close(symbol: str) -> dict:
+            return self.mock_generator.create_mock_indicators(
+                vwap=100.0, atr_14=0.1, below_vwap_count=3  # 很小的ATR
+            )
+        
+        # 临时替换方法
+        original_method = self.get_mock_indicators
+        self.get_mock_indicators = get_mock_indicators_close
+        
+        try:
+            # 触发 entry 信号
+            bar = self.mock_generator.create_mock_bar(symbol, close_price=100.0)
+            self.trigger_bar_update(bar)
+            time.sleep(0.01)
+            
+            # 验证：价格在范围内时应该直接执行
+            context = self.strategy.get_context(symbol)
+            assert context.entry_order_id != "", "应该生成entry订单"
+            assert context.entry_trigger_price == 0.0, "不应该设置触发价格"
+            assert context.entry_trigger_order_price == 0.0, "不应该设置触发订单价格"
+            self.assert_context_state(symbol, "waiting_entry")
+            
+            print("✅ 启用延迟执行但价格在范围内时直接执行测试通过")
+            
+        finally:
+            # 恢复原方法
+            self.get_mock_indicators = original_method
+    
+    def test_delayed_entry_enabled_and_price_out_of_range(self):
+        """测试启用延迟执行且价格超出范围时设置触发价格"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 启用延迟执行功能
+        self.strategy.enable_delayed_entry = True
+        
+        # 设置初始状态
+        self.setup_context(symbol, state=StrategyState.IDLE, trade_count=0)
+        
+        # 创建技术指标：VWAP=100.0, ATR=2.0，这样目标价格远离当前价格
+        def get_mock_indicators_far(symbol: str) -> dict:
+            return self.mock_generator.create_mock_indicators(
+                vwap=100.0, atr_14=2.0, below_vwap_count=3  # 较大的ATR
+            )
+        
+        # 临时替换方法
+        original_method = self.get_mock_indicators
+        self.get_mock_indicators = get_mock_indicators_far
+        
+        try:
+            # 触发 entry 信号
+            bar = self.mock_generator.create_mock_bar(symbol, close_price=98.8)
+            self.trigger_bar_update(bar)
+            time.sleep(0.01)
+            
+            # 验证：价格超出范围时应该设置触发价格，不立即执行订单
+            context = self.strategy.get_context(symbol)
+            print(f"context: {context}")
+            assert context.entry_order_id == "", "不应该立即生成entry订单"
+            assert context.entry_trigger_price > 0.0, "应该设置触发价格"
+            assert context.entry_trigger_order_price > 0.0, "应该设置触发订单价格"
+            self.assert_context_state(symbol, "idle")
+            
+            # 验证触发价格计算
+            # 目标价格 = 100.0 + (2.0 * 1.5) = 103.0, minus 1 tick = 102.9
+            # 触发价格 = 103.0 - (2.0 * 2.0) = 99.0, minus 1 tick = 98.9
+            expected_trigger_price = 98.9
+            expected_order_price = 102.9
+            assert abs(context.entry_trigger_order_price - expected_order_price) < 0.01, \
+                f"触发订单价格计算错误: 期望{expected_order_price}, 实际{context.entry_trigger_order_price}"
+            assert abs(context.entry_trigger_price - expected_trigger_price) < 0.01, \
+                f"触发价格计算错误: 期望{expected_trigger_price}, 实际{context.entry_trigger_price}"
+            
+            print("✅ 启用延迟执行且价格超出范围时设置触发价格测试通过")
+            
+        finally:
+            # 恢复原方法
+            self.get_mock_indicators = original_method
+    
+    def test_delayed_entry_trigger_execution(self):
+        """测试延迟执行的触发执行"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 启用延迟执行功能
+        self.strategy.enable_delayed_entry = True
+        
+        # 设置初始状态并手动设置触发价格
+        context = self.setup_context(symbol, state=StrategyState.IDLE, trade_count=0)
+        context.entry_trigger_price = 99.0
+        context.entry_trigger_order_price = 103.0
+        
+        # 创建tick，价格满足触发条件
+        tick = self.mock_generator.create_mock_tick(symbol, price=99.0)  # 价格 >= 触发价格
+        self.strategy.market_cap_eligible.add(symbol)
+        self.strategy.eligible_stocks.add(symbol)
+        self.strategy.trading_date = datetime.now().date()
+        self.strategy.first_tick_prices[symbol] = 98.8
+        
+        # 触发tick更新
+        from vnpy.event import Event
+        from vnpy.trader.event import EVENT_TICK
+        event = Event(EVENT_TICK, tick)
+        self.strategy.on_tick(event)
+        time.sleep(0.01)
+        
+        # 验证：应该触发执行订单
+        context = self.strategy.get_context(symbol)
+        assert context.entry_order_id != "", "应该生成entry订单"
+        assert context.entry_trigger_price == 0.0, "触发后应该重置触发价格"
+        assert context.entry_trigger_order_price == 0.0, "触发后应该重置触发订单价格"
+        self.assert_context_state(symbol, "waiting_entry")
+        
+        print("✅ 延迟执行的触发执行测试通过")
+    
+    def test_delayed_entry_trigger_not_executed(self):
+        """测试延迟执行的触发条件不满足时不执行"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 启用延迟执行功能
+        self.strategy.enable_delayed_entry = True
+        
+        # 设置初始状态并手动设置触发价格
+        context = self.setup_context(symbol, state=StrategyState.IDLE, trade_count=0)
+        context.entry_trigger_price = 99.0
+        context.entry_trigger_order_price = 103.0
+        
+        # 创建tick，价格不满足触发条件
+        tick = self.mock_generator.create_mock_tick(symbol, price=100.0)  # 价格 > 触发价格
+        
+        # 触发tick更新
+        from vnpy.event import Event
+        from vnpy.trader.event import EVENT_TICK
+        event = Event(EVENT_TICK, tick)
+        self.strategy.on_tick(event)
+        time.sleep(0.01)
+        
+        # 验证：不应该触发执行订单
+        context = self.strategy.get_context(symbol)
+        assert context.entry_order_id == "", "不应该生成entry订单"
+        assert context.entry_trigger_price == 99.0, "触发价格应该保持不变"
+        assert context.entry_trigger_order_price == 103.0, "触发订单价格应该保持不变"
+        self.assert_context_state(symbol, "idle")
+        
+        print("✅ 延迟执行的触发条件不满足时不执行测试通过")
+    
+    def test_delayed_entry_gap_down_scenario(self):
+        """测试Gap Down策略的延迟执行"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'down'
+        
+        # 启用延迟执行功能
+        self.strategy.enable_delayed_entry = True
+        
+        # 设置初始状态
+        self.setup_context(symbol, state=StrategyState.IDLE, trade_count=0)
+        
+        # 创建技术指标：VWAP=100.0, ATR=2.0
+        def get_mock_indicators_gap_down(symbol: str) -> dict:
+            return self.mock_generator.create_mock_indicators(
+                vwap=100.0, atr_14=2.0, above_vwap_count=3
+            )
+        
+        # 临时替换方法
+        original_method = self.get_mock_indicators
+        self.get_mock_indicators = get_mock_indicators_gap_down
+        
+        try:
+            # 触发 entry 信号
+            bar = self.mock_generator.create_mock_bar(symbol, close_price=101.2)
+            self.trigger_bar_update(bar)
+            time.sleep(0.01)
+            
+            # 验证：应该设置触发价格
+            context = self.strategy.get_context(symbol)
+            assert context.entry_order_id == "", "不应该立即生成entry订单"
+            assert context.entry_trigger_price > 0.0, "应该设置触发价格"
+            assert context.entry_trigger_order_price > 0.0, "应该设置触发订单价格"
+            
+            # 验证Gap Down的触发价格计算
+            # 目标价格 = 100.0 - (2.0 * 1.5) = 97.0
+            # 触发价格 = 97.0 + (2.0 * 2.0) = 101.0
+            expected_trigger_price = 101.1
+            expected_order_price = 97.1
+            assert abs(context.entry_trigger_price - expected_trigger_price) < 0.01, \
+                f"Gap Down触发价格计算错误: 期望{expected_trigger_price}, 实际{context.entry_trigger_price}"
+            assert abs(context.entry_trigger_order_price - expected_order_price) < 0.01, \
+                f"Gap Down触发订单价格计算错误: 期望{expected_order_price}, 实际{context.entry_trigger_order_price}"
+            
+            print("✅ Gap Down策略的延迟执行测试通过")
+            
+        finally:
+            # 恢复原方法
+            self.get_mock_indicators = original_method
+
 
 class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest, 
                                  TestBasicStateTransitionsMixin,
@@ -2333,6 +2566,115 @@ class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest,
         assert context.exit_order_id == original_order_id, "在 WAITING_TIMEOUT_EXIT 状态下应该被阻止"
         
         print("✅ _update_exit_order_price在WAITING_TIMEOUT_EXIT状态下的测试通过")
+
+    def test_delayed_entry_consecutive_trigger_ticks(self):
+        """测试连续发送两个符合触发条件的tick时，只有第一个tick触发订单"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 启用延迟执行功能
+        self.strategy.enable_delayed_entry = True
+        
+        # 设置初始状态并手动设置触发价格
+        context = self.setup_context(symbol, state=StrategyState.IDLE, trade_count=0)
+        context.entry_trigger_price = 99.0
+        context.entry_trigger_order_price = 103.0
+        
+        # 设置必要的策略状态
+        self.strategy.market_cap_eligible.add(symbol)
+        self.strategy.eligible_stocks.add(symbol)
+        self.strategy.trading_date = datetime.now().date()
+        self.strategy.first_tick_prices[symbol] = 98.8
+        
+        # 第一个tick：价格满足触发条件
+        tick1 = self.mock_generator.create_mock_tick(symbol, price=99.0)  # 价格 >= 触发价格
+        
+        # 触发第一个tick更新
+        from vnpy.event import Event
+        from vnpy.trader.event import EVENT_TICK
+        event1 = Event(EVENT_TICK, tick1)
+        self.strategy.on_tick(event1)
+        # time.sleep(0.01)
+        
+        # # 验证：第一个tick应该触发执行订单
+        # context = self.strategy.get_context(symbol)
+        # assert context.entry_order_id != "", "第一个tick应该生成entry订单"
+        # assert context.entry_trigger_price == 0.0, "触发后应该重置触发价格"
+        # assert context.entry_trigger_order_price == 0.0, "触发后应该重置触发订单价格"
+        # self.assert_context_state(symbol, "waiting_entry")
+        
+        # # 记录第一个订单ID
+        # first_order_id = context.entry_order_id
+        
+        # 第二个tick：价格仍然满足触发条件
+        tick2 = self.mock_generator.create_mock_tick(symbol, price=99.1)  # 价格仍然 >= 触发价格
+        
+        # 触发第二个tick更新
+        event2 = Event(EVENT_TICK, tick2)
+        self.strategy.on_tick(event2)
+        time.sleep(0.01)
+        
+        # 验证：第二个tick不应该触发新的订单
+        context = self.strategy.get_context(symbol)
+        assert context.entry_order_id == 'MOCK_0', "第二个tick不应该生成新的entry订单"
+        assert context.entry_price == 103.0, "entry_price应该被设置"
+        assert context.entry_trigger_price == 0.0, "触发价格应该保持为0"
+        assert context.entry_trigger_order_price == 0.0, "触发订单价格应该保持为0"
+        self.assert_context_state(symbol, "waiting_entry")
+        
+        print("✅ 连续触发条件的tick测试通过：第一个tick触发订单，第二个tick无操作")
+    
+    def test_delayed_entry_trigger_reset_after_order_execution(self):
+        """测试订单执行后触发价格被正确重置"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        
+        # 启用延迟执行功能
+        self.strategy.enable_delayed_entry = True
+        
+        # 设置初始状态并手动设置触发价格
+        context = self.setup_context(symbol, state=StrategyState.IDLE, trade_count=0)
+        context.entry_trigger_price = 99.0
+        context.entry_trigger_order_price = 103.0
+        
+        # 设置必要的策略状态
+        self.strategy.market_cap_eligible.add(symbol)
+        self.strategy.eligible_stocks.add(symbol)
+        self.strategy.trading_date = datetime.now().date()
+        self.strategy.first_tick_prices[symbol] = 98.8
+        
+        # 创建tick，价格满足触发条件
+        tick = self.mock_generator.create_mock_tick(symbol, price=99.0)  # 价格 <= 触发价格
+        
+        # 触发tick更新
+        from vnpy.event import Event
+        from vnpy.trader.event import EVENT_TICK
+        event = Event(EVENT_TICK, tick)
+        self.strategy.on_tick(event)
+        time.sleep(0.01)
+        
+        # 验证：触发价格应该被重置
+        context = self.strategy.get_context(symbol)
+        assert context.entry_trigger_price == 0.0, "触发后应该重置触发价格"
+        assert context.entry_trigger_order_price == 0.0, "触发后应该重置触发订单价格"
+        assert context.entry_order_id != "", "应该生成entry订单"
+        
+        # 验证：再次设置触发价格后，新的tick不会触发（因为状态不是IDLE）
+        context.entry_trigger_price = 99.0
+        context.entry_trigger_order_price = 103.0
+        
+        # 创建新的tick
+        tick2 = self.mock_generator.create_mock_tick(symbol, price=98.0)
+        event2 = Event(EVENT_TICK, tick2)
+        self.strategy.on_tick(event2)
+        time.sleep(0.01)
+        
+        # 验证：不应该触发新的订单（因为状态是WAITING_ENTRY）
+        context = self.strategy.get_context(symbol)
+        assert context.entry_trigger_price == 99.0, "非IDLE状态下触发价格应该保持不变"
+        assert context.entry_trigger_order_price == 103.0, "非IDLE状态下触发订单价格应该保持不变"
+        
+        print("✅ 订单执行后触发价格重置测试通过")
 
 
 def run_all_tests():
