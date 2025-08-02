@@ -44,6 +44,10 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         self.max_vol_ma5_ratio_threshold_gap_down = 1.5  # Gap Down时当前bar的vol/vol_ma5比例上限
         self.timeout_exit_max_period = 5       # timeout exit limit order最大等待时间（分钟）
         
+        # 新增：风险控制参数（设置较高的默认值）
+        self.exit_vol_ma5_ratio_threshold = 5.0    # exit时的成交量比例阈值（默认5倍）
+        self.force_exit_atr_factor = 3.0           # 强制平仓的ATR倍数（默认3倍）
+        
         # 股票状态管理
         self.market_cap_eligible = set()  # 仅满足市值条件的股票
         self.eligible_stocks = set()    # 真正满足所有条件的股票
@@ -86,14 +90,14 @@ class VWAPFailureStrategy(IntradayStrategyBase):
     def on_tick(self, event):
         """重写tick处理逻辑"""
         tick = event.data
-
+        
         # 检查是否是新的一天（在第一个tick时就检查）
         self._check_new_trading_day(tick.datetime)
         
         # 只处理市值符合条件的股票
         if tick.symbol not in self.market_cap_eligible:
             return
-
+            
         # 记录第一个tick价格并评估gap条件
         if tick.symbol not in self.first_tick_prices:
             self.first_tick_prices[tick.symbol] = tick.last_price
@@ -106,6 +110,9 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             
             # 检查当前bar的成交量异常并取消订单
             self._check_current_bar_volume_anomaly_and_cancel(tick)
+            
+            # 新增：检查exit风险控制
+            self._check_exit_risk_control(tick)
     
     def _check_new_trading_day(self, datetime_obj):
         """检查是否是新交易日，如果是则重置相关数据"""
@@ -648,7 +655,10 @@ class VWAPFailureStrategy(IntradayStrategyBase):
                           max_vol_ma5_ratio_threshold_gap_up=2.0,
                           max_vol_ma5_ratio_threshold_gap_down=1.5,
                           timeout_exit_max_period=5,
-                          single_stock_max_position=1_000_000):
+                          single_stock_max_position=1_000_000,
+                          # 新增风险控制参数
+                          exit_vol_ma5_ratio_threshold=5.0,
+                          force_exit_atr_factor=3.0):
         """设置策略参数"""
         self.market_cap_threshold = market_cap_threshold
         self.gap_up_threshold = gap_up_threshold
@@ -668,6 +678,10 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         self.max_vol_ma5_ratio_threshold_gap_down = max_vol_ma5_ratio_threshold_gap_down
         self.timeout_exit_max_period = timeout_exit_max_period
         self.single_stock_max_position = single_stock_max_position
+        
+        # 新增风险控制参数
+        self.exit_vol_ma5_ratio_threshold = exit_vol_ma5_ratio_threshold
+        self.force_exit_atr_factor = force_exit_atr_factor
         
         print(f"策略参数设置完成:")
         print(f"  市值阈值: {market_cap_threshold:,.0f} 日元")

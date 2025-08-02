@@ -55,6 +55,8 @@ class StockContext:
     # 新增：延迟执行相关字段
     entry_trigger_price: float = 0.0        # 触发价格（距离目标价格2个ATR）
     entry_trigger_order_price: float = 0.0  # 触发时的订单价格
+    # 新增：风险控制相关字段
+    trading_banned: bool = False            # 是否被禁止交易
 
 
 class IntradayStrategyBase:
@@ -167,6 +169,11 @@ class IntradayStrategyBase:
             context.entry_time = None
             context.exit_start_time = None
             context.timeout_exit_start_time = None
+            # 新增：重置触发价格字段
+            context.entry_trigger_price = 0.0
+            context.entry_trigger_order_price = 0.0
+            # 新增：重置禁止交易标志
+            context.trading_banned = False
         self.write_log("All contexts reset")
 
     # ==================== 核心交易执行方法 ====================
@@ -323,6 +330,109 @@ class IntradayStrategyBase:
         self._execute_entry(context, bar, price, direction)
         self.write_log(f"触发执行entry订单: {context.symbol} 价格={price:.2f} 方向={direction.value}")
 
+    # 新增：风险控制相关方法
+    
+    def _get_price_movement_direction(self, context, bar):
+        """获取价格波动方向，判断是否对持仓有利"""
+        if not hasattr(self, 'gap_direction'):
+            return 'unknown'
+        
+        gap_direction = self.gap_direction.get(context.symbol, 'none')
+        
+        if gap_direction == 'up':
+            # Gap Up策略做空，价格下跌有利
+            if bar.close_price < bar.open_price:
+                return 'favorable'  # 价格下跌，对做空有利
+            else:
+                return 'unfavorable'  # 价格上涨，对做空不利
+        elif gap_direction == 'down':
+            # Gap Down策略做多，价格上涨有利
+            if bar.close_price > bar.open_price:
+                return 'favorable'  # 价格上涨，对做多有利
+            else:
+                return 'unfavorable'  # 价格下跌，对做多不利
+        
+        return 'unknown'
+    
+    def _check_exit_risk_control(self, tick):
+        """检查exit风险控制 - 考虑波动方向"""
+        symbol = tick.symbol
+        context = self.get_context(symbol)
+        
+        # 只在WAITING_EXIT状态下检查
+        if context.state != StrategyState.WAITING_EXIT:
+            return
+
+        # 获取当前bar和技术指标
+        current_bar = self._get_current_bar(symbol)
+        if not current_bar:
+            return
+
+        indicators = self.get_indicators(symbol)
+        if not indicators:
+            return
+        # 检查成交量异常
+        vol_ma5 = indicators.get('volume_ma5', 0)
+        if vol_ma5 <= 0:
+            return
+        
+        current_volume = current_bar.volume
+        vol_ratio = current_volume / vol_ma5
+
+        # 检查价格波动异常
+        price_change = abs(current_bar.close_price - current_bar.open_price)
+        atr = indicators.get('atr_14', 0)
+        if atr <= 0:
+            return
+        
+        atr_threshold = atr * self.force_exit_atr_factor
+        # print(f"context: {context}, current_bar: {current_bar}, indicators: {indicators}, vol_ratio: {vol_ratio}, current_volume: {current_volume}, vol_ma5: {vol_ma5}, atr_threshold: {atr_threshold}, price_change: {price_change}")
+
+        # 判断是否触发风险控制（只在不利方向时）
+        if (vol_ratio >= self.exit_vol_ma5_ratio_threshold and 
+            price_change >= atr_threshold):
+            
+            # 检查波动方向
+            movement_direction = self._get_price_movement_direction(context, current_bar)
+            
+            if movement_direction == 'unfavorable':
+                # 只有在不利方向时才触发风险控制
+                self._force_exit_due_to_risk_control(context, current_bar, vol_ratio, price_change, atr_threshold)
+            else:
+                # 有利方向时记录但不触发
+                self.write_log(f"检测到风险条件但方向有利: {symbol} "
+                              f"vol_ratio={vol_ratio:.2f} price_change={price_change:.2f} "
+                              f"direction={movement_direction}")
+    
+    def _force_exit_due_to_risk_control(self, context, bar, vol_ratio, price_change, atr_threshold):
+        """由于风险控制强制平仓"""
+        symbol = context.symbol
+        
+        # 记录详细的风险控制事件
+        self.write_log(f"触发风险控制强制平仓: {symbol}")
+        self.write_log(f"  成交量比例: {vol_ratio:.2f} (阈值: {self.exit_vol_ma5_ratio_threshold})")
+        self.write_log(f"  价格波动: {price_change:.2f} (阈值: {atr_threshold:.2f})")
+        self.write_log(f"  波动方向: {self._get_price_movement_direction(context, bar)}")
+        self.write_log(f"  Bar价格: 开{bar.open_price:.2f} 收{bar.close_price:.2f}")
+        
+        # 强制市价平仓
+        self._force_market_exit(context)
+        
+        # 禁止交易当前股票
+        self._ban_symbol_trading(symbol)
+    
+    def _ban_symbol_trading(self, symbol):
+        """禁止交易指定股票"""
+        # 从eligible_stocks中移除
+        if hasattr(self, 'eligible_stocks'):
+            self.eligible_stocks.discard(symbol)
+        
+        # 设置禁止标志
+        context = self.get_context(symbol)
+        context.trading_banned = True
+        
+        self.write_log(f"禁止交易股票: {symbol}")
+    
     def _execute_entry(self, context, bar, price, direction: Direction):
         """统一的 entry 订单执行方法"""
         

@@ -208,7 +208,8 @@ class MockDataGenerator:
     def create_mock_indicators(self, vwap: float = 100.0, 
                              atr_14: float = 1.0,
                              above_vwap_count: int = 0,
-                             below_vwap_count: int = 0) -> dict:
+                             below_vwap_count: int = 0,
+                             volume_ma5: int = 1000) -> dict:
         """创建模拟技术指标"""
         return {
             'vwap': vwap,
@@ -216,7 +217,7 @@ class MockDataGenerator:
             'above_vwap_count': above_vwap_count,
             'below_vwap_count': below_vwap_count,
             'equal_vwap_count': 0,
-            'volume_ma5': 1000,
+            'volume_ma5': volume_ma5,
             'daily_acc_volume': 10000,
             'daily_acc_turnover': 1000000
         }
