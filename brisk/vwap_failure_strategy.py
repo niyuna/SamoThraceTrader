@@ -48,6 +48,9 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         self.exit_vol_ma5_ratio_threshold = 5.0    # exit时的成交量比例阈值（默认5倍）
         self.force_exit_atr_factor = 3.0           # 强制平仓的ATR倍数（默认3倍）
         
+        # 新增：延迟执行ATR倍数参数
+        self.delayed_entry_atr_multiplier = 2.0    # 延迟执行的ATR倍数（默认2倍，保持向后兼容）
+        
         # 股票状态管理
         self.market_cap_eligible = set()  # 仅满足市值条件的股票
         self.eligible_stocks = set()    # 真正满足所有条件的股票
@@ -542,14 +545,14 @@ class VWAPFailureStrategy(IntradayStrategyBase):
                 if self.enable_delayed_entry:
                     # 检查价格距离
                     current_price = bar.close_price
-                    if self._is_price_within_atr_range(current_price, target_price, atr, atr_multiplier=2.0):
-                        # 距离在2个ATR以内，直接执行
+                    if self._is_price_within_atr_range(current_price, target_price, atr, atr_multiplier=None):  # 使用策略参数
+                        # 距离在ATR倍数以内，直接执行
                         self._execute_entry(context, bar, target_price, Direction.SHORT)
-                        # self.write_log(f"execute entry: {context.symbol} 当前价格={current_price:.2f} 目标价格={target_price:.2f}")
                     else:
-                        # 距离超过2个ATR，设置触发价格
+                        # 距离超过ATR倍数，设置触发价格
                         self._set_trigger_prices(context, bar, indicators, target_price)
-                        self.write_log(f"设置延迟执行: {context.symbol} 当前价格={current_price:.2f} 目标价格={target_price:.2f}")
+                        self.write_log(f"设置延迟执行: {context.symbol} 当前价格={current_price:.2f} "
+                                      f"目标价格={target_price:.2f} ATR倍数={self.delayed_entry_atr_multiplier}")
                 else:
                     # 原有逻辑：直接执行
                     self._execute_entry(context, bar, target_price, Direction.SHORT)
@@ -566,14 +569,14 @@ class VWAPFailureStrategy(IntradayStrategyBase):
                 if self.enable_delayed_entry:
                     # 检查价格距离
                     current_price = bar.close_price
-                    if self._is_price_within_atr_range(current_price, target_price, atr, atr_multiplier=2.0):
-                        # 距离在2个ATR以内，直接执行
+                    if self._is_price_within_atr_range(current_price, target_price, atr, atr_multiplier=None):  # 使用策略参数
+                        # 距离在ATR倍数以内，直接执行
                         self._execute_entry(context, bar, target_price, Direction.LONG)
-                        # self.write_log(f"execute entry: {context.symbol} 当前价格={current_price:.2f} 目标价格={target_price:.2f}")
                     else:
-                        # 距离超过2个ATR，设置触发价格
+                        # 距离超过ATR倍数，设置触发价格
                         self._set_trigger_prices(context, bar, indicators, target_price)
-                        self.write_log(f"设置延迟执行: {context.symbol} 当前价格={current_price:.2f} 目标价格={target_price:.2f}")
+                        self.write_log(f"设置延迟执行: {context.symbol} 当前价格={current_price:.2f} "
+                                      f"目标价格={target_price:.2f} ATR倍数={self.delayed_entry_atr_multiplier}")
                 else:
                     # 原有逻辑：直接执行
                     self._execute_entry(context, bar, target_price, Direction.LONG)
@@ -672,7 +675,9 @@ class VWAPFailureStrategy(IntradayStrategyBase):
                           single_stock_max_position=1_000_000,
                           # 新增风险控制参数
                           exit_vol_ma5_ratio_threshold=5.0,
-                          force_exit_atr_factor=3.0):
+                          force_exit_atr_factor=3.0,
+                          # 新增延迟执行参数
+                          delayed_entry_atr_multiplier=2.0):
         """设置策略参数"""
         self.market_cap_threshold = market_cap_threshold
         self.gap_up_threshold = gap_up_threshold
@@ -696,6 +701,9 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         # 新增风险控制参数
         self.exit_vol_ma5_ratio_threshold = exit_vol_ma5_ratio_threshold
         self.force_exit_atr_factor = force_exit_atr_factor
+        
+        # 新增延迟执行参数
+        self.delayed_entry_atr_multiplier = delayed_entry_atr_multiplier
         
         print(f"策略参数设置完成:")
         print(f"  市值阈值: {market_cap_threshold:,.0f} 日元")
@@ -798,6 +806,7 @@ def main():
             latest_entry_time="11:23:00",  # 最晚入场时间
             timeout_exit_max_period=5, # 超时退出最大等待时间
             single_stock_max_position=500_000, # 单只股票最大持仓量
+            delayed_entry_atr_multiplier=1.0,
 
             # disable it for now
             gap_up_threshold=0.5,      # 2% gap up 

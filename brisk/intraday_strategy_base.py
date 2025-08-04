@@ -92,7 +92,7 @@ class IntradayStrategyBase:
         SETTINGS["log.active"] = True
         SETTINGS["log.level"] = 20
         SETTINGS["log.console"] = True
-        SETTINGS["log.file_name"] = self.__class__.__name__
+        SETTINGS["log.file_name"] = f"{self.__class__.__name__}"
         # SETTINGS["log.format"] = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{extra[gateway_name]}</cyan> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
         setup_logger()
         # log file will be ".vntrader/log/vt_{today_date}.log", set in logger.py
@@ -251,10 +251,14 @@ class IntradayStrategyBase:
 
     # 新增：延迟执行相关方法
     
-    def _is_price_within_atr_range(self, current_price: float, target_price: float, atr: float, atr_multiplier: float = 2.0) -> bool:
+    def _is_price_within_atr_range(self, current_price: float, target_price: float, atr: float, atr_multiplier: float = None) -> bool:
         """检查当前价格是否在目标价格的ATR范围内"""
         if atr <= 0:
             return True  # 如果ATR无效，默认允许交易
+        
+        # 如果没有指定atr_multiplier，使用策略参数
+        if atr_multiplier is None:
+            atr_multiplier = getattr(self, 'delayed_entry_atr_multiplier', 2.0)
         
         distance = abs(current_price - target_price)
         threshold = atr * atr_multiplier
@@ -265,16 +269,20 @@ class IntradayStrategyBase:
         atr = indicators.get('atr_14', 100.0)
         gap_direction = getattr(self, 'gap_direction', {}).get(context.symbol, 'none')
         
+        # 使用策略参数
+        atr_multiplier = getattr(self, 'delayed_entry_atr_multiplier', 2.0)
+        
         if gap_direction == 'up':
-            # Gap Up做空：触发价格 = 目标价格 - 2*ATR
-            context.entry_trigger_price = target_price - (2 * atr)
+            # Gap Up做空：触发价格 = 目标价格 - atr_multiplier*ATR
+            context.entry_trigger_price = target_price - (atr_multiplier * atr)
             context.entry_trigger_order_price = target_price
         elif gap_direction == 'down':
-            # Gap Down做多：触发价格 = 目标价格 + 2*ATR
-            context.entry_trigger_price = target_price + (2 * atr)
+            # Gap Down做多：触发价格 = 目标价格 + atr_multiplier*ATR
+            context.entry_trigger_price = target_price + (atr_multiplier * atr)
             context.entry_trigger_order_price = target_price
         
-        self.write_log(f"设置触发价格: {context.symbol} 触发价格={context.entry_trigger_price:.2f} 订单价格={context.entry_trigger_order_price:.2f}")
+        self.write_log(f"设置触发价格: {context.symbol} 触发价格={context.entry_trigger_price:.2f} "
+                       f"订单价格={context.entry_trigger_order_price:.2f} ATR倍数={atr_multiplier}")
     
     def _check_and_execute_trigger(self, tick) -> bool:
         """检查并执行触发条件"""

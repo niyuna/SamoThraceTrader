@@ -1443,6 +1443,178 @@ class TestVWAPFailureSpecificLogic(VWAPFailureStrategyTest):
         
         print("✅ 新交易日重置禁止交易状态测试通过")
 
+    # 新增：延迟执行ATR倍数参数测试
+    
+    def test_delayed_entry_atr_multiplier_parameter(self):
+        """测试延迟执行ATR倍数参数配置"""
+        # 测试默认值（保持向后兼容）
+        print(f"delayed_entry_atr_multiplier: {self.strategy.delayed_entry_atr_multiplier}")
+        assert self.strategy.delayed_entry_atr_multiplier == 2.0, f"默认值应该是2.0, 实际{self.strategy.delayed_entry_atr_multiplier}"
+        
+        # 测试参数设置
+        self.strategy.set_strategy_params(delayed_entry_atr_multiplier=1.0)
+        assert self.strategy.delayed_entry_atr_multiplier == 1.0, f"设置后应该是1.0, 实际{self.strategy.delayed_entry_atr_multiplier}"
+        
+        # 测试参数重置
+        self.strategy.set_strategy_params(delayed_entry_atr_multiplier=3.0)
+        assert self.strategy.delayed_entry_atr_multiplier == 3.0, f"重置后应该是3.0, 实际{self.strategy.delayed_entry_atr_multiplier}"
+        
+        print("✅ 延迟执行ATR倍数参数配置测试通过")
+    
+    def test_delayed_entry_different_atr_multipliers(self):
+        """测试不同ATR倍数下的延迟执行"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        self.strategy.enable_delayed_entry = True
+        
+        # 设置初始状态
+        self.setup_context(symbol, state=StrategyState.IDLE, trade_count=0)
+        
+        # 测试ATR倍数=1.0（更敏感）
+        self.strategy.delayed_entry_atr_multiplier = 1.0
+        
+        # 创建技术指标：VWAP=100.0, ATR=2.0
+        def get_mock_indicators_atr_1(symbol: str) -> dict:
+            return self.mock_generator.create_mock_indicators(
+                vwap=100.0, atr_14=2.0, below_vwap_count=3
+            )
+        
+        # 临时替换方法
+        original_method = self.get_mock_indicators
+        self.get_mock_indicators = get_mock_indicators_atr_1
+        
+        try:
+            # 触发 entry 信号
+            bar = self.mock_generator.create_mock_bar(symbol, close_price=100.0)
+            self.trigger_bar_update(bar)
+            time.sleep(0.01)
+            
+            # 验证：ATR倍数=1.0时的触发价格计算
+            context = self.strategy.get_context(symbol)
+            # 目标价格 = 100.0 + (2.0 * 1.5) = 103.0
+            # 触发价格 = 103.0 - (1.0 * 2.0) = 101.0
+            expected_trigger_price = 100.9
+            expected_order_price = 102.9
+            assert abs(context.entry_trigger_price - expected_trigger_price) < 0.01, \
+                f"ATR倍数=1.0时触发价格计算错误: 期望{expected_trigger_price}, 实际{context.entry_trigger_price}"
+            assert abs(context.entry_trigger_order_price - expected_order_price) < 0.01, \
+                f"ATR倍数=1.0时订单价格计算错误: 期望{expected_order_price}, 实际{context.entry_trigger_order_price}"
+            
+            print("✅ ATR倍数=1.0的延迟执行测试通过")
+            
+        finally:
+            self.get_mock_indicators = original_method
+        
+        # 测试ATR倍数=3.0（更保守）
+        self.strategy.delayed_entry_atr_multiplier = 3.0
+        original_method = self.get_mock_indicators
+        self.get_mock_indicators = get_mock_indicators_atr_1
+        
+        # 重置状态
+        self.setup_context(symbol, state=StrategyState.IDLE, trade_count=0, entry_order_id="", entry_trigger_price=0.0, entry_trigger_order_price=0.0)
+        
+        try:
+            # 触发 entry 信号
+            bar = self.mock_generator.create_mock_bar(symbol, close_price=90.0)
+            self.trigger_bar_update(bar)
+            time.sleep(0.01)
+            
+            # 验证：ATR倍数=3.0时的触发价格计算
+            context = self.strategy.get_context(symbol)
+            # 目标价格 = 100.0 + (2.0 * 1.5) = 103.0
+            # 触发价格 = 103.0 - (3.0 * 2.0) = 100.0
+            expected_trigger_price = 96.9
+            expected_order_price = 102.9
+            assert abs(context.entry_trigger_price - expected_trigger_price) < 0.01, \
+                f"ATR倍数=3.0时触发价格计算错误: 期望{expected_trigger_price}, 实际{context.entry_trigger_price}"
+            assert abs(context.entry_trigger_order_price - expected_order_price) < 0.01, \
+                f"ATR倍数=3.0时订单价格计算错误: 期望{expected_order_price}, 实际{context.entry_trigger_order_price}"
+            
+            print("✅ ATR倍数=3.0的延迟执行测试通过")
+            
+        finally:
+            self.get_mock_indicators = original_method
+    
+    def test_delayed_entry_atr_multiplier_gap_down(self):
+        """测试Gap Down策略下不同ATR倍数的延迟执行"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'down'
+        self.strategy.enable_delayed_entry = True
+        
+        # 设置初始状态
+        self.setup_context(symbol, state=StrategyState.IDLE, trade_count=0)
+        
+        # 测试ATR倍数=1.0
+        self.strategy.delayed_entry_atr_multiplier = 1.0
+        
+        # 创建技术指标：VWAP=100.0, ATR=2.0
+        def get_mock_indicators_gap_down_atr_1(symbol: str) -> dict:
+            return self.mock_generator.create_mock_indicators(
+                vwap=100.0, atr_14=2.0, above_vwap_count=3
+            )
+        
+        # 临时替换方法
+        original_method = self.get_mock_indicators
+        self.get_mock_indicators = get_mock_indicators_gap_down_atr_1
+        
+        try:
+            # 触发 entry 信号
+            bar = self.mock_generator.create_mock_bar(symbol, close_price=100.0)
+            self.trigger_bar_update(bar)
+            time.sleep(0.01)
+            
+            # 验证：Gap Down策略下ATR倍数=1.0时的触发价格计算
+            context = self.strategy.get_context(symbol)
+            # 目标价格 = 100.0 - (2.0 * 1.5) = 97.0
+            # 触发价格 = 97.0 + (1.0 * 2.0) = 99.0
+            expected_trigger_price = 99.1
+            expected_order_price = 97.1
+            assert abs(context.entry_trigger_price - expected_trigger_price) < 0.01, \
+                f"Gap Down ATR倍数=1.0时触发价格计算错误: 期望{expected_trigger_price}, 实际{context.entry_trigger_price}"
+            assert abs(context.entry_trigger_order_price - expected_order_price) < 0.01, \
+                f"Gap Down ATR倍数=1.0时订单价格计算错误: 期望{expected_order_price}, 实际{context.entry_trigger_order_price}"
+            
+            print("✅ Gap Down策略下ATR倍数=1.0的延迟执行测试通过")
+            
+        finally:
+            self.get_mock_indicators = original_method
+    
+    def test_delayed_entry_atr_multiplier_edge_cases(self):
+        """测试ATR倍数的边界条件"""
+        symbol = self.test_symbol
+        self.strategy.gap_direction[symbol] = 'up'
+        self.strategy.enable_delayed_entry = True
+        
+        # 测试ATR倍数=0.5（更敏感）
+        self.strategy.delayed_entry_atr_multiplier = 0.5
+        self.setup_context(symbol, state=StrategyState.IDLE, trade_count=0)
+        
+        def get_mock_indicators_edge(symbol: str) -> dict:
+            return self.mock_generator.create_mock_indicators(
+                vwap=100.0, atr_14=2.0, below_vwap_count=3
+            )
+        
+        original_method = self.get_mock_indicators
+        self.get_mock_indicators = get_mock_indicators_edge
+        
+        try:
+            bar = self.mock_generator.create_mock_bar(symbol, close_price=100.0)
+            self.trigger_bar_update(bar)
+            time.sleep(0.01)
+            
+            # 验证：ATR倍数=0.5时的触发价格计算
+            context = self.strategy.get_context(symbol)
+            # 目标价格 = 100.0 + (2.0 * 1.5) = 103.0
+            # 触发价格 = 103.0 - (0.5 * 2.0) = 102.0
+            expected_trigger_price = 101.9
+            assert abs(context.entry_trigger_price - expected_trigger_price) < 0.01, \
+                f"ATR倍数=0.5时触发价格计算错误: 期望{expected_trigger_price}, 实际{context.entry_trigger_price}"
+            
+            print("✅ ATR倍数=0.5的边界条件测试通过")
+            
+        finally:
+            self.get_mock_indicators = original_method
+
 
 class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest, 
                                  TestBasicStateTransitionsMixin,
