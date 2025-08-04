@@ -190,7 +190,7 @@ class BriskGateway(BaseGateway):
                 datetime=datetime.now(),
                 reference=req.reference
             )
-            self.add_order(initial_order)
+            self._add_order(initial_order)
             self.write_log(f"订单已发送并添加到缓存: {order_id}")
         
         return order_id
@@ -520,10 +520,14 @@ class BriskGateway(BaseGateway):
         
         return order
 
-    def add_order(self, order: OrderData):
+    def _add_order(self, order: OrderData):
         """添加新订单到本地缓存"""
         self.local_orders[order.orderid] = order
         self.write_log(f"添加订单到缓存: {order.orderid}")
+
+    def query_local_order(self, orderid: str) -> OrderData:
+        """查询本地缓存中的订单"""
+        return self.local_orders.get(orderid)
 
     # not used for now
     def update_order(self, order: OrderData):

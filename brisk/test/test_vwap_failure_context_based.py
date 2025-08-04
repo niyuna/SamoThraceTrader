@@ -2963,7 +2963,7 @@ def run_all_tests():
     # 运行所有测试类
     test_classes = [
         VWAPFailureStrategyTest,
-        # TestVWAPFailureSpecificLogic,
+        TestVWAPFailureSpecificLogic,
         TestVWAPFailureCompleteFlow
     ]
     

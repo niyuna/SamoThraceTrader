@@ -205,9 +205,14 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             # entry 订单完全成交，状态迁移到 HOLDING
             self.update_context_state(context.symbol, StrategyState.HOLDING)
             self.write_log(f"Entry order completed for {context.symbol}")
+            context.already_traded = 0
             
             # 生成 exit 订单（统一在on_order中处理）
             self._generate_exit_order_from_order(context, order)
+        
+        elif order.status == Status.PARTTRADED:
+            context.already_traded = order.traded
+            self.write_log(f"Entry order partially filled for {context.symbol}, already_traded: {context.already_traded}")
 
     def _handle_exit_order_update(self, order: OrderData, context):
         """处理 exit 订单状态更新"""
@@ -233,6 +238,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
                 self.write_log(f"Timeout trade completed for {context.symbol}, "
                               f"timeout_trade_count: {context.timeout_trade_count}")
             
+            context.already_traded = 0
             self.update_context_state(context.symbol, StrategyState.IDLE)
             context.exit_order_id = ""
             self.write_log(f"_handle_exit_order_update: Trade completed for {context.symbol}, count: {context.trade_count}")
@@ -241,6 +247,10 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             # 订单被取消 - 只记录日志，不处理逻辑
             # 因为cancel是同步的，逻辑已经在cancel成功后处理
             self.write_log(f"_handle_exit_order_update: Exit order cancelled for {context.symbol}")
+
+        elif order.status == Status.PARTTRADED:
+            context.already_traded = order.traded
+            self.write_log(f"Exit order partially filled for {context.symbol}, already_traded: {context.already_traded}")
 
     def _handle_entry_trade(self, trade: TradeData, context):
         """处理 entry 成交（简化版本，主要逻辑在on_order中处理）"""
@@ -390,7 +400,11 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         # for entry case, if it's alreadsy past the latest_entry_time, cancel the the existing order if any instead of updating the price
         if context.state == StrategyState.WAITING_ENTRY and context.entry_order_id:
             if not self._is_within_trading_time(bar.datetime):
+                entry_order = self.gateway.query_local_order(context.entry_order_id)
                 self._cancel_order_safely(context.entry_order_id, symbol)
+                if context.already_traded > 0:
+                    self.write_log(f"entry order {context.entry_order_id} is partially filled, execute exit")
+                    self._execute_exit(context, None, 0, Direction.LONG if self._is_gap_up(symbol) else Direction.SHORT, OrderType.MARKET)
                 context.entry_order_id = ""
                 self.update_context_state(symbol, StrategyState.IDLE)
                 return

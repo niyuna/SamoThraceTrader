@@ -788,3 +788,12 @@ class MockBriskGateway(BaseGateway):
         if self.mock_trading_engine:
             return self.mock_trading_engine.get_order_by_id(order_id)
         return None 
+
+    def query_local_order(self, orderid: str) -> OrderData:
+        """查询本地缓存中的订单"""
+        return self.get_order_by_id(orderid)
+
+    def _add_order(self, order: OrderData):
+        """添加新订单到本地缓存"""
+        self.local_orders[order.orderid] = order
+        self.write_log(f"添加订单到缓存: {order.orderid}")

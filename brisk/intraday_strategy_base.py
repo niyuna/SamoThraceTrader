@@ -21,7 +21,7 @@ from vnpy.trader.event import EVENT_TICK, EVENT_LOG, EVENT_ORDER, EVENT_TRADE
 from vnpy.event import Event
 from technical_indicators import TechnicalIndicatorManager
 from vnpy.trader.object import OrderRequest, CancelRequest
-from vnpy.trader.constant import Direction, Offset, OrderType
+from vnpy.trader.constant import Direction, Offset, OrderType, Status
 
 from common.trading_common import normalize_price
 from vnpy.trader.logger import setup_logger
@@ -51,6 +51,7 @@ class StockContext:
     timeout_exit_start_time: datetime = None  # timeout exit开始时间
     max_exit_wait_time: timedelta = timedelta(minutes=5)  # exit订单最大等待时间
     position_size: int = 100                # 持仓数量
+    already_traded: int = 0                 # 已成交数量
     exit_price: float = 0.0                # exit成交价格
     # 新增：延迟执行相关字段
     entry_trigger_price: float = 0.0        # 触发价格（距离目标价格2个ATR）
@@ -186,7 +187,7 @@ class IntradayStrategyBase:
             exchange=bar.exchange if bar else Exchange.TSE,
             direction=direction,
             type=order_type,
-            volume=context.position_size,
+            volume=context.position_size - context.already_traded,
             price=price,
             offset=offset,
             reference=f"{reference_prefix}_{context.symbol}_{datetime.now().strftime('%H%M%S')}"
@@ -494,6 +495,12 @@ class IntradayStrategyBase:
         if context.entry_price <= 0 or not context.entry_order_id:
             self.write_log(f"Warning: Invalid entry_price ({context.entry_price}) or entry_order_id ({context.entry_order_id}) for {context.symbol}")
             return
+
+        entry_order = self.gateway.query_local_order(context.entry_order_id)
+
+        if entry_order and entry_order.status == Status.PARTTRADED:
+            self.write_log(f"entry order {context.entry_order_id} is partially filled, no need to update")
+            return
         
         # 计算新的 entry 价格 - 子类需要实现具体的价格计算逻辑
         old_entry_price = context.entry_price  # 当前未成交订单的下单价格
@@ -518,6 +525,11 @@ class IntradayStrategyBase:
         # 安全性验证：确保 exit_price 和 exit_order_id 已正确设置
         if context.exit_price <= 0 or not context.exit_order_id:
             self.write_log(f"Warning: Invalid exit_price ({context.exit_price}) or exit_order_id ({context.exit_order_id}) for {context.symbol}")
+            return
+
+        exit_order = self.gateway.query_local_order(context.exit_order_id)
+        if exit_order and exit_order.status == Status.PARTTRADED:
+            self.write_log(f"exit order {context.exit_order_id} is partially filled, no need to update")
             return
         
         # 计算新的 exit 价格
