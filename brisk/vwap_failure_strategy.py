@@ -808,6 +808,9 @@ def main():
             timeout_exit_max_period=5, # 超时退出最大等待时间
             single_stock_max_position=1_000_000, # 单只股票最大持仓量
             delayed_entry_atr_multiplier=1.0,
+            
+            exit_vol_ma5_ratio_threshold=5.0,
+            force_exit_atr_factor=10.0, # temperarily disable this by setting a very huge value, we don't see this to be really useful
 
             # disable it for now
             gap_up_threshold=0.5,      # 2% gap up 
