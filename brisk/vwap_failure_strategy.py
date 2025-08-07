@@ -361,18 +361,19 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         if vol_ma5 > 0 and (current_bar_volume / vol_ma5) > max_ratio:
             # 取消订单
             if context.entry_order_id:
-                self._cancel_order_safely(context.entry_order_id, symbol)
-            
-            # 重置状态
-            context.entry_order_id = ""
-            self.update_context_state(symbol, StrategyState.IDLE)
-            
-            # 记录日志
-            self.write_log(f"当前bar成交量异常取消订单: {symbol}, "
-                          f"当前bar成交量: {current_bar_volume}, "
-                          f"MA5: {vol_ma5:.0f}, "
-                          f"比例: {current_bar_volume/vol_ma5:.2f}, "
-                          f"阈值: {max_ratio}")
+                if self._cancel_order_safely(context.entry_order_id, symbol):
+                    # 重置状态
+                    context.entry_order_id = ""
+                    self.update_context_state(symbol, StrategyState.IDLE)
+                    
+                    # 记录日志
+                    self.write_log(f"当前bar成交量异常取消订单: {symbol}, "
+                                f"当前bar成交量: {current_bar_volume}, "
+                                f"MA5: {vol_ma5:.0f}, "
+                                f"比例: {current_bar_volume/vol_ma5:.2f}, "
+                                f"阈值: {max_ratio}")
+                else:
+                    self.write_log(f"当前bar成交量异常取消订单失败: {symbol}, order id: {context.entry_order_id} may be already filled")
 
     def on_1min_bar(self, bar):
         """重写1分钟K线处理逻辑"""
