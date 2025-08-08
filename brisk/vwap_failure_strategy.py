@@ -360,7 +360,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         # 检查是否超过阈值
         if vol_ma5 > 0 and (current_bar_volume / vol_ma5) > max_ratio:
             # 取消订单
-            if context.entry_order_id:
+            if context.entry_order_id and not context.entry_canceled_by_vol_ma5:
                 if self._cancel_order_safely(context.entry_order_id, symbol):
                     # 重置状态
                     context.entry_order_id = ""
@@ -373,6 +373,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
                                 f"比例: {current_bar_volume/vol_ma5:.2f}, "
                                 f"阈值: {max_ratio}")
                 else:
+                    context.entry_canceled_by_vol_ma5 = True
                     self.write_log(f"当前bar成交量异常取消订单失败: {symbol}, order id: {context.entry_order_id} may be already filled")
 
     def on_1min_bar(self, bar):
@@ -384,6 +385,10 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         # 调用父类方法更新技术指标
         super().on_1min_bar(bar)
         
+        # reset the entry_canceled_by_vol_ma5 flag
+        context = self.get_context(bar.symbol)
+        context.entry_canceled_by_vol_ma5 = False
+
         # 获取技术指标
         indicators = self.get_indicators(bar.symbol)
         if not indicators:

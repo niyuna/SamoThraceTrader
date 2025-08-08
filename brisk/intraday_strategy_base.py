@@ -58,6 +58,8 @@ class StockContext:
     entry_trigger_order_price: float = 0.0  # 触发时的订单价格
     # 新增：风险控制相关字段
     trading_banned: bool = False            # 是否被禁止交易
+    # 新增：成交量异常相关字段
+    entry_canceled_by_vol_ma5: bool = False  # 是否被成交量异常取消，每分钟reset
 
 
 class IntradayStrategyBase:
