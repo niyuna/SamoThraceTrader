@@ -594,6 +594,7 @@ class IntradayStrategyBase:
         )
         
         # 创建技术指标管理器
+        # TODO: IMPROVE THIS: size has to be 15, because the atr calculation is based on 14 bars, and the first atr is calculated based on 15 bars
         self.indicator_managers[symbol] = TechnicalIndicatorManager(symbol, size=15)
         # print(f"为 {symbol} 创建增强版K线生成器和技术指标管理器")
         

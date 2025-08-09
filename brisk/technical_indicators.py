@@ -150,8 +150,13 @@ class TechnicalIndicatorManager:
         indicators = {}
         
         if self.am.inited:
-            # ATR(14) - 使用talib计算
-            indicators['atr_14'] = self.am.atr(14)
+            # ATR actually is not a simple moving average, it is a weighted moving average, which means the oldest tr will contribute as well
+            if self.am.count <= 14:
+                indicators['atr_14'] = 0
+            elif self.am.count == 15:
+                indicators['atr_14'] = self.am.atr(14)
+            else:
+                indicators['atr_14'] = (self.am.atr(1) + self.latest_indicators.get('atr_14', 0) * 13) / 14
             
             # Volume MA(5) - 使用numpy计算volume的移动平均
             import numpy as np
