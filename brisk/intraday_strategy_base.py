@@ -246,7 +246,8 @@ class IntradayStrategyBase:
                 # Exit 订单
                 context.exit_order_id = order_id
                 context.exit_price = price
-                context.exit_start_time = datetime.now()
+                if context.exit_start_time is None:
+                    context.exit_start_time = datetime.now()
                 self.update_context_state(context.symbol, StrategyState.WAITING_EXIT)
         
         return order_id
