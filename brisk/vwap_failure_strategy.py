@@ -436,7 +436,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         
         # for exit case, if it's alreadsy past the latest_entry_time, enter the timeout exit flow
         # 第一阶段：检查是否达到初始timeout
-        if context.state == StrategyState.WAITING_EXIT and ((current_time - context.exit_start_time) >= max_wait_time or self._is_within_one_min_before_morning_closing_start(current_time)):
+        if context.state == StrategyState.WAITING_EXIT and ((current_time - context.exit_start_time) >= max_wait_time or self._is_within_one_min_before_morning_closing_start(current_time - timedelta(minutes=1))):
             # 撤单并进入timeout exit阶段
             if self._cancel_order_safely(context.exit_order_id, context.symbol):
                 self._start_timeout_exit(context)
@@ -445,7 +445,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         # 第二阶段：检查timeout exit limit order是否超时
         elif context.state == StrategyState.WAITING_TIMEOUT_EXIT:
             timeout_exit_max_period = timedelta(minutes=self.timeout_exit_max_period)
-            if (current_time - context.timeout_exit_start_time) >= timeout_exit_max_period or self._is_within_morning_closing_time(current_time):
+            if (current_time - context.timeout_exit_start_time) >= timeout_exit_max_period or self._is_within_morning_closing_time(current_time - timedelta(minutes=1)):
                 self._force_market_exit(context)
             return True
         
