@@ -158,7 +158,11 @@ class IntradayStrategyBase:
         return max(position_size, 100)
     
     def write_log(self, msg: str):
-        self.main_engine.write_log(msg, self.__class__.__name__)
+        if self.main_engine:
+            self.main_engine.write_log(msg, self.__class__.__name__)
+        else:
+            # 在main_engine未初始化时，使用print输出
+            print(f"[{self.__class__.__name__}] {msg}")
     
     def reset_all_contexts(self):
         """重置所有 Context 状态 - 子类可以重写"""
