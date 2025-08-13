@@ -250,6 +250,8 @@ class IntradayStrategyBase:
                 # Exit 订单
                 context.exit_order_id = order_id
                 context.exit_price = price
+                # this part is tricky, for the case of price update, we should not update the exit_start_time, but for a new order, we should
+                # maybe a better way is to set this to None after a exit order is filled
                 if context.exit_start_time is None:
                     context.exit_start_time = datetime.now()
                 self.update_context_state(context.symbol, StrategyState.WAITING_EXIT)

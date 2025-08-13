@@ -244,6 +244,8 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             context.already_traded = 0
             self.update_context_state(context.symbol, StrategyState.IDLE)
             context.exit_order_id = ""
+            context.exit_start_time = None
+            context.timeout_exit_start_time = None
             self.write_log(f"_handle_exit_order_update: Trade completed for {context.symbol}, count: {context.trade_count}")
             
         elif order.status == Status.CANCELLED:
@@ -818,7 +820,7 @@ def main():
             force_exit_atr_factor=10.0, # temperarily disable this by setting a very huge value, we don't see this to be really useful
 
             # disable it for now
-            gap_up_threshold=0.5,      # 2% gap up 
+            gap_up_threshold=0.02,      # 2% gap up 
             failure_threshold_gap_up=30,        # Gap Up时的VWAP failure次数阈值
             entry_factor_gap_up=1.5,           # Entry ATR倍数
             exit_factor_gap_up=1.0,            # Exit ATR倍数
