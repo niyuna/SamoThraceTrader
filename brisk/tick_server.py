@@ -15,6 +15,7 @@ import shutil
 from collections import defaultdict, deque
 from threading import Lock
 from typing import Dict, List
+import asyncio
 
 import logging
 from logging_config import setup_logging
@@ -24,20 +25,20 @@ from loguru import logger
 logger.add('C:\\dev\\brisk_tick_server.log', rotation="08:00", compression="zip")
 
 app = FastAPI()
-FRAMES_OUTPUT_DIR = os.environ.get('FRAMES_OUTPUT_DIR', 'D:\\dev\\github\\brisk-hack\\brisk_in_day_frames')
+FRAMES_OUTPUT_DIR = os.environ.get('FRAMES_OUTPUT_DIR', 'F:\\brisk_in_day_frames')
+
+# WebSocket超时配置
+WS_TIMEOUT_CONFIG = {
+    'ping_pong': float(os.environ.get('WS_PING_PONG_TIMEOUT', '3.0')),      # ping/pong消息超时时间
+    'tick_data': float(os.environ.get('WS_TICK_DATA_TIMEOUT', '10.0')),     # tick数据广播超时时间
+    'general': float(os.environ.get('WS_GENERAL_TIMEOUT', '5.0')),          # 一般消息超时时间
+}
 
 
 shared_vars = {}
 shared_vars['active_ws_connection'] = []
 
 origins = [
-    "http://localhost:3000",
-    "https://sbi.brisk.jp",
-    "https://docs.google.com",
-    "http://localhost:8888",
-    "http://localhost:8080",
-    "https://monex.brisk.jp",
-    "https://smbcnikko.brisk.jp",
     "*"
 ]
 
@@ -78,19 +79,29 @@ class ConnectionManager:
                 del self.subscribed_symbols[websocket]
         logger.info(f"WebSocket连接断开，当前连接数: {len(self.active_connections)}")
 
-    async def send_personal_message(self, message: str, websocket: WebSocket):
+    async def send_personal_message(self, message: str, websocket: WebSocket, timeout: float = None):
+        if timeout is None:
+            timeout = WS_TIMEOUT_CONFIG['general']
         try:
-            await websocket.send_text(message)
+            await asyncio.wait_for(websocket.send_text(message), timeout=timeout)
+        except asyncio.TimeoutError:
+            logger.error(f"发送个人消息超时: {timeout}秒")
+            self.disconnect(websocket)
         except Exception as e:
             logger.error(f"发送个人消息失败: {e}")
             self.disconnect(websocket)
 
-    async def broadcast(self, message: str):
+    async def broadcast(self, message: str, timeout: float = None):
+        if timeout is None:
+            timeout = WS_TIMEOUT_CONFIG['general']
         with self.lock:
             disconnected = []
             for connection in self.active_connections:
                 try:
-                    await connection.send_text(message)
+                    await asyncio.wait_for(connection.send_text(message), timeout=timeout)
+                except asyncio.TimeoutError:
+                    logger.error(f"广播消息超时: {timeout}秒")
+                    disconnected.append(connection)
                 except Exception as e:
                     logger.error(f"广播消息失败: {e}")
                     disconnected.append(connection)
@@ -99,7 +110,9 @@ class ConnectionManager:
             for connection in disconnected:
                 self.disconnect(connection)
 
-    async def broadcast_tick_data(self, frames: Dict[str, List[Frame]]):
+    async def broadcast_tick_data(self, frames: Dict[str, List[Frame]], timeout: float = None):
+        if timeout is None:
+            timeout = WS_TIMEOUT_CONFIG['tick_data']
         """广播tick数据到所有订阅了相关股票的连接"""
         if not frames:
             return
@@ -110,25 +123,49 @@ class ConnectionManager:
             "timestamp": datetime.now().isoformat()
         }
         
+        # 锁内：快速读取数据，准备发送任务
+        connections_to_send = []
         with self.lock:
-            disconnected = []
             for connection in self.active_connections:
                 try:
                     # 检查连接是否订阅了相关股票
                     subscribed = self.subscribed_symbols.get(connection, set())
+                    logger.info(f"subscribed: {len(subscribed)}")
                     relevant_frames = {symbol: frame_list for symbol, frame_list in frames.items() 
-                                     if symbol in subscribed or symbol + ".TSE" in subscribed or not subscribed}  # 如果没订阅任何股票，接收所有数据
+                                     if symbol in subscribed or symbol + ".TSE" in subscribed or not subscribed}
+                    logger.info(f"relevant_frames: {len(relevant_frames)}")
                     
                     if relevant_frames:
-                        message["frames"] = relevant_frames
-                        await connection.send_text(json.dumps(message, default=lambda x: x.dict() if hasattr(x, 'dict') else x))
+                        # 准备发送数据
+                        message_copy = message.copy()
+                        message_copy["frames"] = relevant_frames
+                        message_text = json.dumps(message_copy, default=lambda x: x.dict() if hasattr(x, 'dict') else x)
+                        
+                        connections_to_send.append((connection, message_text))
+                        
+                except Exception as e:
+                    logger.error(f"准备发送数据失败: {e}")
+                    self.disconnect(connection)
+        
+        # 锁外：执行异步发送操作
+        if connections_to_send:
+            logger.info(f"开始发送到 {len(connections_to_send)} 个连接")
+            
+            for connection, message_text in connections_to_send:
+                try:
+                    await asyncio.wait_for(
+                        connection.send_text(message_text), 
+                        timeout=timeout
+                    )
+                    logger.info(f"sent to {connection}")
+                except asyncio.TimeoutError:
+                    logger.error(f"广播tick数据超时: {timeout}秒")
+                    self.disconnect(connection)
                 except Exception as e:
                     logger.error(f"广播tick数据失败: {e}")
-                    disconnected.append(connection)
-            
-            # 清理断开的连接
-            for connection in disconnected:
-                self.disconnect(connection)
+                    self.disconnect(connection)
+        
+        logger.info("广播tick数据完成")
 
     def update_subscription(self, websocket: WebSocket, symbols: List[str]):
         """更新订阅的股票列表"""
@@ -164,7 +201,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 elif message_type == "ping":
                     await manager.send_personal_message(
                         json.dumps({"type": "pong"}),
-                        websocket
+                        websocket,
+                        timeout=WS_TIMEOUT_CONFIG['ping_pong']
                     )
                     
             except json.JSONDecodeError:
@@ -173,9 +211,11 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
-# @app.on_event("startup")
-# def startup():
-#     pass
+@app.on_event("startup")
+async def startup():
+    """应用启动时的初始化"""
+    logger.info(f"WebSocket超时配置: {WS_TIMEOUT_CONFIG}")
+    logger.info(f"Frames输出目录: {FRAMES_OUTPUT_DIR}")
 
 # @app.on_event("shutdown")
 # def shutdown():
@@ -258,7 +298,7 @@ async def post_in_day_frames(frames: Dict[str, List[Frame]]):
     """
     data_dict = frames
     
-    ts = int(datetime.now().timestamp())
+    ts = int(datetime.now().timestamp() * 1000)
     current_date = datetime.now()
     formatted_date = current_date.strftime("%Y%m%d")
     new_frame_cnt = len(data_dict)
@@ -268,11 +308,13 @@ async def post_in_day_frames(frames: Dict[str, List[Frame]]):
         multi_day_queue.append({'timestamp': f'{formatted_date}_{ts}', 'frames': data_dict})
 
         # 通过WebSocket广播tick数据
-        await manager.broadcast_tick_data(data_dict)
+        logger.info(f"广播tick数据: {new_frame_cnt}")
+        await manager.broadcast_tick_data(data_dict, timeout=WS_TIMEOUT_CONFIG['tick_data'])
+        logger.info(f"广播tick数据完成")
 
         # then to file
         # 确保输出目录存在
-        os.makedirs(FRAMES_OUTPUT_DIR, exist_ok=True)
+        # os.makedirs(FRAMES_OUTPUT_DIR, exist_ok=True)
         
         # 目标文件路径
         target_file_path = f"{FRAMES_OUTPUT_DIR}/brisk_in_day_frames_{formatted_date}_{ts}.json"
@@ -293,12 +335,12 @@ async def post_in_day_frames(frames: Dict[str, List[Frame]]):
             # 在大多数文件系统上，重命名操作是原子的
             shutil.move(temp_file_path, target_file_path)
             
-            print(f"Successfully wrote {new_frame_cnt} frames to {target_file_path}")
+            logger.info(f"Successfully wrote {new_frame_cnt} frames to {target_file_path}")
             return ['ok', f'new frame cnt: {new_frame_cnt}']
             
         except Exception as e:
             # 发生错误时，尝试清理临时文件
-            print(f"Error writing frames: {str(e)}")
+            logger.error(f"Error writing frames: {str(e)}")
             try:
                 if os.path.exists(temp_file_path):
                     os.remove(temp_file_path)
