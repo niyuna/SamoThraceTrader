@@ -820,7 +820,7 @@ def main():
             force_exit_atr_factor=10.0, # temperarily disable this by setting a very huge value, we don't see this to be really useful
 
             # disable it for now
-            gap_up_threshold=0.5,      # 2% gap up 
+            gap_up_threshold=0.02,      # 2% gap up 
             failure_threshold_gap_up=30,        # Gap Up时的VWAP failure次数阈值
             entry_factor_gap_up=1.3,           # Entry ATR倍数
             exit_factor_gap_up=1.7,            # Exit ATR倍数
@@ -830,8 +830,8 @@ def main():
             
             gap_down_threshold=-0.02,   # -2% gap down
             failure_threshold_gap_down=35,      # Gap Down时的VWAP failure次数阈值
-            entry_factor_gap_down=1.6,         # Entry ATR倍数
-            exit_factor_gap_down=1.9,          # Exit ATR倍数
+            entry_factor_gap_down=1.6,         # Entry ATR倍数 original target is 1.6
+            exit_factor_gap_down=1.9,          # Exit ATR倍数 original target is 1.9
             max_daily_trades_gap_down=2,       # 单日最大交易次数
             max_exit_wait_time_gap_down=40,    # 最大平仓等待时间（分钟）
             max_vol_ma5_ratio_threshold_gap_down=3.0, # Gap Down时的成交量MA5阈值
