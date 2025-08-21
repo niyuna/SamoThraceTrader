@@ -12,3 +12,6 @@ pydantic>=2.11.7
 loguru>=0.7.3 
 
 websockets>=13.0.0
+
+# Windows Toast Notifications
+apprise>=1.6.0
