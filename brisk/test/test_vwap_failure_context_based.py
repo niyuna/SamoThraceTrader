@@ -2160,6 +2160,8 @@ class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest,
             # 恢复原方法
             self.strategy.get_indicators = original_get_indicators
             self.strategy._get_current_bar = original_get_current_bar
+            # need to reset this to avoid risk control logic
+            context.timeout_trade_count = 0
         
         # 第二阶段：触发第一根bar完成，策略应该重新评估进入条件
         # 临时替换get_mock_indicators方法

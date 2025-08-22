@@ -53,7 +53,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         self.delayed_entry_atr_multiplier = 2.0    # 延迟执行的ATR倍数（默认2倍，保持向后兼容）
         
         # 新增：黑名单参数
-        self.black_list = ['5016']
+        self.black_list = []
         self.black_list_enabled = True
         
         # 股票状态管理
@@ -372,6 +372,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
                     # 重置状态
                     context.entry_order_id = ""
                     self.update_context_state(symbol, StrategyState.IDLE)
+                    context.timeout_trade_count += 1
                     
                     # 记录日志
                     self.write_log(f"当前bar成交量异常取消订单: {symbol}, "
@@ -540,6 +541,20 @@ class VWAPFailureStrategy(IntradayStrategyBase):
                 self.write_log(f"跳过entry信号: {context.symbol}, "
                               f"entry_price: {entry_price:.2f}, "
                               f"bar range: [{bar.low_price:.2f}, {bar.high_price:.2f}], "
+                              f"timeout_trade_count: {context.timeout_trade_count}")
+                return
+            
+            current_bar = self._get_current_bar(context.symbol)
+            if gap_dir == 'up' and current_bar and current_bar.close_price and current_bar.close_price > entry_price:
+                self.write_log(f"跳过entry信号: {context.symbol}, "
+                              f"entry_price: {entry_price:.2f}, "
+                              f"current_bar_close_price: {current_bar.close_price:.2f}, "
+                              f"timeout_trade_count: {context.timeout_trade_count}")
+                return
+            elif gap_dir == 'down' and current_bar and current_bar.close_price and current_bar.close_price < entry_price:
+                self.write_log(f"跳过entry信号: {context.symbol}, "
+                              f"entry_price: {entry_price:.2f}, "
+                              f"current_bar_close_price: {current_bar.close_price:.2f}, "
                               f"timeout_trade_count: {context.timeout_trade_count}")
                 return
         
@@ -829,7 +844,7 @@ def main():
             single_stock_max_position=1_000_000, # 单只股票最大持仓量
             delayed_entry_atr_multiplier=1.0,
             
-            exit_vol_ma5_ratio_threshold=5.0,
+            exit_vol_ma5_ratio_threshold=4.5,
             force_exit_atr_factor=10.0, # temperarily disable this by setting a very huge value, we don't see this to be really useful
 
             # disable it for now
@@ -848,6 +863,7 @@ def main():
             max_daily_trades_gap_down=2,       # 单日最大交易次数
             max_exit_wait_time_gap_down=40,    # 最大平仓等待时间（分钟）
             max_vol_ma5_ratio_threshold_gap_down=3.0, # Gap Down时的成交量MA5阈值
+            black_list=['5016'],
         )
         
         # 配置Mock Gateway的replay模式
