@@ -78,9 +78,12 @@ class VWAPFailureStrategyTest(ContextBasedStrategyTest,
         self.strategy.add_symbol(self.test_symbol)
         self.strategy.add_symbol(self.test_symbol2)
         
+        # 设置测试环境
+        self.strategy.eligible_stocks = set()
+        self.strategy.add_to_eligible_stocks(self.test_symbol)
+        self.strategy.add_to_eligible_stocks(self.test_symbol2)
+        
         # 模拟股票筛选结果
-        self.strategy.eligible_stocks.add(self.test_symbol)
-        self.strategy.eligible_stocks.add(self.test_symbol2)
         self.strategy.gap_direction[self.test_symbol] = 'up'  # 默认gap up
         self.strategy.gap_direction[self.test_symbol2] = 'down'  # 第二个股票gap down
     
@@ -914,7 +917,7 @@ class TestVWAPFailureSpecificLogic(VWAPFailureStrategyTest):
         assert context.entry_order_id == ""
         
         # 恢复eligible_stocks
-        self.strategy.eligible_stocks.add(symbol)
+        self.strategy.add_to_eligible_stocks(symbol)
         
         # 测试2: 没有gap方向
         self.strategy.gap_direction[symbol] = 'none'
@@ -1063,7 +1066,7 @@ class TestVWAPFailureSpecificLogic(VWAPFailureStrategyTest):
         # 创建tick，价格满足触发条件
         tick = self.mock_generator.create_mock_tick(symbol, price=99.0)  # 价格 >= 触发价格
         self.strategy.market_cap_eligible.add(symbol)
-        self.strategy.eligible_stocks.add(symbol)
+        self.strategy.add_to_eligible_stocks(symbol)
         self.strategy.trading_date = datetime.now().date()
         self.strategy.first_tick_prices[symbol] = 98.8
         
@@ -3033,7 +3036,7 @@ class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest,
         
         # 设置必要的策略状态
         self.strategy.market_cap_eligible.add(symbol)
-        self.strategy.eligible_stocks.add(symbol)
+        self.strategy.add_to_eligible_stocks(symbol)
         self.strategy.trading_date = datetime.now().date()
         self.strategy.first_tick_prices[symbol] = 98.8
         
@@ -3090,7 +3093,7 @@ class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest,
         
         # 设置必要的策略状态
         self.strategy.market_cap_eligible.add(symbol)
-        self.strategy.eligible_stocks.add(symbol)
+        self.strategy.add_to_eligible_stocks(symbol)
         self.strategy.trading_date = datetime.now().date()
         self.strategy.first_tick_prices[symbol] = 98.8
         
@@ -3126,6 +3129,39 @@ class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest,
         assert context.entry_trigger_order_price == 103.0, "非IDLE状态下触发订单价格应该保持不变"
         
         print("✅ 订单执行后触发价格重置测试通过")
+
+    # 新增：黑名单相关测试
+    
+    def test_black_list_basic_functionality(self):
+        """测试黑名单基本功能"""
+        # 测试默认值
+        self.assertEqual(self.strategy.black_list, [])
+        self.assertTrue(self.strategy.black_list_enabled)
+        
+        # 测试设置黑名单
+        black_list = ["9984", "7203"]
+        self.strategy.set_strategy_params(black_list=black_list)
+        self.assertEqual(set(self.strategy.black_list), set(black_list))
+        
+        # 测试黑名单检查
+        self.assertTrue(self.strategy.is_symbol_blacklisted("9984"))
+        self.assertFalse(self.strategy.is_symbol_blacklisted("6758"))
+    
+    def test_black_list_filtering_in_eligible_stocks(self):
+        """测试eligible_stocks中的黑名单过滤功能"""
+        # 设置黑名单
+        self.strategy.set_strategy_params(black_list=["9984"])
+        
+        # 清空eligible_stocks
+        self.strategy.eligible_stocks.clear()
+        
+        # 测试添加股票时的过滤
+        self.strategy.add_to_eligible_stocks("9984")  # 在黑名单中，应该被过滤
+        self.strategy.add_to_eligible_stocks("6758")  # 不在黑名单中，应该被添加
+        
+        # 验证结果
+        self.assertIn("6758", self.strategy.eligible_stocks)
+        self.assertNotIn("9984", self.strategy.eligible_stocks)  # 应该被过滤掉
 
 
 def run_all_tests():

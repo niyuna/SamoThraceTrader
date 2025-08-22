@@ -89,6 +89,10 @@ class IntradayStrategyBase:
         # 新增：延迟执行标志
         self.enable_delayed_entry = False
         
+        # 新增：Black List管理
+        self.black_list = set()  # 使用set提高查找效率
+        self.black_list_enabled = True  # 是否启用black list功能
+        
         from vnpy.trader.setting import SETTINGS
         # by default, will read ".vntrader/vt_setting.json", set in setting.py
         SETTINGS["log.active"] = True
@@ -182,6 +186,10 @@ class IntradayStrategyBase:
             # 新增：重置禁止交易标志
             context.trading_banned = False
         self.write_log("All contexts reset")
+        
+        # 新增：重置黑名单（可选，根据策略需求决定）
+        # self.black_list.clear()
+        # self.write_log("Black list cleared")
 
     # ==================== 核心交易执行方法 ====================
     
@@ -774,6 +782,75 @@ class IntradayStrategyBase:
         self.brisk_gateway.close()
         self.event_engine.stop()
         print("Brisk Gateway Demo已关闭")
+
+    # 新增：Black List管理方法
+    
+    def set_black_list(self, symbols: list):
+        """设置黑名单（主要用于初始化）"""
+        self.black_list = set(symbols)
+        self.write_log(f"设置黑名单: {len(symbols)}只股票")
+
+    def is_symbol_blacklisted(self, symbol: str) -> bool:
+        """检查股票是否在黑名单中"""
+        if not self.black_list_enabled:
+            return False
+        return symbol in self.black_list
+
+    def get_black_list(self) -> set:
+        """获取当前黑名单"""
+        return self.black_list.copy()
+
+    def clear_black_list(self):
+        """清空黑名单"""
+        removed_count = len(self.black_list)
+        self.black_list.clear()
+        self.write_log(f"清空黑名单，移除{removed_count}只股票")
+
+    def remove_from_eligible_stocks(self, symbol: str):
+        """从eligible_stocks中移除股票"""
+        if hasattr(self, 'eligible_stocks') and symbol in self.eligible_stocks:
+            self.eligible_stocks.discard(symbol)
+            self.write_log(f"从eligible_stocks中移除股票: {symbol}")
+
+    def add_to_eligible_stocks(self, symbol: str):
+        """添加股票到eligible_stocks时自动过滤黑名单"""
+        if hasattr(self, 'eligible_stocks'):
+            # 检查是否在黑名单中
+            if not self.is_symbol_blacklisted(symbol):
+                # 直接操作set，避免递归调用
+                self.eligible_stocks.add(symbol)
+                self.write_log(f"添加股票到eligible_stocks: {symbol}")
+            else:
+                self.write_log(f"跳过黑名单股票: {symbol}")
+
+    def batch_remove_from_eligible_stocks(self, symbols: list):
+        """批量从eligible_stocks中移除股票"""
+        if hasattr(self, 'eligible_stocks'):
+            removed = []
+            for symbol in symbols:
+                if symbol in self.eligible_stocks:
+                    self.eligible_stocks.discard(symbol)
+                    removed.append(symbol)
+            
+            if removed:
+                self.write_log(f"批量从eligible_stocks中移除股票: {removed}")
+
+    def batch_add_to_eligible_stocks(self, symbols: list):
+        """批量添加股票到eligible_stocks（自动过滤黑名单）"""
+        if hasattr(self, 'eligible_stocks'):
+            added = []
+            skipped = []
+            for symbol in symbols:
+                if not self.is_symbol_blacklisted(symbol):
+                    self.eligible_stocks.add(symbol)
+                    added.append(symbol)
+                else:
+                    skipped.append(symbol)
+            
+            if added:
+                self.write_log(f"批量添加到eligible_stocks: {added}")
+            if skipped:
+                self.write_log(f"跳过黑名单股票: {skipped}")
 
 
 def main():

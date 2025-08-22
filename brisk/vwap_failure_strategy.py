@@ -43,13 +43,18 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         self.max_vol_ma5_ratio_threshold_gap_up = 2.0    # Gap Up时当前bar的vol/vol_ma5比例上限
         self.max_vol_ma5_ratio_threshold_gap_down = 1.5  # Gap Down时当前bar的vol/vol_ma5比例上限
         self.timeout_exit_max_period = 5       # timeout exit limit order最大等待时间（分钟）
+        self.single_stock_max_position = 1_000_000
         
-        # 新增：风险控制参数（设置较高的默认值）
+        # 新增风险控制参数（设置较高的默认值）
         self.exit_vol_ma5_ratio_threshold = 5.0    # exit时的成交量比例阈值（默认5倍）
         self.force_exit_atr_factor = 3.0           # 强制平仓的ATR倍数（默认3倍）
         
-        # 新增：延迟执行ATR倍数参数
+        # 新增延迟执行ATR倍数参数
         self.delayed_entry_atr_multiplier = 2.0    # 延迟执行的ATR倍数（默认2倍，保持向后兼容）
+        
+        # 新增：黑名单参数
+        self.black_list = ['5016']
+        self.black_list_enabled = True
         
         # 股票状态管理
         self.market_cap_eligible = set()  # 仅满足市值条件的股票
@@ -152,11 +157,11 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             
             if gap_ratio >= self.gap_up_threshold:
                 self.gap_direction[symbol] = 'up'
-                self.eligible_stocks.add(symbol)
+                self.add_to_eligible_stocks(symbol)
                 self.write_log(f"股票 {symbol} 满足 Gap Up 条件: {gap_ratio:.2%}")
             elif gap_ratio <= self.gap_down_threshold:
                 self.gap_direction[symbol] = 'down'
-                self.eligible_stocks.add(symbol)
+                self.add_to_eligible_stocks(symbol)
                 self.write_log(f"股票 {symbol} 满足 Gap Down 条件: {gap_ratio:.2%}")
             else:
                 self.gap_direction[symbol] = 'none'
@@ -685,7 +690,10 @@ class VWAPFailureStrategy(IntradayStrategyBase):
                           exit_vol_ma5_ratio_threshold=5.0,
                           force_exit_atr_factor=3.0,
                           # 新增延迟执行参数
-                          delayed_entry_atr_multiplier=2.0):
+                          delayed_entry_atr_multiplier=2.0,
+                          # 新增：黑名单参数
+                          black_list=None,
+                          black_list_enabled=True):
         """设置策略参数"""
         self.market_cap_threshold = market_cap_threshold
         self.gap_up_threshold = gap_up_threshold
@@ -712,6 +720,11 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         
         # 新增延迟执行参数
         self.delayed_entry_atr_multiplier = delayed_entry_atr_multiplier
+        
+        # 新增：黑名单参数
+        self.black_list_enabled = black_list_enabled
+        if black_list is not None:
+            self.set_black_list(black_list)
         
         print(f"策略参数设置完成:")
         print(f"  市值阈值: {market_cap_threshold:,.0f} 日元")
