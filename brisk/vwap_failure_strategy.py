@@ -157,6 +157,10 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             
             if gap_ratio >= self.gap_up_threshold:
                 self.gap_direction[symbol] = 'up'
+                if symbol in self.short_ban_list:
+                    self.write_log(f"股票 {symbol} 在short ban list中，跳过")
+                    self.gap_direction[symbol] = 'none'
+                    return
                 self.add_to_eligible_stocks(symbol)
                 self.write_log(f"股票 {symbol} 满足 Gap Up 条件: {gap_ratio:.2%}")
             elif gap_ratio <= self.gap_down_threshold:
@@ -537,7 +541,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             entry_price = self._calculate_entry_price(context, bar, indicators)
             
             # 检查entry_price是否在当前bar的high和low范围内
-            if not (bar.low_price <= entry_price <= bar.high_price):
+            if not ((bar.low_price <= entry_price and gap_dir == 'up') or (bar.high_price >= entry_price and gap_dir == 'down')):
                 self.write_log(f"跳过entry信号: {context.symbol}, "
                               f"entry_price: {entry_price:.2f}, "
                               f"bar range: [{bar.low_price:.2f}, {bar.high_price:.2f}], "
@@ -845,7 +849,7 @@ def main():
             delayed_entry_atr_multiplier=1.0,
             
             exit_vol_ma5_ratio_threshold=4.5,
-            force_exit_atr_factor=10.0, # temperarily disable this by setting a very huge value, we don't see this to be really useful
+            force_exit_atr_factor=0.5, # temperarily disable this by setting a very huge value, we don't see this to be really useful
 
             # disable it for now
             gap_up_threshold=0.02,      # 2% gap up 
