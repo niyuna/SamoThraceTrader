@@ -376,7 +376,6 @@ class VWAPFailureStrategy(IntradayStrategyBase):
                     # 重置状态
                     context.entry_order_id = ""
                     self.update_context_state(symbol, StrategyState.IDLE)
-                    context.timeout_trade_count += 1
                     
                     # 记录日志
                     self.write_log(f"当前bar成交量异常取消订单: {symbol}, "
@@ -387,6 +386,9 @@ class VWAPFailureStrategy(IntradayStrategyBase):
                 else:
                     context.entry_canceled_by_vol_ma5 = True
                     self.write_log(f"当前bar成交量异常取消订单失败: {symbol}, order id: {context.entry_order_id} may be already filled")
+                    self._start_timeout_exit(context)
+                
+                context.timeout_trade_count += 1
 
     def on_1min_bar(self, bar):
         """重写1分钟K线处理逻辑"""

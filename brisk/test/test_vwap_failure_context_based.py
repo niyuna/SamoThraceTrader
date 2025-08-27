@@ -1266,13 +1266,13 @@ class TestVWAPFailureSpecificLogic(VWAPFailureStrategyTest):
             symbol, 
             open_price=100.0, 
             close_price=103.0,  # 价格上涨
-            volume=5000  # 高成交量
+            volume=6000  # 高成交量
         )
         
         # 设置技术指标
         def get_mock_indicators_high_vol(symbol: str) -> dict:
             return self.mock_generator.create_mock_indicators(
-                vwap=100.0, atr_14=1.0, volume_ma5=1000  # 5倍成交量
+                vwap=100.0, atr_14=1.0, volume_ma5=1100  # 5倍成交量
             )
         
         # 临时替换方法
@@ -2738,10 +2738,10 @@ class TestVWAPFailureCompleteFlow(VWAPFailureStrategyTest,
         # 测试2：entry_price超出bar范围，应该跳过entry
         bar_out_of_range = self.mock_generator.create_mock_bar(
             symbol, 
-            open_price=95.0, 
-            high_price=97.0, 
-            low_price=94.0, 
-            close_price=96.0
+            open_price=103.0, 
+            high_price=110.0, 
+            low_price=102.0, 
+            close_price=105.0
         )
         
         # 触发bar更新
