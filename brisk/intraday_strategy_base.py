@@ -92,6 +92,9 @@ class IntradayStrategyBase:
         # 新增：Black List管理
         self.black_list = set()  # 使用set提高查找效率
         self.black_list_enabled = True  # 是否启用black list功能
+
+        # new: short ban list because some stocks are not eligible for short
+        self.short_ban_list = set(['2160', '3350', '5016', '7685', '6758', '6201', '4676', '3391', '6028', '6406', '4626', '7732', '3778', '5449'])
         
         from vnpy.trader.setting import SETTINGS
         # by default, will read ".vntrader/vt_setting.json", set in setting.py
@@ -411,8 +414,13 @@ class IntradayStrategyBase:
         if atr <= 0:
             return
         
-        atr_threshold = atr * self.force_exit_atr_factor
+        gap_direction = getattr(self, 'gap_direction', {}).get(context.symbol, 'none')
+        atr_threshold = atr * self.force_exit_atr_factor if gap_direction == 'up' else atr * self.force_exit_atr_factor * 10
         # print(f"context: {context}, current_bar: {current_bar}, indicators: {indicators}, vol_ratio: {vol_ratio}, current_volume: {current_volume}, vol_ma5: {vol_ma5}, atr_threshold: {atr_threshold}, price_change: {price_change}")
+
+        if vol_ma5 <= 1000:
+            self.write_log(f"成交量异常: {symbol} 成交量={current_volume} 5日平均成交量={vol_ma5}, skip due to low volume")
+            return
 
         # 判断是否触发风险控制（只在不利方向时）
         if (vol_ratio >= self.exit_vol_ma5_ratio_threshold and 
