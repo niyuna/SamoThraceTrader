@@ -12,11 +12,11 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from common.dynamic_config import (
+from util.dynamic_config import (
     ConfigurationProvider, MockConfigurationProvider, 
     StrategyConfig, BlackListUpdateParser
 )
-from common.dynamic_param_manager import DynamicParamManager
+from util.dynamic_param_manager import DynamicParamManager
 from vwap_failure_strategy import VWAPFailureStrategy
 from intraday_strategy_base import StrategyState
 
