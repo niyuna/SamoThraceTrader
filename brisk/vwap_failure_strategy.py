@@ -366,6 +366,20 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         
         self.write_log(f"Exit order generated: {exit_order_id} for {context.symbol}")
 
+    def get_entry_direction(self, symbol: str) -> str:
+        """获取指定股票的entry方向
+        
+        Returns:
+            str: 'long' 表示做多, 'short' 表示做空, 'none' 表示不交易
+        """
+        gap_direction = self.gap_direction.get(symbol, 'none')
+        if gap_direction == 'up':
+            return 'short'  # Gap Up策略做空
+        elif gap_direction == 'down':
+            return 'long'   # Gap Down策略做多
+        else:
+            return 'none'   # 无gap，不交易
+
     def _is_gap_up(self, symbol: str) -> bool:
         """判断是否为 gap up"""
         return self.gap_direction.get(symbol, 'none') == 'up'

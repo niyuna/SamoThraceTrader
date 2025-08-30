@@ -92,6 +92,11 @@ class IntradayStrategyBase:
         
         # 新增：延迟执行标志
         self.enable_delayed_entry = False
+        self.delayed_entry_atr_multiplier = 2.0
+        
+        # 新增：风险控制参数（子类可以重写）
+        self.exit_vol_ma5_ratio_threshold = 3.0  # 成交量异常阈值
+        self.force_exit_atr_factor = 1.5         # 强制平仓ATR倍数
         
         # 新增：Black List管理
         self.black_list = set()  # 使用set提高查找效率
@@ -118,6 +123,8 @@ class IntradayStrategyBase:
         # 初始化动态参数系统
         self._init_dynamic_param_system()
         
+    # ==================== context management and base methods ====================
+
     def get_context(self, symbol: str) -> StockContext:
         """获取或创建股票 Context"""
         if symbol not in self.contexts:
@@ -176,6 +183,18 @@ class IntradayStrategyBase:
                 
         return max(position_size, 100)
     
+    def _ban_symbol_trading(self, symbol):
+        """禁止交易指定股票"""
+        # 从eligible_stocks中移除
+        if hasattr(self, 'eligible_stocks'):
+            self.eligible_stocks.discard(symbol)
+        
+        # 设置禁止标志
+        context = self.get_context(symbol)
+        context.trading_banned = True
+        
+        self.write_log(f"禁止交易股票: {symbol}")
+
     def write_log(self, msg: str):
         if self.main_engine:
             self.main_engine.write_log(msg, self.__class__.__name__)
@@ -206,6 +225,8 @@ class IntradayStrategyBase:
         # self.black_list.clear()
         # self.write_log("Black list cleared")
     
+    # ==================== dynamic param system ====================
+
     def _init_dynamic_param_system(self):
         """初始化动态参数系统"""
         if self.enable_dynamic_params:
@@ -309,13 +330,11 @@ class IntradayStrategyBase:
             # 重新注册定时器
             self._register_config_check_timer()
             self.write_log(f"配置检查间隔设置为: {interval}秒")
-        
-        # 新增：重置黑名单（可选，根据策略需求决定）
-        # self.black_list.clear()
-        # self.write_log("Black list cleared")
 
     # ==================== 核心交易执行方法 ====================
     
+    # call flow: _execute_trade -> _execute_order
+
     def _execute_order(self, context, bar, price: float, direction: Direction, offset: Offset, order_type: OrderType = OrderType.LIMIT, reference_prefix: str = "order"):
         """统一的订单执行方法"""
         # 创建OrderRequest
@@ -390,6 +409,7 @@ class IntradayStrategyBase:
         return order_id
 
     # 新增：延迟执行相关方法
+    # note: this is a general way to only send order if the price is within the ATR range, regardless of the direction and specific strategy
     
     def _is_price_within_atr_range(self, current_price: float, target_price: float, atr: float, atr_multiplier: float = None) -> bool:
         """检查当前价格是否在目标价格的ATR范围内"""
@@ -398,7 +418,7 @@ class IntradayStrategyBase:
         
         # 如果没有指定atr_multiplier，使用策略参数
         if atr_multiplier is None:
-            atr_multiplier = getattr(self, 'delayed_entry_atr_multiplier', 2.0)
+            atr_multiplier = self.delayed_entry_atr_multiplier
         
         distance = abs(current_price - target_price)
         threshold = atr * atr_multiplier
@@ -407,17 +427,17 @@ class IntradayStrategyBase:
     def _set_trigger_prices(self, context, bar, indicators, target_price: float):
         """设置触发价格和订单价格"""
         atr = indicators.get('atr_14', 100.0)
-        gap_direction = getattr(self, 'gap_direction', {}).get(context.symbol, 'none')
+        entry_direction = self.get_entry_direction(context.symbol)
         
         # 使用策略参数
-        atr_multiplier = getattr(self, 'delayed_entry_atr_multiplier', 2.0)
+        atr_multiplier = self.delayed_entry_atr_multiplier
         
-        if gap_direction == 'up':
-            # Gap Up做空：触发价格 = 目标价格 - atr_multiplier*ATR
+        if entry_direction == 'short':
+            # 做空：触发价格 = 目标价格 - atr_multiplier*ATR
             context.entry_trigger_price = target_price - (atr_multiplier * atr)
             context.entry_trigger_order_price = target_price
-        elif gap_direction == 'down':
-            # Gap Down做多：触发价格 = 目标价格 + atr_multiplier*ATR
+        elif entry_direction == 'long':
+            # 做多：触发价格 = 目标价格 + atr_multiplier*ATR
             context.entry_trigger_price = target_price + (atr_multiplier * atr)
             context.entry_trigger_order_price = target_price
         
@@ -442,15 +462,15 @@ class IntradayStrategyBase:
         
         # 检查价格是否满足触发条件
         current_price = tick.last_price
-        gap_direction = getattr(self, 'gap_direction', {}).get(symbol, 'none')
+        entry_direction = self.get_entry_direction(symbol)
         
-        if gap_direction == 'up':
-            # Gap Up做空：当前价格 <= 触发价格时触发
+        if entry_direction == 'short':
+            # 做空：当前价格 <= 触发价格时触发
             if current_price >= context.entry_trigger_price:
                 self._execute_triggered_entry(context, tick, context.entry_trigger_order_price, Direction.SHORT)
                 return True
-        elif gap_direction == 'down':
-            # Gap Down做多：当前价格 >= 触发价格时触发
+        elif entry_direction == 'long':
+            # 做多：当前价格 >= 触发价格时触发
             if current_price <= context.entry_trigger_price:
                 self._execute_triggered_entry(context, tick, context.entry_trigger_order_price, Direction.LONG)
                 return True
@@ -483,19 +503,16 @@ class IntradayStrategyBase:
     
     def _get_price_movement_direction(self, context, bar):
         """获取价格波动方向，判断是否对持仓有利"""
-        if not hasattr(self, 'gap_direction'):
-            return 'unknown'
+        entry_direction = self.get_entry_direction(context.symbol)
         
-        gap_direction = self.gap_direction.get(context.symbol, 'none')
-        
-        if gap_direction == 'up':
-            # Gap Up策略做空，价格下跌有利
+        if entry_direction == 'short':
+            # 做空策略，价格下跌有利
             if bar.close_price < bar.open_price:
                 return 'favorable'  # 价格下跌，对做空有利
             else:
                 return 'unfavorable'  # 价格上涨，对做空不利
-        elif gap_direction == 'down':
-            # Gap Down策略做多，价格上涨有利
+        elif entry_direction == 'long':
+            # 做多策略，价格上涨有利
             if bar.close_price > bar.open_price:
                 return 'favorable'  # 价格上涨，对做多有利
             else:
@@ -534,8 +551,9 @@ class IntradayStrategyBase:
         if atr <= 0:
             return
         
-        gap_direction = getattr(self, 'gap_direction', {}).get(context.symbol, 'none')
-        atr_threshold = atr * self.force_exit_atr_factor if gap_direction == 'up' else atr * self.force_exit_atr_factor * 10
+        entry_direction = self.get_entry_direction(context.symbol)
+        # 根据entry方向调整ATR阈值：做空时使用较小阈值，做多时使用较大阈值
+        atr_threshold = atr * self.force_exit_atr_factor if entry_direction == 'short' else atr * self.force_exit_atr_factor * 10
         # print(f"context: {context}, current_bar: {current_bar}, indicators: {indicators}, vol_ratio: {vol_ratio}, current_volume: {current_volume}, vol_ma5: {vol_ma5}, atr_threshold: {atr_threshold}, price_change: {price_change}")
 
         if vol_ma5 <= 1000:
@@ -574,18 +592,6 @@ class IntradayStrategyBase:
         
         # 禁止交易当前股票
         self._ban_symbol_trading(symbol)
-    
-    def _ban_symbol_trading(self, symbol):
-        """禁止交易指定股票"""
-        # 从eligible_stocks中移除
-        if hasattr(self, 'eligible_stocks'):
-            self.eligible_stocks.discard(symbol)
-        
-        # 设置禁止标志
-        context = self.get_context(symbol)
-        context.trading_banned = True
-        
-        self.write_log(f"禁止交易股票: {symbol}")
     
     def _execute_entry(self, context, bar, price, direction: Direction):
         """统一的 entry 订单执行方法"""
@@ -697,6 +703,14 @@ class IntradayStrategyBase:
                 self._execute_exit_with_direction(context, bar, new_exit_price)
 
     # ==================== 子类需要实现的抽象方法 ====================
+    
+    def get_entry_direction(self, symbol: str) -> str:
+        """获取指定股票的entry方向 - 子类必须实现
+        
+        Returns:
+            str: 'long' 表示做多, 'short' 表示做空, 'none' 表示不交易
+        """
+        raise NotImplementedError("子类必须实现 get_entry_direction 方法")
     
     def _calculate_entry_price(self, context, bar, indicators) -> float:
         """计算 entry 价格 - 子类必须实现"""
