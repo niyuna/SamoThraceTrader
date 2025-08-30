@@ -5,7 +5,7 @@ VWAP Failure 日内交易策略
 import time
 from datetime import datetime, timedelta
 from collections import defaultdict
-from typing import Dict, Set
+from typing import Dict, Set, Any
 
 from vnpy.trader.constant import Direction, Offset, Status, OrderType, Exchange
 from vnpy.trader.object import OrderData, OrderRequest, TradeData, CancelRequest
@@ -66,6 +66,74 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         # 信号统计
         self.signal_count = 0           # 信号计数
         self.signals = []               # 信号记录
+    
+    def _update_strategy_specific_params(self, params: Dict[str, Any]):
+        """更新VWAP Failure策略特定参数"""
+        # 更新阈值参数
+        threshold_params = [
+            'gap_up_threshold', 'gap_down_threshold',
+            'failure_threshold_gap_up', 'failure_threshold_gap_down',
+            'entry_factor_gap_up', 'entry_factor_gap_down',
+            'exit_factor_gap_up', 'exit_factor_gap_down'
+        ]
+        
+        for param in threshold_params:
+            if param in params:
+                old_value = getattr(self, param, None)
+                new_value = params[param]
+                setattr(self, param, new_value)
+                self.write_log(f"参数 {param} 更新: {old_value} -> {new_value}")
+        
+        # 更新交易限制参数
+        trade_limit_params = [
+            'max_daily_trades_gap_up', 'max_daily_trades_gap_down',
+            'max_exit_wait_time_gap_up', 'max_exit_wait_time_gap_down'
+        ]
+        
+        for param in trade_limit_params:
+            if param in params:
+                old_value = getattr(self, param, None)
+                new_value = params[param]
+                setattr(self, param, new_value)
+                self.write_log(f"参数 {param} 更新: {old_value} -> {new_value}")
+        
+        # 更新延迟执行参数
+        if 'enable_delayed_entry' in params:
+            old_value = self.enable_delayed_entry
+            new_value = params['enable_delayed_entry']
+            self.enable_delayed_entry = new_value
+            self.write_log(f"延迟执行功能: {old_value} -> {new_value}")
+        
+        if 'delayed_entry_atr_multiplier' in params:
+            old_value = self.delayed_entry_atr_multiplier
+            new_value = params['delayed_entry_atr_multiplier']
+            self.delayed_entry_atr_multiplier = new_value
+            self.write_log(f"延迟执行ATR倍数: {old_value} -> {new_value}")
+        
+        # 更新风险控制参数
+        risk_params = [
+            'exit_vol_ma5_ratio_threshold', 'force_exit_atr_factor',
+            'max_vol_ma5_ratio_threshold_gap_up', 'max_vol_ma5_ratio_threshold_gap_down'
+        ]
+        
+        for param in risk_params:
+            if param in params:
+                old_value = getattr(self, param, None)
+                new_value = params[param]
+                setattr(self, param, new_value)
+                self.write_log(f"风险控制参数 {param} 更新: {old_value} -> {new_value}")
+        
+        # 更新其他参数
+        other_params = [
+            'market_cap_threshold', 'latest_entry_time', 'timeout_exit_max_period'
+        ]
+        
+        for param in other_params:
+            if param in params:
+                old_value = getattr(self, param, None)
+                new_value = params[param]
+                setattr(self, param, new_value)
+                self.write_log(f"参数 {param} 更新: {old_value} -> {new_value}")
     
     def initialize_stock_filter(self):
         """初始化股票筛选器"""

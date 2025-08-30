@@ -6,7 +6,7 @@ import time
 from datetime import datetime, timedelta
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Dict, Optional, List, Any
 from enum import Enum
 
 from vnpy.event import EventEngine
@@ -25,6 +25,10 @@ from vnpy.trader.constant import Direction, Offset, OrderType, Status
 
 from common.trading_common import normalize_price
 from vnpy.trader.logger import setup_logger
+
+# 动态参数系统导入
+from common.dynamic_config import ConfigurationProvider
+from common.dynamic_param_manager import DynamicParamManager
 
 
 class StrategyState(Enum):
@@ -84,7 +88,7 @@ class IntradayStrategyBase:
         self.stock_master = {}  # 股票基础信息
         
         # 新增：单只股票最大持仓量
-        self.single_stock_max_position = 1000_000
+        self.single_stock_max_position = 1_000_000
         
         # 新增：延迟执行标志
         self.enable_delayed_entry = False
@@ -96,6 +100,11 @@ class IntradayStrategyBase:
         # new: short ban list because some stocks are not eligible for short
         self.short_ban_list = set(['6574', '2160', '3350', '5016', '7685', '6758', '6201', '4676', '3391', '6028', '6406', '4626', '7732', '3778', '5449'])
         
+        # 动态参数系统相关
+        self.dynamic_param_manager: Optional[DynamicParamManager] = None
+        self.enable_dynamic_params: bool = True
+        self.config_check_interval: int = 60  # 默认60秒检查一次
+        
         from vnpy.trader.setting import SETTINGS
         # by default, will read ".vntrader/vt_setting.json", set in setting.py
         SETTINGS["log.active"] = True
@@ -105,6 +114,9 @@ class IntradayStrategyBase:
         # SETTINGS["log.format"] = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{extra[gateway_name]}</cyan> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
         setup_logger()
         # log file will be ".vntrader/log/vt_{today_date}.log", set in logger.py
+        
+        # 初始化动态参数系统
+        self._init_dynamic_param_system()
         
     def get_context(self, symbol: str) -> StockContext:
         """获取或创建股票 Context"""
@@ -189,6 +201,114 @@ class IntradayStrategyBase:
             # 新增：重置禁止交易标志
             context.trading_banned = False
         self.write_log("All contexts reset")
+        
+        # 新增：重置黑名单（可选，根据策略需求决定）
+        # self.black_list.clear()
+        # self.write_log("Black list cleared")
+    
+    def _init_dynamic_param_system(self):
+        """初始化动态参数系统"""
+        if self.enable_dynamic_params:
+            self.write_log("动态参数系统已启用")
+        else:
+            self.write_log("动态参数系统已禁用")
+    
+    def _register_config_check_timer(self):
+        """注册配置检查定时器"""
+        if not self.enable_dynamic_params or not self.event_engine:
+            return
+            
+        # 使用正确的timer注册方式，参考enhanced_bargenerator.py
+        from vnpy.trader.event import EVENT_TIMER
+        self.event_engine.register(EVENT_TIMER, self._on_config_check_timer)
+        self.write_log(f"配置检查定时器已注册，检查间隔: {self.config_check_interval}秒")
+    
+    def _on_config_check_timer(self, event):
+        """定时器回调：检查配置更新"""
+        if not self.dynamic_param_manager:
+            return
+            
+        if self.dynamic_param_manager.should_check_config():
+            self._check_and_update_dynamic_params()
+    
+    def _check_and_update_dynamic_params(self):
+        """检查并更新动态参数"""
+        config = self.dynamic_param_manager.fetch_config()
+        if not config:
+            return
+        
+        # 更新通用参数
+        self._update_common_dynamic_params(config.params)
+        
+        # 更新策略特定参数
+        self._update_strategy_specific_params(config.params)
+        
+        # 记录日志
+        self.write_log(f"动态参数更新完成，版本: {config.version}")
+    
+    def _update_common_dynamic_params(self, params: Dict[str, Any]):
+        """更新通用动态参数"""
+        # 增量更新黑名单
+        if 'black_list' in params:
+            self._update_black_list_incrementally(params['black_list'])
+        
+        # 更新其他通用参数
+        common_params = ['enable_dynamic_params', 'config_check_interval']
+        for param in common_params:
+            if param in params:
+                setattr(self, param, params[param])
+    
+    def _update_black_list_incrementally(self, new_black_list: List[str]):
+        """增量更新黑名单"""
+        if not isinstance(new_black_list, list):
+            return
+            
+        # 获取当前黑名单
+        current_black_list = set(self.black_list)
+        
+        # 解析增量更新指令
+        from common.dynamic_config import BlackListUpdateParser
+        update_info = BlackListUpdateParser.parse_update(new_black_list)
+        
+        # 应用更新
+        for symbol in update_info['adds']:
+            if symbol not in current_black_list:
+                current_black_list.add(symbol)
+                self.write_log(f"黑名单添加: {symbol}")
+                # 从eligible_stocks中移除
+                self.remove_from_eligible_stocks(symbol)
+        
+        for symbol in update_info['removes']:
+            if symbol in current_black_list:
+                current_black_list.discard(symbol)
+                self.write_log(f"黑名单移除: {symbol}")
+                # 重新添加到eligible_stocks（如果策略支持）
+                if hasattr(self, 'eligible_stocks'):
+                    self.eligible_stocks.add(symbol)
+        
+        # 更新黑名单
+        self.black_list = list(current_black_list)
+        self.write_log(f"黑名单更新完成，当前数量: {len(self.black_list)}")
+    
+    def _update_strategy_specific_params(self, params: Dict[str, Any]):
+        """更新策略特定参数 - 子类需要实现"""
+        pass
+    
+    def set_configuration_provider(self, config_provider: ConfigurationProvider):
+        """设置配置提供者"""
+        self.dynamic_param_manager = DynamicParamManager(self, config_provider)
+        self.write_log("配置提供者设置完成")
+        
+        # 注册定时器
+        self._register_config_check_timer()
+    
+    def set_config_check_interval(self, interval: int):
+        """设置配置检查间隔（秒）"""
+        self.config_check_interval = interval
+        if self.dynamic_param_manager:
+            # 重新注册定时器
+            self._register_config_check_timer()
+            self.write_log(f"配置检查间隔设置为: {interval}秒")
         
         # 新增：重置黑名单（可选，根据策略需求决定）
         # self.black_list.clear()
