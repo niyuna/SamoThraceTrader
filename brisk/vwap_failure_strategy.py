@@ -568,12 +568,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         
         # 根据gap方向确定平仓方向
         # note _execute_exit will update context.exit_order_id and context.exit_start_time
-        if self._is_gap_up(context.symbol):
-            # Gap Up策略是做空，平仓需要买入
-            self._execute_exit(context, current_bar, limit_price, Direction.LONG, OrderType.LIMIT)
-        else:
-            # Gap Down策略是做多，平仓需要卖出
-            self._execute_exit(context, current_bar, limit_price, Direction.SHORT, OrderType.LIMIT)
+        self._execute_exit_with_direction(context, current_bar, limit_price)
         
         # 更新状态和时间
         self.update_context_state(context.symbol, StrategyState.WAITING_TIMEOUT_EXIT)
@@ -754,22 +749,6 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             else:
                 return next_tick_price(context.symbol, vwap + (atr * self._get_exit_factor(context.symbol)), upside=False)  # 做多平仓
     
-    def _execute_entry_with_direction(self, context, bar, price):
-        """根据策略逻辑执行 entry 订单"""
-        if self._is_gap_up(context.symbol):
-            self._execute_entry(context, bar, price, Direction.SHORT)
-        else:
-            self._execute_entry(context, bar, price, Direction.LONG)
-    
-    def _execute_exit_with_direction(self, context, bar, price):
-        """根据策略逻辑执行 exit 订单"""
-        if self._is_gap_up(context.symbol):
-            # Gap Up 策略是做空，平仓需要买入
-            self._execute_exit(context, bar, price, Direction.LONG)
-        else:
-            # Gap Down 策略是做多，平仓需要卖出
-            self._execute_exit(context, bar, price, Direction.SHORT)
-
     def set_strategy_params(self, 
                           market_cap_threshold=100_000_000_000,
                           gap_up_threshold=0.02,

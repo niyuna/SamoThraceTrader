@@ -333,7 +333,7 @@ class IntradayStrategyBase:
 
     # ==================== 核心交易执行方法 ====================
     
-    # call flow: _execute_trade -> _execute_order
+    # call flow: _check_and_execute_trigger -> _execute_triggered_entry ->_execute_entry/_execute_exit -> _execute_trade -> _execute_order
 
     def _execute_order(self, context, bar, price: float, direction: Direction, offset: Offset, order_type: OrderType = OrderType.LIMIT, reference_prefix: str = "order"):
         """统一的订单执行方法"""
@@ -702,6 +702,32 @@ class IntradayStrategyBase:
                 # 撤单成功，重新下单 - 子类需要实现具体的下单逻辑
                 self._execute_exit_with_direction(context, bar, new_exit_price)
 
+    # ==================== 已实现的方法 ====================
+    
+    def _execute_entry_with_direction(self, context, bar, price):
+        """根据策略逻辑执行 entry 订单 - 现在可以在base strategy中实现"""
+        entry_direction = self.get_entry_direction(context.symbol)
+        
+        if entry_direction == 'short':
+            self._execute_entry(context, bar, price, Direction.SHORT)
+        elif entry_direction == 'long':
+            self._execute_entry(context, bar, price, Direction.LONG)
+        else:
+            self.write_log(f"警告: {context.symbol} 的entry方向为 'none'，跳过entry订单执行")
+    
+    def _execute_exit_with_direction(self, context, bar, price):
+        """根据策略逻辑执行 exit 订单 - 现在可以在base strategy中实现"""
+        entry_direction = self.get_entry_direction(context.symbol)
+        
+        if entry_direction == 'short':
+            # 做空策略，平仓需要买入
+            self._execute_exit(context, bar, price, Direction.LONG)
+        elif entry_direction == 'long':
+            # 做多策略，平仓需要卖出
+            self._execute_exit(context, bar, price, Direction.SHORT)
+        else:
+            self.write_log(f"警告: {context.symbol} 的entry方向为 'none'，跳过exit订单执行")
+
     # ==================== 子类需要实现的抽象方法 ====================
     
     def get_entry_direction(self, symbol: str) -> str:
@@ -719,14 +745,6 @@ class IntradayStrategyBase:
     def _calculate_exit_price(self, context, bar, indicators) -> float:
         """计算 exit 价格 - 子类必须实现"""
         raise NotImplementedError("子类必须实现 _calculate_exit_price 方法")
-    
-    def _execute_entry_with_direction(self, context, bar, price):
-        """根据策略逻辑执行 entry 订单 - 子类必须实现"""
-        raise NotImplementedError("子类必须实现 _execute_entry_with_direction 方法")
-    
-    def _execute_exit_with_direction(self, context, bar, price):
-        """根据策略逻辑执行 exit 订单 - 子类必须实现"""
-        raise NotImplementedError("子类必须实现 _execute_exit_with_direction 方法")
     
     def on_order(self, event):
         """订单状态变化回调 - 子类可以重写"""
@@ -752,7 +770,6 @@ class IntradayStrategyBase:
         # 创建技术指标管理器
         # TODO: IMPROVE THIS: size has to be 15, because the atr calculation is based on 14 bars, and the first atr is calculated based on 15 bars
         self.indicator_managers[symbol] = TechnicalIndicatorManager(symbol, size=15)
-        # print(f"为 {symbol} 创建增强版K线生成器和技术指标管理器")
         
     def on_tick(self, event: Event):
         """Tick数据回调函数"""

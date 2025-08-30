@@ -34,14 +34,6 @@ class MockStrategy(IntradayStrategyBase):
     def _calculate_exit_price(self, context, bar, indicators) -> float:
         """模拟实现exit价格计算"""
         return 101.0
-    
-    def _execute_entry_with_direction(self, context, bar, price):
-        """模拟实现entry订单执行"""
-        pass
-    
-    def _execute_exit_with_direction(self, context, bar, price):
-        """模拟实现exit订单执行"""
-        pass
 
 
 class TestBaseStrategyRefactor(unittest.TestCase):
