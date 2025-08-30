@@ -3,9 +3,15 @@
 测试基于polling的订单状态更新机制
 """
 
+import sys
+import os
 import time
 import threading
 from datetime import datetime
+
+# 添加上级目录到Python路径，以便导入模块
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 from vnpy.event import EventEngine
 from vnpy.trader.object import OrderRequest
 from vnpy.trader.constant import Direction, Offset, OrderType

@@ -2,7 +2,13 @@
 测试 Windows Toast 通知功能
 """
 
+import sys
+import os
 import time
+
+# 添加上级目录到Python路径，以便导入模块
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 from dummy_tick_monitor_strategy import DummyTickMonitorStrategy
 
 

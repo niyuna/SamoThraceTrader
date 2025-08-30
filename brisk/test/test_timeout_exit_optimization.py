@@ -4,7 +4,8 @@
 
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# 添加上级目录到Python路径，以便导入模块
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from datetime import datetime, timedelta
 from vnpy.trader.constant import Direction, OrderType, Status
@@ -32,13 +33,30 @@ def test_timeout_exit_optimization():
     context.exit_order_id = "test_exit_order"
     context.exit_start_time = datetime.now() - timedelta(minutes=31)  # 模拟超时
     
+    # 创建模拟的bar数据
+    from vnpy.trader.object import BarData
+    from vnpy.trader.constant import Exchange
+    mock_bar = BarData(
+        symbol="TEST_SYMBOL",
+        exchange=Exchange.TSE,
+        datetime=datetime.now(),
+        interval=None,
+        volume=0,
+        turnover=0,
+        open_price=100.0,
+        high_price=100.0,
+        low_price=100.0,
+        close_price=100.0,
+        gateway_name="TEST"
+    )
+    
     print(f"初始状态: {context.state.value}")
     print(f"Exit订单ID: {context.exit_order_id}")
     print(f"Exit开始时间: {context.exit_start_time}")
     
     # 测试_check_exit_timeout方法
     print("\n--- 测试第一阶段timeout ---")
-    result = strategy._check_exit_timeout(context)
+    result = strategy._check_exit_timeout(context, mock_bar)
     print(f"Timeout检查结果: {result}")
     print(f"当前状态: {context.state.value}")
     print(f"Timeout exit开始时间: {context.timeout_exit_start_time}")
@@ -46,7 +64,7 @@ def test_timeout_exit_optimization():
     # 模拟timeout exit limit order超时
     print("\n--- 测试第二阶段timeout ---")
     context.timeout_exit_start_time = datetime.now() - timedelta(minutes=6)  # 模拟timeout exit超时
-    result = strategy._check_exit_timeout(context)
+    result = strategy._check_exit_timeout(context, mock_bar)
     print(f"Timeout检查结果: {result}")
     print(f"当前状态: {context.state.value}")
     
