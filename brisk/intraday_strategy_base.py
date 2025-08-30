@@ -94,7 +94,7 @@ class IntradayStrategyBase:
         self.black_list_enabled = True  # 是否启用black list功能
 
         # new: short ban list because some stocks are not eligible for short
-        self.short_ban_list = set(['2160', '3350', '5016', '7685', '6758', '6201', '4676', '3391', '6028', '6406', '4626', '7732', '3778', '5449'])
+        self.short_ban_list = set(['6574', '2160', '3350', '5016', '7685', '6758', '6201', '4676', '3391', '6028', '6406', '4626', '7732', '3778', '5449'])
         
         from vnpy.trader.setting import SETTINGS
         # by default, will read ".vntrader/vt_setting.json", set in setting.py
