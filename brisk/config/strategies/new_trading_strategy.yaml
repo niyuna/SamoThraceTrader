@@ -1,0 +1,18 @@
+# NewTradingStrategy 配置模板
+strategy_name: "NewTradingStrategy"
+environment: "staging"
+version: "1.0.0"
+last_updated: "2025-08-30T19:17:35"
+is_valid: true
+
+params:
+  # 在这里添加策略参数
+  # 示例:
+  # gap_up_threshold: 0.025
+  # black_list: ["9984", "7203"]
+
+metadata:
+  description: "NewTradingStrategy staging环境配置"
+  author: "trading_team"
+  risk_level: "medium"
+  tags: []
