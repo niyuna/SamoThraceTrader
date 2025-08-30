@@ -27,8 +27,8 @@ from common.trading_common import normalize_price
 from vnpy.trader.logger import setup_logger
 
 # 动态参数系统导入
-from common.dynamic_config import ConfigurationProvider
-from common.dynamic_param_manager import DynamicParamManager
+from util.dynamic_config import ConfigurationProvider
+from util.dynamic_param_manager import DynamicParamManager
 
 
 class StrategyState(Enum):
@@ -267,7 +267,7 @@ class IntradayStrategyBase:
         current_black_list = set(self.black_list)
         
         # 解析增量更新指令
-        from common.dynamic_config import BlackListUpdateParser
+        from util.dynamic_config import BlackListUpdateParser
         update_info = BlackListUpdateParser.parse_update(new_black_list)
         
         # 应用更新
