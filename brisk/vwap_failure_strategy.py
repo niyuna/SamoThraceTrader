@@ -937,9 +937,9 @@ def main():
             max_daily_trades_gap_down=2,       # 单日最大交易次数
             max_exit_wait_time_gap_down=40,    # 最大平仓等待时间（分钟）
             max_vol_ma5_ratio_threshold_gap_down=3.0, # Gap Down时的成交量MA5阈值
-            black_list=['5016'],
+            black_list=[],
         )
-        
+
         # 配置Mock Gateway的replay模式
         # mock_setting = {
         #     "tick_mode": "replay",
@@ -953,6 +953,10 @@ def main():
         # strategy.connect(mock_setting)
         
         strategy.connect()
+
+        # need to run after connect otherwise event engine is not initialized
+        from util.yaml_config_provider import YAMLConfigurationProvider
+        strategy.set_configuration_provider(YAMLConfigurationProvider("config/strategies", "production"))
         
         # 初始化股票筛选器
         strategy.initialize_stock_filter()
