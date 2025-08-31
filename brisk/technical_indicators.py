@@ -3,6 +3,7 @@ Technical Indicators V3 - 基于ArrayManager的技术指标计算模块
 使用组合模式设计，包含VWAP计算、Bar统计和技术指标管理
 """
 
+from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Dict, Optional
 
@@ -10,7 +11,21 @@ from vnpy.trader.object import BarData
 from vnpy.trader.utility import ArrayManager
 
 
-class VWAPCalculator:
+class BaseCalculator(ABC):
+    """技术指标计算器基类"""
+    
+    @abstractmethod
+    def update_bar(self, bar: BarData, **kwargs) -> any:
+        """更新bar数据并计算指标"""
+        pass
+    
+    @abstractmethod
+    def reset_daily(self, new_date):
+        """重置每日数据"""
+        pass
+
+
+class VWAPCalculator(BaseCalculator):
     """VWAP计算器 - 从当天第一根bar开始累计"""
     
     def __init__(self):
@@ -19,12 +34,12 @@ class VWAPCalculator:
         self.current_date = None         # 当前日期
         self.vwap = 0.0                  # 当前VWAP值
     
-    def update_bar(self, bar: BarData) -> float:
+    def update_bar(self, bar: BarData, **kwargs) -> float:
         """更新bar数据并计算VWAP"""
         # 检查是否是新的一天
         bar_date = bar.datetime.date()
         if self.current_date != bar_date:
-            self._reset_daily_data(bar_date)
+            self.reset_daily(bar_date)
         
         # 累计成交量和成交额
         self.daily_acc_volume += bar.volume
@@ -38,7 +53,7 @@ class VWAPCalculator:
         
         return self.vwap
     
-    def _reset_daily_data(self, new_date):
+    def reset_daily(self, new_date):
         """重置每日数据"""
         self.current_date = new_date
         self.daily_acc_volume = 0.0
@@ -59,7 +74,7 @@ class VWAPCalculator:
         }
 
 
-class BarStatistics:
+class BarStatistics(BaseCalculator):
     """Bar统计器 - 统计close与VWAP的关系"""
     
     def __init__(self):
@@ -68,12 +83,15 @@ class BarStatistics:
         self.equal_vwap_count = 0    # close = VWAP的bar数量
         self.current_date = None     # 当前日期
     
-    def update_bar(self, bar: BarData, vwap: float) -> dict:
+    def update_bar(self, bar: BarData, **kwargs) -> dict:
         """更新bar统计信息"""
+        # 从kwargs获取VWAP值
+        vwap = kwargs.get('vwap', 0.0)
+        
         # 检查是否是新的一天
         bar_date = bar.datetime.date()
         if self.current_date != bar_date:
-            self._reset_daily_data(bar_date)
+            self.reset_daily(bar_date)
         
         # 统计close与VWAP的关系
         close_price = bar.close_price
@@ -86,7 +104,7 @@ class BarStatistics:
         
         return self.get_stats()
     
-    def _reset_daily_data(self, new_date):
+    def reset_daily(self, new_date):
         """重置每日数据"""
         self.current_date = new_date
         self.above_vwap_count = 0
@@ -103,6 +121,97 @@ class BarStatistics:
         }
 
 
+class ATRCalculator(BaseCalculator):
+    """ATR计算器 - 使用EMA算法计算ATR"""
+    
+    def __init__(self, period: int = 14):
+        self.period = period
+        self.current_date = None
+        self.latest_atr = 0.0
+        self.am = None  # 将由外部设置
+    
+    def set_array_manager(self, am: ArrayManager):
+        """设置ArrayManager引用"""
+        self.am = am
+    
+    def update_bar(self, bar: BarData, **kwargs) -> float:
+        """更新bar数据并计算ATR"""
+        # 检查是否是新的一天
+        bar_date = bar.datetime.date()
+        if self.current_date != bar_date:
+            self.reset_daily(bar_date)
+        
+        if not self.am or not self.am.inited:
+            return 0.0
+        
+        # 使用EMA算法计算ATR
+        if self.am.count <= self.period:
+            self.latest_atr = 0.0
+        elif self.am.count == self.period + 1:
+            # 第一次完整计算
+            self.latest_atr = self.am.atr(self.period)
+        else:
+            # 使用EMA算法更新
+            current_atr = self.am.atr(1)
+            self.latest_atr = (current_atr + self.latest_atr * (self.period - 1)) / self.period
+        
+        return self.latest_atr
+    
+    def reset_daily(self, new_date):
+        """重置每日数据"""
+        self.current_date = new_date
+        # 注意：ATR不需要每日重置，因为它是连续计算的
+    
+    def get_atr(self) -> float:
+        """获取当前ATR值"""
+        return self.latest_atr
+
+
+class VolumeMACalculator(BaseCalculator):
+    """Volume MA计算器 - 计算成交量移动平均"""
+    
+    def __init__(self, period: int = 5):
+        self.period = period
+        self.current_date = None
+        self.latest_volume_ma = 0.0
+        self.am = None  # 将由外部设置
+    
+    def set_array_manager(self, am: ArrayManager):
+        """设置ArrayManager引用"""
+        self.am = am
+    
+    def update_bar(self, bar: BarData, **kwargs) -> float:
+        """更新bar数据并计算Volume MA"""
+        # 检查是否是新的一天
+        bar_date = bar.datetime.date()
+        if self.current_date != bar_date:
+            self.reset_daily(bar_date)
+        
+        if not self.am or not self.am.inited:
+            return 0.0
+        
+        # 计算Volume MA
+        import numpy as np
+        volume_array = self.am.volume
+        # 只取最后period个非零值（有效数据）
+        valid_volumes = volume_array[volume_array > 0]
+        if len(valid_volumes) >= self.period:
+            self.latest_volume_ma = np.mean(valid_volumes[-self.period:])
+        else:
+            self.latest_volume_ma = 0.0
+        
+        return self.latest_volume_ma
+    
+    def reset_daily(self, new_date):
+        """重置每日数据"""
+        self.current_date = new_date
+        # 注意：Volume MA不需要每日重置，因为它是连续计算的
+    
+    def get_volume_ma(self) -> float:
+        """获取当前Volume MA值"""
+        return self.latest_volume_ma
+
+
 class TechnicalIndicatorManager:
     """技术指标管理器 - 组合各个计算器"""
     
@@ -111,6 +220,14 @@ class TechnicalIndicatorManager:
         self.am = ArrayManager(size)          # 基础技术指标
         self.vwap_calc = VWAPCalculator()     # VWAP计算器
         self.stats = BarStatistics()          # 统计器
+        
+        # 新增：使用专门的计算器
+        self.atr_calc = ATRCalculator(period=14)      # ATR计算器
+        self.volume_ma_calc = VolumeMACalculator(period=5)  # Volume MA计算器
+        
+        # 设置ArrayManager引用
+        self.atr_calc.set_array_manager(self.am)
+        self.volume_ma_calc.set_array_manager(self.am)
         
         # 缓存最新指标值
         self.latest_indicators = {}
@@ -124,18 +241,19 @@ class TechnicalIndicatorManager:
         vwap = self.vwap_calc.update_bar(bar)
         
         # 3. 更新统计信息
-        stats = self.stats.update_bar(bar, vwap)
+        stats = self.stats.update_bar(bar, vwap=vwap)
         
-        # 4. 计算其他技术指标
-        indicators = self._calculate_indicators()
+        # 4. 使用专门的计算器计算技术指标
+        atr_14 = self.atr_calc.update_bar(bar)
+        volume_ma5 = self.volume_ma_calc.update_bar(bar)
         
         # 5. 合并所有指标
         self.latest_indicators = {
             'symbol': self.symbol,
             'datetime': bar.datetime,
             'vwap': vwap,
-            'atr_14': indicators.get('atr_14', 0),
-            'volume_ma5': indicators.get('volume_ma5', 0),
+            'atr_14': atr_14,
+            'volume_ma5': volume_ma5,
             'above_vwap_count': stats['above_vwap_count'],
             'below_vwap_count': stats['below_vwap_count'],
             'equal_vwap_count': stats['equal_vwap_count'],
@@ -146,27 +264,13 @@ class TechnicalIndicatorManager:
         return self.latest_indicators
     
     def _calculate_indicators(self) -> dict:
-        """计算基础技术指标"""
+        """计算基础技术指标 - 保持向后兼容性"""
         indicators = {}
         
         if self.am.inited:
-            # ATR actually is not a simple moving average, it is a weighted moving average, which means the oldest tr will contribute as well
-            if self.am.count <= 14:
-                indicators['atr_14'] = 0
-            elif self.am.count == 15:
-                indicators['atr_14'] = self.am.atr(14)
-            else:
-                indicators['atr_14'] = (self.am.atr(1) + self.latest_indicators.get('atr_14', 0) * 13) / 14
-            
-            # Volume MA(5) - 使用numpy计算volume的移动平均
-            import numpy as np
-            volume_array = self.am.volume
-            # 只取最后5个非零值（有效数据）
-            valid_volumes = volume_array[volume_array > 0]
-            if len(valid_volumes) >= 5:
-                indicators['volume_ma5'] = np.mean(valid_volumes[-5:])
-            else:
-                indicators['volume_ma5'] = 0
+            # 使用专门的计算器
+            indicators['atr_14'] = self.atr_calc.get_atr()
+            indicators['volume_ma5'] = self.volume_ma_calc.get_volume_ma()
         
         return indicators
     

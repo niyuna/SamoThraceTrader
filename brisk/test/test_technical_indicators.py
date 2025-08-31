@@ -78,7 +78,7 @@ def test_bar_statistics():
     ]
     
     for i, bar in enumerate(bars):
-        result = stats.update_bar(bar, vwap)
+        result = stats.update_bar(bar, vwap=vwap)
         print(f"Bar {i+1}: Close={bar.close_price}, VWAP={vwap}, 统计={result}")
 
 
@@ -209,26 +209,31 @@ def test_current_implementation_verification():
     key_indicators = {}
     
     for i, bar in enumerate(bars):
-        indicators = manager.update_bar(bar)
-        
-        # 显示关键数据点
-        if i < 5 or i in [13, 14, 15, 16, 19]:  # 显示前5个和关键初始化点
-            print(f"\nBar {i+1:2d}: {bar.datetime.strftime('%H:%M')}")
-            print(f"  价格: 开:{bar.open_price:6.2f} 高:{bar.high_price:6.2f} 低:{bar.low_price:6.2f} 收:{bar.close_price:6.2f}")
-            print(f"  成交量: {bar.volume:6.0f}")
-            print(f"  指标: ATR(14):{indicators['atr_14']:8.4f} Volume MA5:{indicators['volume_ma5']:8.0f}")
+        try:
+            indicators = manager.update_bar(bar)
             
-            if i == 13:
-                print(f"  *** 第14个bar: ATR应该开始计算 ***")
-            elif i == 14:
-                print(f"  *** 第15个bar: ATR第一次完整计算 ***")
-                key_indicators['bar_15'] = indicators
-            elif i == 15:
-                print(f"  *** 第16个bar: ArrayManager初始化完成 ***")
-                key_indicators['bar_16'] = indicators
-            elif i == 19:
-                print(f"  *** 第20个bar: 最终结果 ***")
-                key_indicators['bar_20'] = indicators
+            # 显示关键数据点
+            if i < 5 or i in [13, 14, 15, 16, 19]:  # 显示前5个和关键初始化点
+                print(f"\nBar {i+1:2d}: {bar.datetime.strftime('%H:%M')}")
+                print(f"  价格: 开:{bar.open_price:6.2f} 高:{bar.high_price:6.2f} 低:{bar.low_price:6.2f} 收:{bar.close_price:6.2f}")
+                print(f"  成交量: {bar.volume:6.0f}")
+                print(f"  指标: ATR(14):{indicators['atr_14']:8.4f} Volume MA5:{indicators['volume_ma5']:8.0f}")
+                
+                if i == 13:
+                    print(f"  *** 第14个bar: ATR应该开始计算 ***")
+                elif i == 14:
+                    print(f"  *** 第15个bar: ATR第一次完整计算 ***")
+                    key_indicators['bar_15'] = indicators
+                elif i == 15:
+                    print(f"  *** 第16个bar: ArrayManager初始化完成 ***")
+                    key_indicators['bar_16'] = indicators
+                elif i == 19:
+                    print(f"  *** 第20个bar: 最终结果 ***")
+                    key_indicators['bar_20'] = indicators
+        except Exception as e:
+            print(f"Bar {i+1} failed with error: {e}")
+            import traceback
+            traceback.print_exc()
     
     # 获取最终指标
     final_indicators = manager.get_indicators()
@@ -279,15 +284,25 @@ def test_current_implementation_verification():
     
     # ==================== 使用基准值进行Assert验证 ====================
     print("\n=== 基准值Assert验证 ===")
+    print("开始执行assert验证...")
     
     # 验证第15个bar的指标值
+    print("检查key_indicators内容...")
+    print(f"key_indicators keys: {list(key_indicators.keys())}")
+    
     assert 'bar_15' in key_indicators, "第15个bar的指标值未记录"
+    print("✓ bar_15检查通过")
     bar_15_indicators = key_indicators['bar_15']
     
     # ATR(14)在第15个bar应该开始计算
     expected_atr_15 = 3.8929
     actual_atr_15 = bar_15_indicators['atr_14']
-    assert abs(actual_atr_15 - expected_atr_15) < 0.001, \
+    print(f"第15个bar ATR验证: 期望{expected_atr_15}, 实际{actual_atr_15}")
+    
+    diff = abs(actual_atr_15 - expected_atr_15)
+    print(f"差值: {diff}, 阈值: 0.001, 是否通过: {diff < 0.001}")
+    
+    assert diff < 0.001, \
         f"第15个bar的ATR(14)值不匹配: 期望{expected_atr_15}, 实际{actual_atr_15}"
     print(f"✓ 第15个bar ATR(14)验证通过: {actual_atr_15:.4f}")
     
