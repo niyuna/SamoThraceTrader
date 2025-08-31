@@ -11,8 +11,7 @@ from vnpy.trader.object import BarData
 from vnpy.trader.constant import Exchange, Interval
 import sys
 import os
-import pandas as pd
-# import pandas_ta as ta
+import numpy as np
 
 # 添加父目录到Python路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -26,8 +25,8 @@ def create_test_bar(symbol: str, dt: datetime, open_price: float, high_price: fl
     return BarData(
         symbol=symbol,
         exchange=Exchange.TSE,
-        datetime=dt,
         interval=Interval.MINUTE,
+        datetime=dt,
         open_price=open_price,
         high_price=high_price,
         low_price=low_price,
@@ -140,7 +139,6 @@ def test_technical_indicator_manager():
                 print(f"    close_array: {am.close_array}")
                 print(f"    volume_array: {am.volume_array}")
                 # 尝试手动计算ATR
-                import numpy as np
                 high = am.high_array
                 low = am.low_array
                 close = am.close_array
@@ -176,248 +174,200 @@ def test_daily_reset():
     print(f"第二天: VWAP={indicators2['vwap']:.2f}, 统计={indicators2['above_vwap_count']}")
 
 
-def test_atr_with_real_csv_data():
-    """使用真实CSV数据测试ATR计算"""
-    print("\n=== 使用真实CSV数据测试ATR计算 ===")
+def test_current_implementation_verification():
+    """验证当前实现的ATR和Volume MA5计算 - 锁定基准值"""
+    print("\n=== 验证当前实现 - 锁定基准值 ===")
     
-    import pandas as pd
-    import numpy as np
-    from datetime import datetime
+    manager = TechnicalIndicatorManager("TEST", size=15)  # 使用size=15
+    base_time = datetime(2024, 1, 1, 9, 30, 0)
     
-    # 读取CSV文件
-    csv_path = r"D:\dev\github\brisk-hack\gomihiroi\atr_test_2432.csv"
-    try:
-        df = pd.read_csv(csv_path)
-        print(f"成功读取CSV文件，共{len(df)}行数据")
-        print(f"列名: {list(df.columns)}")
+    # 创建测试数据 - 使用固定的价格模式
+    bars = []
+    for i in range(20):
+        # 创建有规律的价格波动
+        base_price = 100 + (i % 4) * 2  # 100, 102, 104, 106, 100, 102, ...
+        high_price = base_price + 1.0
+        low_price = base_price - 1.0
+        close_price = base_price + (i % 3 - 1) * 0.5
         
-        # 显示前几行数据
-        print("\n前5行数据:")
-        print(df.head())
+        bar = create_test_bar(
+            "TEST", 
+            base_time + timedelta(minutes=i), 
+            base_price, 
+            high_price, 
+            low_price, 
+            close_price, 
+            1000 + i * 100, 
+            (1000 + i * 100) * base_price
+        )
+        bars.append(bar)
+    
+    print("锁定当前实现的ATR和Volume MA5计算:")
+    print("=" * 60)
+    
+    # 存储关键点的指标值用于验证
+    key_indicators = {}
+    
+    for i, bar in enumerate(bars):
+        indicators = manager.update_bar(bar)
         
-    except Exception as e:
-        print(f"读取CSV文件失败: {e}")
-        return
-    
-    # 创建技术指标管理器
-    manager = TechnicalIndicatorManager("2432", size=15)
-    
-    # 处理每一行数据
-    for idx, row in df.iterrows():
-        try:
-            # 解析datetime
-            dt_str = str(row['datetime'])
-            if pd.isna(dt_str) or dt_str == 'nan':
-                continue
-                
-            # 处理datetime格式
-            if '0000' in dt_str:
-                dt_str = dt_str.replace('0000', '00')
+        # 显示关键数据点
+        if i < 5 or i in [13, 14, 15, 16, 19]:  # 显示前5个和关键初始化点
+            print(f"\nBar {i+1:2d}: {bar.datetime.strftime('%H:%M')}")
+            print(f"  价格: 开:{bar.open_price:6.2f} 高:{bar.high_price:6.2f} 低:{bar.low_price:6.2f} 收:{bar.close_price:6.2f}")
+            print(f"  成交量: {bar.volume:6.0f}")
+            print(f"  指标: ATR(14):{indicators['atr_14']:8.4f} Volume MA5:{indicators['volume_ma5']:8.0f}")
             
-            dt = pd.to_datetime(dt_str)
-            
-            # 创建BarData
-            bar = create_test_bar(
-                symbol="2432",
-                dt=dt,
-                open_price=float(row['o']),
-                high_price=float(row['h']),
-                low_price=float(row['l']),
-                close_price=float(row['c']),
-                volume=float(row['vol']),
-                turnover=float(row['turnover'])
-            )
-            
-            # 更新技术指标
-            indicators = manager.update_bar(bar)
-            
-            # 显示关键数据点
-            if idx >= 130: #idx < 5 or idx >= len(df) - 5 or (idx + 1) % 50 == 0 or idx >= 130:
-                print(f"\nBar {idx+1}: {dt.strftime('%Y-%m-%d %H:%M:%S')}")
-                print(f"  价格: 开:{bar.open_price:.2f} 高:{bar.high_price:.2f} 低:{bar.low_price:.2f} 收:{bar.close_price:.2f}")
-                print(f"  指标: VWAP:{indicators['vwap']:.2f} ATR(14):{indicators['atr_14']:.4f}")
-                
-                # 手动验证ATR计算
-                if manager.am.count >= 14:
-                    am = manager.am
-                    high = am.high_array
-                    low = am.low_array
-                    close = am.close_array
-                    
-                    # 显示最近14期的True Range值
-                    if idx < 10:  # 只在前几个bar显示详细信息
-                        print(f"  最近14期True Range: {tr[-14:]}")
-                
-        except Exception as e:
-            print(f"处理第{idx+1}行数据时出错: {e}")
-            continue
+            if i == 13:
+                print(f"  *** 第14个bar: ATR应该开始计算 ***")
+            elif i == 14:
+                print(f"  *** 第15个bar: ATR第一次完整计算 ***")
+                key_indicators['bar_15'] = indicators
+            elif i == 15:
+                print(f"  *** 第16个bar: ArrayManager初始化完成 ***")
+                key_indicators['bar_16'] = indicators
+            elif i == 19:
+                print(f"  *** 第20个bar: 最终结果 ***")
+                key_indicators['bar_20'] = indicators
     
-    print(f"\n测试完成，共处理了{len(df)}行数据")
-
-
-def test_atr_with_pandas_ta_comparison():
-    """使用pandas_ta库对比ATR计算"""
-    print("\n=== 使用pandas_ta库对比ATR计算 ===")
+    # 获取最终指标
+    final_indicators = manager.get_indicators()
+    print(f"\n" + "=" * 60)
+    print(f"最终锁定值:")
+    print(f"  ATR(14): {final_indicators['atr_14']:.4f}")
+    print(f"  Volume MA5: {final_indicators['volume_ma5']:.0f}")
+    print(f"  VWAP: {final_indicators['vwap']:.2f}")
+    print(f"  Above VWAP count: {final_indicators['above_vwap_count']}")
+    print(f"  Below VWAP count: {final_indicators['below_vwap_count']}")
     
-    import pandas as pd
-    import pandas_ta as ta
-    import numpy as np
-    from datetime import datetime
+    # 分析ArrayManager状态
+    am = manager.am
+    print(f"\nArrayManager状态:")
+    print(f"  count: {am.count}, size: {am.size}, inited: {am.inited}")
     
-    # 读取CSV文件
-    csv_path = r"D:\dev\github\brisk-hack\gomihiroi\atr_test_2432.csv"
-    try:
-        df = pd.read_csv(csv_path)
-        print(f"成功读取CSV文件，共{len(df)}行数据")
+    if am.inited:
+        print(f"  high_array: {am.high_array}")
+        print(f"  low_array: {am.low_array}")
+        print(f"  close_array: {am.close_array}")
+        print(f"  volume_array: {am.volume_array}")
         
-        # 预处理数据
-        df['datetime'] = pd.to_datetime(df['datetime'].str.replace('0000', '00'))
-        df = df.sort_values('datetime').reset_index(drop=True)
-        
-        # 使用pandas_ta计算ATR
-        df['atr_pandas_ta'] = df.ta.atr(length=14, high='h', low='l', close='c')
-        
-        print(f"pandas_ta ATR计算完成")
-        print(f"前5行pandas_ta ATR值: {df['atr_pandas_ta'].head().tolist()}")
-        
-    except Exception as e:
-        print(f"读取CSV文件或计算pandas_ta ATR失败: {e}")
-        return
-    
-    # 创建技术指标管理器
-    manager = TechnicalIndicatorManager("2432", size=20)
-    
-    # 手动计算ATR的辅助函数
-    def calculate_true_range(high, low, close):
-        """计算True Range"""
-        tr1 = high - low
-        tr2 = np.abs(high - np.roll(close, 1))
-        tr3 = np.abs(low - np.roll(close, 1))
-        return np.maximum(tr1, np.maximum(tr2, tr3))
-    
-    def calculate_atr_manual(high_array, low_array, close_array, period=14):
-        """手动计算ATR"""
-        if len(high_array) < period:
-            return 0.0
-        
-        tr = calculate_true_range(high_array, low_array, close_array)
-        return np.mean(tr[-period:])
-    
-    # 对比结果
-    comparison_results = []
-    
-    # 处理每一行数据
-    for idx, row in df.iterrows():
-        try:
-            # 创建BarData
-            bar = create_test_bar(
-                symbol="2432",
-                dt=row['datetime'],
-                open_price=float(row['o']),
-                high_price=float(row['h']),
-                low_price=float(row['l']),
-                close_price=float(row['c']),
-                volume=float(row['vol']),
-                turnover=float(row['turnover'])
-            )
+        # 尝试理解ATR计算逻辑
+        if am.count >= 14:
+            print(f"\nATR计算分析:")
+            print(f"  最近14个high: {am.high_array[-14:]}")
+            print(f"  最近14个low: {am.low_array[-14:]}")
+            print(f"  最近14个close: {am.close_array[-14:]}")
             
-            # 更新技术指标
-            indicators = manager.update_bar(bar)
+            # 计算True Range
+            high = am.high_array
+            low = am.low_array
+            close = am.close_array
             
-            # 获取pandas_ta的ATR值
-            atr_pandas_ta = row['atr_pandas_ta']
-            atr_system = indicators['atr_14']
+            tr1 = high - low
+            tr2 = np.abs(high - np.roll(close, 1))
+            tr3 = np.abs(low - np.roll(close, 1))
+            tr = np.maximum(tr1, np.maximum(tr2, tr3))
             
-            # 手动计算ATR进行验证
-            if manager.am.inited and manager.am.count >= 14:
-                am = manager.am
-                atr_manual = calculate_atr_manual(am.high_array, am.low_array, am.close_array, 14)
-            else:
-                atr_manual = 0.0
+            print(f"  最近14个True Range: {tr[-14:]}")
+            print(f"  True Range平均值: {np.mean(tr[-14:]):.4f}")
             
-            # 记录对比结果
-            comparison_results.append({
-                'bar_idx': idx + 1,
-                'datetime': row['datetime'],
-                'close': bar.close_price,
-                'atr_system': atr_system,
-                'atr_pandas_ta': atr_pandas_ta,
-                'atr_manual': atr_manual,
-                'diff_system_pandas': abs(atr_system - atr_pandas_ta) if not pd.isna(atr_pandas_ta) else float('inf'),
-                'diff_system_manual': abs(atr_system - atr_manual),
-                'diff_pandas_manual': abs(atr_pandas_ta - atr_manual) if not pd.isna(atr_pandas_ta) else float('inf')
-            })
-            
-            # 显示关键数据点
-            if idx < 5 or idx >= len(df) - 5 or (idx + 1) % 30 == 0:
-                print(f"\nBar {idx+1}: {row['datetime'].strftime('%H:%M:%S')}")
-                print(f"  价格: 收:{bar.close_price:.2f}")
-                print(f"  系统ATR: {atr_system:.4f}")
-                print(f"  pandas_ta ATR: {atr_pandas_ta:.4f}" if not pd.isna(atr_pandas_ta) else "  pandas_ta ATR: NaN")
-                print(f"  手动ATR: {atr_manual:.4f}")
-                
-                if not pd.isna(atr_pandas_ta):
-                    print(f"  系统-pandas_ta差异: {abs(atr_system - atr_pandas_ta):.6f}")
-                print(f"  系统-手动差异: {abs(atr_system - atr_manual):.6f}")
-                
-        except Exception as e:
-            print(f"处理第{idx+1}行数据时出错: {e}")
-            continue
+            # 尝试理解系统的ATR计算
+            print(f"  系统ATR值: {final_indicators['atr_14']:.4f}")
+            print(f"  差异: {abs(np.mean(tr[-14:]) - final_indicators['atr_14']):.6f}")
     
-    # 分析对比结果
-    comparison_df = pd.DataFrame(comparison_results)
+    print("=" * 60)
     
-    print(f"\n=== ATR计算对比分析 ===")
-    print(f"总数据点: {len(comparison_df)}")
+    # ==================== 使用基准值进行Assert验证 ====================
+    print("\n=== 基准值Assert验证 ===")
     
-    # 统计有效数据点（pandas_ta不为NaN的）
-    valid_data = comparison_df[~comparison_df['atr_pandas_ta'].isna()]
-    print(f"有效数据点: {len(valid_data)}")
+    # 验证第15个bar的指标值
+    assert 'bar_15' in key_indicators, "第15个bar的指标值未记录"
+    bar_15_indicators = key_indicators['bar_15']
     
-    if len(valid_data) > 0:
-        print(f"\n系统 vs pandas_ta:")
-        print(f"  平均差异: {valid_data['diff_system_pandas'].mean():.6f}")
-        print(f"  最大差异: {valid_data['diff_system_pandas'].max():.6f}")
-        print(f"  标准差: {valid_data['diff_system_pandas'].std():.6f}")
-        
-        # 找出差异最大的几个点
-        max_diff_idx = valid_data['diff_system_pandas'].idxmax()
-        max_diff_row = valid_data.loc[max_diff_idx]
-        print(f"\n最大差异点 (Bar {max_diff_row['bar_idx']}):")
-        print(f"  系统ATR: {max_diff_row['atr_system']:.4f}")
-        print(f"  pandas_ta ATR: {max_diff_row['atr_pandas_ta']:.4f}")
-        print(f"  差异: {max_diff_row['diff_system_pandas']:.6f}")
+    # ATR(14)在第15个bar应该开始计算
+    expected_atr_15 = 3.8929
+    actual_atr_15 = bar_15_indicators['atr_14']
+    assert abs(actual_atr_15 - expected_atr_15) < 0.001, \
+        f"第15个bar的ATR(14)值不匹配: 期望{expected_atr_15}, 实际{actual_atr_15}"
+    print(f"✓ 第15个bar ATR(14)验证通过: {actual_atr_15:.4f}")
     
-    print(f"\n系统 vs 手动计算:")
-    print(f"  平均差异: {comparison_df['diff_system_manual'].mean():.6f}")
-    print(f"  最大差异: {comparison_df['diff_system_manual'].max():.6f}")
-    print(f"  标准差: {comparison_df['diff_system_manual'].std():.6f}")
+    # Volume MA5在第15个bar应该开始计算
+    expected_vol_ma5_15 = 2200
+    actual_vol_ma5_15 = bar_15_indicators['volume_ma5']
+    assert abs(actual_vol_ma5_15 - expected_vol_ma5_15) < 0.1, \
+        f"第15个bar的Volume MA5值不匹配: 期望{expected_vol_ma5_15}, 实际{actual_vol_ma5_15}"
+    print(f"✓ 第15个bar Volume MA5验证通过: {actual_vol_ma5_15:.0f}")
     
-    # 检查是否有显著差异
-    significant_diff_threshold = 0.001
-    significant_diffs = comparison_df[comparison_df['diff_system_manual'] > significant_diff_threshold]
-    if len(significant_diffs) > 0:
-        print(f"\n*** 发现{len(significant_diffs)}个显著差异点 (> {significant_diff_threshold}) ***")
-        for _, row in significant_diffs.head(3).iterrows():
-            print(f"  Bar {row['bar_idx']}: 系统={row['atr_system']:.4f}, 手动={row['atr_manual']:.4f}, 差异={row['diff_system_manual']:.6f}")
-    else:
-        print(f"\n✓ 所有ATR计算差异都在阈值范围内 (< {significant_diff_threshold})")
+    # 验证第16个bar的指标值
+    assert 'bar_16' in key_indicators, "第16个bar的指标值未记录"
+    bar_16_indicators = key_indicators['bar_16']
     
-    print(f"\n测试完成，共处理了{len(df)}行数据")
+    # ATR(14)在第16个bar应该继续计算
+    expected_atr_16 = 3.7934
+    actual_atr_16 = bar_16_indicators['atr_14']
+    assert abs(actual_atr_16 - expected_atr_16) < 0.001, \
+        f"第16个bar的ATR(14)值不匹配: 期望{expected_atr_16}, 实际{actual_atr_16}"
+    print(f"✓ 第16个bar ATR(14)验证通过: {actual_atr_16:.4f}")
+    
+    # Volume MA5在第16个bar应该继续计算
+    expected_vol_ma5_16 = 2300
+    actual_vol_ma5_16 = bar_16_indicators['volume_ma5']
+    assert abs(actual_vol_ma5_16 - expected_vol_ma5_16) < 0.1, \
+        f"第16个bar的Volume MA5值不匹配: 期望{expected_vol_ma5_16}, 实际{actual_vol_ma5_16}"
+    print(f"✓ 第16个bar Volume MA5验证通过: {actual_vol_ma5_16:.0f}")
+    
+    # 验证第20个bar的指标值
+    assert 'bar_20' in key_indicators, "第20个bar的指标值未记录"
+    bar_20_indicators = key_indicators['bar_20']
+    
+    # ATR(14)在第20个bar的最终值
+    expected_atr_20 = 3.7926
+    actual_atr_20 = bar_20_indicators['atr_14']
+    assert abs(actual_atr_20 - expected_atr_20) < 0.001, \
+        f"第20个bar的ATR(14)值不匹配: 期望{expected_atr_20}, 实际{actual_atr_20}"
+    print(f"✓ 第20个bar ATR(14)验证通过: {actual_atr_20:.4f}")
+    
+    # Volume MA5在第20个bar的最终值
+    expected_vol_ma5_20 = 2700
+    actual_vol_ma5_20 = bar_20_indicators['volume_ma5']
+    assert abs(actual_vol_ma5_20 - expected_vol_ma5_20) < 0.1, \
+        f"第20个bar的Volume MA5值不匹配: 期望{expected_vol_ma5_20}, 实际{actual_vol_ma5_20}"
+    print(f"✓ 第20个bar Volume MA5验证通过: {actual_vol_ma5_20:.0f}")
+    
+    # 验证最终指标值
+    expected_vwap_final = 103.13
+    actual_vwap_final = final_indicators['vwap']
+    assert abs(actual_vwap_final - expected_vwap_final) < 0.01, \
+        f"最终VWAP值不匹配: 期望{expected_vwap_final}, 实际{actual_vwap_final}"
+    print(f"✓ 最终VWAP验证通过: {actual_vwap_final:.2f}")
+    
+    expected_above_vwap_count = 12
+    actual_above_vwap_count = final_indicators['above_vwap_count']
+    assert actual_above_vwap_count == expected_above_vwap_count, \
+        f"Above VWAP count不匹配: 期望{expected_above_vwap_count}, 实际{actual_above_vwap_count}"
+    print(f"✓ Above VWAP count验证通过: {actual_above_vwap_count}")
+    
+    expected_below_vwap_count = 8
+    actual_below_vwap_count = final_indicators['below_vwap_count']
+    assert actual_below_vwap_count == expected_below_vwap_count, \
+        f"Below VWAP count不匹配: 期望{expected_below_vwap_count}, 实际{actual_below_vwap_count}"
+    print(f"✓ Below VWAP count验证通过: {actual_below_vwap_count}")
+    
+    print("\n🎯 所有基准值验证通过！这些值将作为重构时的黄金标准。")
+    print("=" * 60)
 
 
 if __name__ == "__main__":
     print("开始测试Technical Indicators V3模块...\n")
     
     try:
-        # test_vwap_calculator()
-        # test_bar_statistics()
-        # test_technical_indicator_manager()
-        # test_daily_reset()
-        test_atr_with_real_csv_data()  # 添加新的CSV数据测试
-        # test_atr_with_pandas_ta_comparison()  # 添加pandas_ta对比测试
+        test_vwap_calculator()
+        test_bar_statistics()
+        test_technical_indicator_manager()
+        test_daily_reset()
+        test_current_implementation_verification()  # 锁定当前实现的基准值
         
-        print("所有测试完成！")
+        print("\n所有测试完成！")
         
     except Exception as e:
         print(f"测试过程中出现错误: {e}")
