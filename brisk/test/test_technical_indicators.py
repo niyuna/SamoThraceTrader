@@ -372,6 +372,76 @@ def test_current_implementation_verification():
     print("=" * 60)
 
 
+def test_manual_calculator_combination():
+    """测试手动组合Calculator的示例"""
+    print("\n=== 测试手动组合Calculator的示例 ===")
+    
+    from technical_indicators import SimpleATRStrategy, VolumeStrategy, CustomStrategy
+    
+    base_time = datetime(2024, 1, 1, 9, 30, 0)
+    
+    # 创建测试数据
+    bars = []
+    for i in range(20):
+        base_price = 100 + (i % 4) * 2
+        high_price = base_price + 1.0
+        low_price = base_price - 1.0
+        close_price = base_price + (i % 3 - 1) * 0.5
+        
+        bar = create_test_bar(
+            "TEST",
+            base_time + timedelta(minutes=i),
+            base_price,
+            high_price,
+            low_price,
+            close_price,
+            1000 + i * 100,
+            (1000 + i * 100) * base_price
+        )
+        bars.append(bar)
+    
+    # 测试1：SimpleATRStrategy
+    print("测试1：SimpleATRStrategy（只计算ATR）")
+    atr_strategy = SimpleATRStrategy("TEST", size=15)
+    
+    for i, bar in enumerate(bars):
+        atr = atr_strategy.update_bar(bar)
+        if i in [13, 14, 15, 16, 19]:  # 关键点
+            print(f"Bar {i+1:2d}: ATR(14) = {atr:.4f}")
+    
+    print(f"最终ATR: {atr_strategy.get_atr():.4f}")
+    
+    # 测试2：VolumeStrategy
+    print("\n测试2：VolumeStrategy（只计算Volume MA）")
+    volume_strategy = VolumeStrategy("TEST", size=15)
+    
+    for i, bar in enumerate(bars):
+        vol_ma = volume_strategy.update_bar(bar)
+        if i in [13, 14, 15, 16, 19]:  # 关键点
+            print(f"Bar {i+1:2d}: Volume MA(10) = {vol_ma:.0f}")
+    
+    print(f"最终Volume MA: {volume_strategy.get_volume_ma():.0f}")
+    
+    # 测试3：CustomStrategy
+    print("\n测试3：CustomStrategy（组合多个计算器）")
+    custom_strategy = CustomStrategy("TEST", size=15)
+    
+    for i, bar in enumerate(bars):
+        indicators = custom_strategy.update_bar(bar)
+        if i in [13, 14, 15, 16, 19]:  # 关键点
+            print(f"Bar {i+1:2d}: ATR(20)={indicators.get('atr_20', 0):8.4f} "
+                  f"Volume MA(3)={indicators.get('volume_ma3', 0):8.0f} "
+                  f"VWAP={indicators.get('vwap', 0):6.2f}")
+    
+    final_indicators = custom_strategy.get_indicators()
+    print(f"\n最终结果:")
+    print(f"  ATR(20): {final_indicators.get('atr_20', 0):.4f}")
+    print(f"  Volume MA(3): {final_indicators.get('volume_ma3', 0):.0f}")
+    print(f"  VWAP: {final_indicators.get('vwap', 0):.2f}")
+    
+    print("\n✓ 手动组合Calculator测试完成！")
+
+
 if __name__ == "__main__":
     print("开始测试Technical Indicators V3模块...\n")
     
@@ -381,6 +451,7 @@ if __name__ == "__main__":
         test_technical_indicator_manager()
         test_daily_reset()
         test_current_implementation_verification()  # 锁定当前实现的基准值
+        test_manual_calculator_combination()        # 测试手动组合的示例
         
         print("\n所有测试完成！")
         

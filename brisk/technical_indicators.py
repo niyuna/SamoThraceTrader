@@ -288,4 +288,98 @@ class TechnicalIndicatorManager:
     
     def is_inited(self) -> bool:
         """检查是否已初始化"""
-        return self.am.inited 
+        return self.am.inited
+
+
+# ==================== 手动组合Calculator的示例 ====================
+
+class SimpleATRStrategy:
+    """简单ATR策略示例 - 只需要ATR指标"""
+    
+    def __init__(self, symbol: str, size: int = 100):
+        self.symbol = symbol
+        self.am = ArrayManager(size)
+        
+        # 手动组合：只需要ATR计算器
+        self.atr_calc = ATRCalculator(period=14)
+        self.atr_calc.set_array_manager(self.am)
+        
+        self.latest_atr = 0.0
+    
+    def update_bar(self, bar: BarData) -> float:
+        """更新bar并计算ATR"""
+        self.am.update_bar(bar)
+        self.latest_atr = self.atr_calc.update_bar(bar)
+        return self.latest_atr
+    
+    def get_atr(self) -> float:
+        """获取当前ATR值"""
+        return self.latest_atr
+
+
+class VolumeStrategy:
+    """成交量策略示例 - 只需要Volume MA指标"""
+    
+    def __init__(self, symbol: str, size: int = 100):
+        self.symbol = symbol
+        self.am = ArrayManager(size)
+        
+        # 手动组合：只需要Volume MA计算器
+        self.volume_ma_calc = VolumeMACalculator(period=10)  # 使用10期
+        self.volume_ma_calc.set_array_manager(self.am)
+        
+        self.latest_volume_ma = 0.0
+    
+    def update_bar(self, bar: BarData) -> float:
+        """更新bar并计算Volume MA"""
+        self.am.update_bar(bar)
+        self.latest_volume_ma = self.volume_ma_calc.update_bar(bar)
+        return self.latest_volume_ma
+    
+    def get_volume_ma(self) -> float:
+        """获取当前Volume MA值"""
+        return self.latest_volume_ma
+
+
+class CustomStrategy:
+    """自定义策略示例 - 组合多个计算器"""
+    
+    def __init__(self, symbol: str, size: int = 100):
+        self.symbol = symbol
+        self.am = ArrayManager(size)
+        
+        # 手动组合：选择需要的计算器
+        self.vwap_calc = VWAPCalculator()
+        self.atr_calc = ATRCalculator(period=20)  # 使用20期
+        self.volume_ma_calc = VolumeMACalculator(period=3)  # 使用3期
+        
+        # 设置ArrayManager引用
+        self.atr_calc.set_array_manager(self.am)
+        self.volume_ma_calc.set_array_manager(self.am)
+        
+        self.latest_indicators = {}
+    
+    def update_bar(self, bar: BarData) -> dict:
+        """更新bar并计算选择的指标"""
+        self.am.update_bar(bar)
+        
+        # 计算选择的指标
+        vwap = self.vwap_calc.update_bar(bar)
+        atr_20 = self.atr_calc.update_bar(bar)
+        volume_ma3 = self.volume_ma_calc.update_bar(bar)
+        
+        # 合并结果
+        self.latest_indicators = {
+            'symbol': self.symbol,
+            'datetime': bar.datetime,
+            'vwap': vwap,
+            'atr_20': atr_20,
+            'volume_ma3': volume_ma3,
+            'daily_acc_volume': self.vwap_calc.daily_acc_volume,
+        }
+        
+        return self.latest_indicators
+    
+    def get_indicators(self) -> dict:
+        """获取最新指标值"""
+        return self.latest_indicators.copy() 
