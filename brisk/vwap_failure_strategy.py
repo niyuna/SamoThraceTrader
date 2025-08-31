@@ -66,6 +66,11 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         # 信号统计
         self.signal_count = 0           # 信号计数
         self.signals = []               # 信号记录
+        
+        # 自定义Bar Generator和技术指标配置
+        # 注意：这些配置必须在父类初始化完成后设置
+        self.bar_window = 5            # VWAP策略使用5分钟K线
+        self.indicator_size = 15       # 需要15个历史bar来计算稳定的指标
     
     def _update_strategy_specific_params(self, params: Dict[str, Any]):
         """更新VWAP Failure策略特定参数"""

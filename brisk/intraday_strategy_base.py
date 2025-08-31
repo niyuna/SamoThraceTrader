@@ -98,6 +98,13 @@ class IntradayStrategyBase:
         self.exit_vol_ma5_ratio_threshold = 3.0  # 成交量异常阈值
         self.force_exit_atr_factor = 1.5         # 强制平仓ATR倍数
         
+        # 新增：Bar Generator和技术指标配置（子类可以重写）
+        self.bar_window = 5                      # 5分钟K线窗口
+        self.bar_interval = Interval.MINUTE      # K线间隔
+        self.enable_opening_volume = True        # 启用开盘成交量
+        self.enable_auto_flush = False           # 不启用强制收线（replay模式）
+        self.indicator_size = 15                 # 技术指标计算所需的历史bar数量
+        
         # 新增：Black List管理
         self.black_list = set()  # 使用set提高查找效率
         self.black_list_enabled = True  # 是否启用black list功能
@@ -755,22 +762,34 @@ class IntradayStrategyBase:
         pass
     
     def add_symbol(self, symbol: str):
-        """为指定股票创建BarGenerator和技术指标管理器"""
-        # 创建增强版1分钟K线生成器
-        self.bar_generators[symbol] = EnhancedBarGenerator(
-            on_bar=self.on_1min_bar,
-            window=5,  # 5分钟K线
-            on_window_bar=self.on_5min_bar,
-            interval=Interval.MINUTE,
-            enable_opening_volume=True,  # 启用开盘成交量
-            enable_auto_flush=False,     # 不启用强制收线（replay模式）
-            main_engine=self.main_engine # 传入main_engine
-        )
+        """为指定股票创建BarGenerator和技术指标管理器
+        
+        子类可以重写此方法来自定义bar generator和技术指标的配置
+        """
+        # 创建增强版K线生成器
+        self.bar_generators[symbol] = self._create_bar_generator(symbol)
         
         # 创建技术指标管理器
-        # TODO: IMPROVE THIS: size has to be 15, because the atr calculation is based on 14 bars, and the first atr is calculated based on 15 bars
-        self.indicator_managers[symbol] = TechnicalIndicatorManager(symbol, size=15)
+        self.indicator_managers[symbol] = self._create_indicator_manager(symbol)
         
+        self.write_log(f"为 {symbol} 创建了BarGenerator和技术指标管理器")
+    
+    def _create_bar_generator(self, symbol: str):
+        """创建BarGenerator - 子类可以重写此方法来自定义配置"""
+        return EnhancedBarGenerator(
+            on_bar=self.on_1min_bar,
+            window=self.bar_window,  # 使用配置的窗口大小
+            on_window_bar=self.on_5min_bar,
+            interval=self.bar_interval,  # 使用配置的间隔
+            enable_opening_volume=self.enable_opening_volume,  # 使用配置的开盘成交量设置
+            enable_auto_flush=self.enable_auto_flush,  # 使用配置的强制收线设置
+            main_engine=self.main_engine  # 传入main_engine
+        )
+    
+    def _create_indicator_manager(self, symbol: str):
+        """创建技术指标管理器 - 子类可以重写此方法来自定义配置"""
+        return TechnicalIndicatorManager(symbol, size=self.indicator_size)  # 使用配置的大小
+    
     def on_tick(self, event: Event):
         """Tick数据回调函数"""
         tick = event.data
@@ -870,12 +889,12 @@ class IntradayStrategyBase:
     
     def subscribe(self, symbols: list):
         """订阅股票"""
-        # hacky way to do batch subscription. TODO: design a better way
         for symbol in symbols:
             # 添加股票到技术指标管理器
             self.add_symbol(symbol)
             
         # 订阅行情
+        # hacky way to do batch subscription. TODO: design a better way
         req = SubscribeRequest(symbol=','.join(symbols), exchange=Exchange.TSE)
         self.main_engine.subscribe(req, self.gateway_name)
         self.write_log(f"subscribe: {','.join(symbols)}")
