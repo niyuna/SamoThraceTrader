@@ -533,7 +533,7 @@ class IntradayStrategyBase:
         context = self.get_context(symbol)
         
         # 只在WAITING_EXIT状态下检查
-        if context.state != StrategyState.WAITING_EXIT:
+        if context.state != StrategyState.WAITING_EXIT and context.state != StrategyState.WAITING_TIMEOUT_EXIT:
             return
 
         # 获取当前bar和技术指标
