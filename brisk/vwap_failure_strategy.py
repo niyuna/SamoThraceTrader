@@ -473,7 +473,12 @@ class VWAPFailureStrategy(IntradayStrategyBase):
                 else:
                     context.entry_canceled_by_vol_ma5 = True
                     self.write_log(f"当前bar成交量异常取消订单失败: {symbol}, order id: {context.entry_order_id} may be already filled")
-                    self._start_timeout_exit(context)
+                    if self.get_entry_direction(symbol) == 'long':
+                        self.write_log(f"当前bar成交量异常，取消订单失败，当前状态为long，进入timeout exit")
+                        self._start_timeout_exit(context)
+                    else:
+                        self.write_log(f"当前bar成交量异常，取消订单失败，当前状态为short，进入force market exit")
+                        self._force_market_exit(context)
                 
                 context.timeout_trade_count += 1
 

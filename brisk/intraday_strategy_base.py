@@ -532,7 +532,7 @@ class IntradayStrategyBase:
         symbol = tick.symbol
         context = self.get_context(symbol)
         
-        # 只在WAITING_EXIT状态下检查
+        # 只在EXIT状态下检查
         if context.state != StrategyState.WAITING_EXIT and context.state != StrategyState.WAITING_TIMEOUT_EXIT:
             return
 
@@ -563,7 +563,7 @@ class IntradayStrategyBase:
         atr_threshold = atr * self.force_exit_atr_factor if entry_direction == 'short' else atr * self.force_exit_atr_factor * 10
         # print(f"context: {context}, current_bar: {current_bar}, indicators: {indicators}, vol_ratio: {vol_ratio}, current_volume: {current_volume}, vol_ma5: {vol_ma5}, atr_threshold: {atr_threshold}, price_change: {price_change}")
 
-        if vol_ma5 <= 1000:
+        if vol_ma5 <= 1500:
             self.write_log(f"成交量异常: {symbol} 成交量={current_volume} 5日平均成交量={vol_ma5}, skip due to low volume")
             return
 
