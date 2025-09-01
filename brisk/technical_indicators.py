@@ -395,3 +395,116 @@ class CustomStrategy:
     def get_indicators(self) -> dict:
         """获取最新指标值"""
         return self.latest_indicators.copy() 
+
+
+class HFTBBReversalIndicator:
+    """HFT BB Reversal策略专用技术指标类"""
+    
+    def __init__(self, symbol: str, size: int = 100, bb_period: int = 20, 
+                 entry_std_multiplier: float = 3.0, exit_std_multiplier: float = 0.1):
+        self.symbol = symbol
+        self.am = ArrayManager(size)
+        
+        # BB策略参数
+        self.bb_period = bb_period
+        self.entry_std_multiplier = entry_std_multiplier
+        self.exit_std_multiplier = exit_std_multiplier
+        
+        # 缓存最新指标值
+        self.latest_bb_levels = {}
+        self.latest_sma = 0.0
+        self.latest_std = 0.0
+        
+        # 历史数据缓存（用于跨日补齐）
+        self.prev_day_last_bar = None
+        self.current_date = None
+    
+    def update_bar(self, bar: BarData) -> dict:
+        """更新bar并计算BB指标"""
+        # 检查是否是新的一天
+        bar_date = bar.datetime.date()
+        if self.current_date != bar_date:
+            self._handle_date_change(bar_date)
+        
+        # 更新ArrayManager
+        self.am.update_bar(bar)
+        
+        # 计算BB指标
+        bb_levels = self._calculate_bb_levels()
+        
+        # 缓存结果
+        self.latest_bb_levels = bb_levels
+        self.latest_sma = bb_levels.get('middle', 0.0)
+        self.latest_std = bb_levels.get('std', 0.0)
+        
+        return bb_levels
+    
+    def _handle_date_change(self, new_date):
+        """处理日期变化 - 保存前一日最后bar用于补齐"""
+        if self.current_date is not None and self.am.inited:
+            # 保存前一日最后bar
+            self.prev_day_last_bar = {
+                'open': self.am.open[-1],
+                'high': self.am.high[-1], 
+                'low': self.am.low[-1],
+                'close': self.am.close[-1],
+                'volume': self.am.volume[-1],
+                'turnover': self.am.turnover[-1]
+            }
+        
+        self.current_date = new_date
+    
+    def _calculate_bb_levels(self) -> dict:
+        """计算布林带各个价格水平"""
+        if not self.am.inited:
+            return {}
+        
+        # 获取SMA和STD
+        sma = self.am.sma(self.bb_period)
+        std = self.am.std(self.bb_period)
+        
+        if sma is None or std is None:
+            return {}
+        
+        # 计算BB价格水平
+        bb_levels = {
+            'upper': sma + (self.entry_std_multiplier * std),      # short entry
+            'lower': sma - (self.entry_std_multiplier * std),      # long entry  
+            'middle': sma,                                          # BB中轴
+            'exit_long': sma - (self.exit_std_multiplier * std),   # long exit
+            'exit_short': sma + (self.exit_std_multiplier * std),  # short exit
+            'std': std,                                             # 标准差
+            'period': self.bb_period,                              # 周期
+            'entry_multiplier': self.entry_std_multiplier,         # entry倍数
+            'exit_multiplier': self.exit_std_multiplier            # exit倍数
+        }
+        
+        return bb_levels
+    
+    def get_bb_levels(self) -> dict:
+        """获取最新BB价格水平"""
+        return self.latest_bb_levels.copy()
+    
+    def get_sma(self) -> float:
+        """获取最新SMA值"""
+        return self.latest_sma
+    
+    def get_std(self) -> float:
+        """获取最新STD值"""
+        return self.latest_std
+    
+    def get_indicators(self) -> dict:
+        """获取所有指标值 - 实现统一接口"""
+        return self.latest_bb_levels.copy()
+    
+    def is_inited(self) -> bool:
+        """检查是否已初始化"""
+        return self.am.inited
+    
+    def get_array_manager(self) -> ArrayManager:
+        """获取ArrayManager引用"""
+        return self.am
+    
+    def reset_daily(self, new_date):
+        """重置每日数据 - 保持向后兼容性"""
+        self._handle_date_change(new_date) 

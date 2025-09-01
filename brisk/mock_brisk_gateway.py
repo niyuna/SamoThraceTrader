@@ -684,13 +684,15 @@ class MockBriskGateway(BaseGateway):
 
     def subscribe(self, req: SubscribeRequest) -> None:
         """订阅行情"""
-        self.subscribed_symbols.add(req.symbol)
+        for symbol in req.symbol.split(','):
+            self.subscribed_symbols.add(symbol)
         
         if self.tick_mode == "mock":
-            self.mock_tick_generator.add_symbol(req.symbol)
+            for symbol in req.symbol.split(','):
+                self.mock_tick_generator.add_symbol(symbol)
         # 在replay模式下，订阅请求会被记录，但数据由回放引擎控制
             
-        self.write_log(f"订阅行情成功: {req.symbol}")
+        self.write_log(f"订阅行情成功: {req.symbol.split(',')}")
 
     def send_order(self, req: OrderRequest) -> str:
         self.order_call_count += 1
