@@ -544,27 +544,44 @@ class IntradayStrategyBase:
         indicators = self.get_indicators(symbol)
         if not indicators:
             return
-        # 检查成交量异常
-        vol_ma5 = indicators.get('volume_ma5', 0)
-        if vol_ma5 <= 0:
+        
+        # 灵活获取Volume MA指标（支持不同的周期）
+        vol_ma_keys = [key for key in indicators.keys() if key.startswith('volume_ma')]
+        if not vol_ma_keys:
+            # 如果没有Volume MA指标，跳过风险控制
+            return
+        
+        # 使用第一个可用的Volume MA指标
+        vol_ma_key = vol_ma_keys[0]
+        vol_ma = indicators.get(vol_ma_key, 0)
+        if vol_ma <= 0:
             return
         
         current_volume = current_bar.volume
-        vol_ratio = current_volume / vol_ma5
+        vol_ratio = current_volume / vol_ma
 
-        # 检查价格波动异常
-        price_change = abs(current_bar.close_price - current_bar.open_price)
-        atr = indicators.get('atr_14', 0)
+        # 灵活获取ATR指标（支持不同的周期）
+        atr_keys = [key for key in indicators.keys() if key.startswith('atr_')]
+        if not atr_keys:
+            # 如果没有ATR指标，跳过风险控制
+            return
+        
+        # 使用第一个可用的ATR指标
+        atr_key = atr_keys[0]
+        atr = indicators.get(atr_key, 0)
         if atr <= 0:
             return
+        
+        # 检查价格波动异常
+        price_change = abs(current_bar.close_price - current_bar.open_price)
         
         entry_direction = self.get_entry_direction(context.symbol)
         # 根据entry方向调整ATR阈值：做空时使用较小阈值，做多时使用较大阈值
         atr_threshold = atr * self.force_exit_atr_factor if entry_direction == 'short' else atr * self.force_exit_atr_factor * 10
-        # print(f"context: {context}, current_bar: {current_bar}, indicators: {indicators}, vol_ratio: {vol_ratio}, current_volume: {current_volume}, vol_ma5: {vol_ma5}, atr_threshold: {atr_threshold}, price_change: {price_change}")
+        # print(f"context: {context}, current_bar: {current_bar}, indicators: {indicators}, vol_ratio: {vol_ratio}, current_volume: {current_volume}, vol_ma_key: {vol_ma_key}, vol_ma: {vol_ma}, atr_key: {atr_key}, atr: {atr}, atr_threshold: {atr_threshold}, price_change: {price_change}")
 
-        if vol_ma5 <= 1500:
-            self.write_log(f"成交量异常: {symbol} 成交量={current_volume} 5日平均成交量={vol_ma5}, skip due to low volume")
+        if vol_ma <= 1500:
+            self.write_log(f"成交量异常: {symbol} 成交量={current_volume} {vol_ma_key}={vol_ma}, skip due to low volume")
             return
 
         # 判断是否触发风险控制（只在不利方向时）
@@ -818,28 +835,47 @@ class IntradayStrategyBase:
             print(f"  成交量: {bar.volume:.0f}  成交额: {bar.turnover:.0f}")
             
             print(f"技术指标:")
-            print(f"  VWAP: {indicators['vwap']:.2f}")
-            print(f"  ATR(14): {indicators['atr_14']:.2f}")
-            print(f"  Volume MA5: {indicators['volume_ma5']:.0f}")
+            # 灵活处理VWAP指标
+            if 'vwap' in indicators:
+                print(f"  VWAP: {indicators['vwap']:.2f}")
+            
+            # 灵活处理ATR指标（支持不同的周期）
+            atr_keys = [key for key in indicators.keys() if key.startswith('atr_')]
+            for atr_key in atr_keys:
+                print(f"  {atr_key.upper()}: {indicators[atr_key]:.2f}")
+            
+            # 灵活处理Volume MA指标（支持不同的周期）
+            vol_ma_keys = [key for key in indicators.keys() if key.startswith('volume_ma')]
+            for vol_ma_key in vol_ma_keys:
+                print(f"  {vol_ma_key.upper()}: {indicators[vol_ma_key]:.0f}")
             
             print(f"统计信息:")
-            print(f"  Close > VWAP: {indicators['above_vwap_count']} 次")
-            print(f"  Close < VWAP: {indicators['below_vwap_count']} 次")
-            print(f"  Close = VWAP: {indicators['equal_vwap_count']} 次")
+            # 灵活处理VWAP统计信息
+            if 'above_vwap_count' in indicators:
+                print(f"  Close > VWAP: {indicators['above_vwap_count']} 次")
+            if 'below_vwap_count' in indicators:
+                print(f"  Close < VWAP: {indicators['below_vwap_count']} 次")
+            if 'equal_vwap_count' in indicators:
+                print(f"  Close = VWAP: {indicators['equal_vwap_count']} 次")
             
             print(f"累计数据:")
-            print(f"  当日累计成交量: {indicators['daily_acc_volume']:.0f}")
-            print(f"  当日累计成交额: {indicators['daily_acc_turnover']:.0f}")
+            # 灵活处理累计数据
+            if 'daily_acc_volume' in indicators:
+                print(f"  当日累计成交量: {indicators['daily_acc_volume']:.0f}")
+            if 'daily_acc_turnover' in indicators:
+                print(f"  当日累计成交额: {indicators['daily_acc_turnover']:.0f}")
             print(f"=== ===\n")
             
-            # 计算一些额外的指标
-            if indicators['daily_acc_volume'] > 0:
-                avg_price = indicators['daily_acc_turnover'] / indicators['daily_acc_volume']
-                print(f"  当日平均价格: {avg_price:.2f}")
+            # 计算一些额外的指标（只在相关数据存在时）
+            if 'daily_acc_volume' in indicators and 'daily_acc_turnover' in indicators:
+                if indicators['daily_acc_volume'] > 0:
+                    avg_price = indicators['daily_acc_turnover'] / indicators['daily_acc_volume']
+                    print(f"  当日平均价格: {avg_price:.2f}")
             
-            if indicators['above_vwap_count'] + indicators['below_vwap_count'] > 0:
-                above_ratio = indicators['above_vwap_count'] / (indicators['above_vwap_count'] + indicators['below_vwap_count'])
-                print(f"  Close > VWAP 比例: {above_ratio:.2%}")
+            if 'above_vwap_count' in indicators and 'below_vwap_count' in indicators:
+                if indicators['above_vwap_count'] + indicators['below_vwap_count'] > 0:
+                    above_ratio = indicators['above_vwap_count'] / (indicators['above_vwap_count'] + indicators['below_vwap_count'])
+                    print(f"  Close > VWAP 比例: {above_ratio:.2%}")
     
     def on_5min_bar(self, bar: BarData):
         """5分钟K线回调函数"""
@@ -951,9 +987,30 @@ class IntradayStrategyBase:
             manager = self.indicator_managers[symbol]
             indicators = manager.get_indicators()
             if indicators:
-                print(f"  {symbol}: VWAP={indicators['vwap']:.2f}, "
-                      f"ATR(14)={indicators['atr_14']:.2f}, "
-                      f"Close>VWAP={indicators['above_vwap_count']}")
+                # 灵活处理VWAP指标
+                vwap_info = ""
+                if 'vwap' in indicators:
+                    vwap_info += f"VWAP={indicators['vwap']:.2f}, "
+                
+                # 灵活处理ATR指标（支持不同的周期）
+                atr_info = ""
+                atr_keys = [key for key in indicators.keys() if key.startswith('atr_')]
+                for atr_key in atr_keys:
+                    atr_info += f"{atr_key.upper()}={indicators[atr_key]:.2f}, "
+                
+                # 灵活处理VWAP统计信息
+                stats_info = ""
+                if 'above_vwap_count' in indicators:
+                    stats_info += f"Close>VWAP={indicators['above_vwap_count']}"
+                
+                # 组合所有信息
+                all_info = vwap_info + atr_info + stats_info
+                if all_info:
+                    # 移除最后的逗号和空格
+                    all_info = all_info.rstrip(', ')
+                    print(f"  {symbol}: {all_info}")
+                else:
+                    print(f"  {symbol}: 无可用指标")
     
     def close(self):
         """关闭连接"""

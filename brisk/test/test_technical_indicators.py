@@ -442,6 +442,78 @@ def test_manual_calculator_combination():
     print("\n✓ 手动组合Calculator测试完成！")
 
 
+def test_base_strategy_flexibility():
+    """测试修复后的base strategy是否能够灵活处理不同的技术指标"""
+    print("\n=== 测试修复后的base strategy灵活性 ===")
+    
+    from technical_indicators import SimpleATRStrategy, VolumeStrategy, CustomStrategy
+    from intraday_strategy_base import IntradayStrategyBase
+    
+    # 创建一个测试用的base strategy
+    class TestStrategy(IntradayStrategyBase):
+        def __init__(self):
+            super().__init__()
+            # 不调用add_symbol，手动设置indicator_managers
+        
+        def get_entry_direction(self, symbol: str) -> str:
+            return 'long'  # 简单返回long
+        
+        def _calculate_entry_price(self, context, bar, indicators) -> float:
+            return bar.close_price
+        
+        def _calculate_exit_price(self, context, bar, indicators) -> float:
+            return bar.close_price
+    
+    strategy = TestStrategy()
+    
+    # 测试1：使用SimpleATRStrategy作为indicator manager
+    print("测试1：使用SimpleATRStrategy（只有ATR指标）")
+    atr_manager = SimpleATRStrategy("TEST", size=15)
+    strategy.indicator_managers["TEST"] = atr_manager
+    
+    # 创建测试数据
+    base_time = datetime(2024, 1, 1, 9, 30, 0)
+    test_bar = create_test_bar(
+        "TEST", base_time + timedelta(minutes=15), 104, 105, 103, 104.5, 2400, 249600
+    )
+    
+    # 更新指标
+    indicators = atr_manager.update_bar(test_bar)
+    print(f"ATR指标: {indicators}")
+    
+    # 测试print_summary
+    print("\n调用print_summary:")
+    strategy.print_summary()
+    
+    # 测试2：使用VolumeStrategy作为indicator manager
+    print("\n测试2：使用VolumeStrategy（只有Volume MA指标）")
+    volume_manager = VolumeStrategy("TEST2", size=15)
+    strategy.indicator_managers["TEST2"] = volume_manager
+    
+    # 更新指标
+    indicators = volume_manager.update_bar(test_bar)
+    print(f"Volume MA指标: {indicators}")
+    
+    # 再次测试print_summary
+    print("\n调用print_summary:")
+    strategy.print_summary()
+    
+    # 测试3：使用CustomStrategy作为indicator manager
+    print("\n测试3：使用CustomStrategy（组合多个指标）")
+    custom_manager = CustomStrategy("TEST3", size=15)
+    strategy.indicator_managers["TEST3"] = custom_manager
+    
+    # 更新指标
+    indicators = custom_manager.update_bar(test_bar)
+    print(f"自定义指标: {indicators}")
+    
+    # 最终测试print_summary
+    print("\n最终print_summary:")
+    strategy.print_summary()
+    
+    print("\n✓ Base Strategy灵活性测试完成！")
+
+
 if __name__ == "__main__":
     print("开始测试Technical Indicators V3模块...\n")
     
@@ -452,6 +524,7 @@ if __name__ == "__main__":
         test_daily_reset()
         test_current_implementation_verification()  # 锁定当前实现的基准值
         test_manual_calculator_combination()        # 测试手动组合的示例
+        test_base_strategy_flexibility()            # 测试修复后的base strategy
         
         print("\n所有测试完成！")
         

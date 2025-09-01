@@ -315,6 +315,12 @@ class SimpleATRStrategy:
     def get_atr(self) -> float:
         """获取当前ATR值"""
         return self.latest_atr
+    
+    def get_indicators(self) -> dict:
+        """获取指标值 - 实现统一接口"""
+        return {
+            'atr_14': self.latest_atr
+        }
 
 
 class VolumeStrategy:
@@ -339,6 +345,12 @@ class VolumeStrategy:
     def get_volume_ma(self) -> float:
         """获取当前Volume MA值"""
         return self.latest_volume_ma
+    
+    def get_indicators(self) -> dict:
+        """获取指标值 - 实现统一接口"""
+        return {
+            'volume_ma10': self.latest_volume_ma
+        }
 
 
 class CustomStrategy:
