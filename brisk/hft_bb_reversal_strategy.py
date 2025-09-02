@@ -13,14 +13,14 @@ from vnpy.trader.object import OrderRequest, CancelRequest
 from vnpy.trader.event import EVENT_ORDER, EVENT_TRADE
 
 from intraday_strategy_base import IntradayStrategyBase, StrategyState
-from hft_bb_indicators import HFTBBReversalIndicatorV2 as HFTBBReversalIndicator
+from hft_bb_indicators import HFTBBReversalIndicatorV2 as HFTBBReversalIndicator, BriskHistoricalDataProvider
 from enhanced_bargenerator import EnhancedBarGenerator
 
 
 class HFTBBReversalStrategy(IntradayStrategyBase):
     """HFT BB Reversal策略 - 基于布林带反转的日内高频交易策略"""
     
-    def __init__(self, use_mock_gateway=False):
+    def __init__(self, use_mock_gateway=False, use_real_data=False, data_dir="data/brisk_agged_ohlc"):
         super().__init__(use_mock_gateway)
         
         # BB策略特定参数
@@ -32,11 +32,75 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.simulated_positions = {}  # symbol -> {'long': bool, 'short': bool}
         self.bb_levels = {}            # symbol -> BB价格水平
 
-        self.indicator_size = 21
+        self.indicator_size = 20  # 修改为20以匹配真实数据
+        
+        # 历史数据提供者
+        self.use_real_data = use_real_data
+        self.data_provider = None
+        if use_real_data:
+            self.data_provider = BriskHistoricalDataProvider(data_dir)
+            self.write_log(f"启用真实数据模式，数据目录: {data_dir}")
         
         # 策略状态
         self.strategy_name = "HFT_BB_Reversal"
         self.write_log(f"策略初始化完成: {self.strategy_name}")
+    
+    def preload_historical_data(self, symbols: List[str], date: str = None):
+        """预加载历史数据"""
+        if not self.use_real_data or not self.data_provider:
+            self.write_log("未启用真实数据模式，跳过历史数据预加载")
+            return
+        
+        if date is None:
+            # 使用当前日期
+            date = datetime.now().strftime("%Y%m%d")
+        
+        self.write_log(f"开始预加载历史数据: 日期={date}, 股票={symbols}")
+        
+        for symbol in symbols:
+            try:
+                # 获取历史数据
+                historical_bars = self.data_provider.get_historical_bars(symbol, date, self.indicator_size)
+                
+                if len(historical_bars) >= self.bb_period:
+                    # 创建指标管理器
+                    if symbol not in self.indicator_managers:
+                        self.indicator_managers[symbol] = self._create_indicator_manager(symbol)
+                    
+                    # 预加载历史数据
+                    self.indicator_managers[symbol].preload_historical_bars(historical_bars)
+                    
+                    # 检查是否准备就绪
+                    if self.indicator_managers[symbol].is_ready_for_trading():
+                        self.write_log(f"✓ {symbol} 历史数据预加载成功，准备交易")
+                        
+                        # 获取初始BB水平
+                        bb_levels = self.indicator_managers[symbol].get_bb_levels()
+                        if bb_levels:
+                            self.bb_levels[symbol] = bb_levels
+                            self.write_log(f"  {symbol} 初始BB水平:")
+                            self.write_log(f"    Upper: {bb_levels['upper']:.2f}")
+                            self.write_log(f"    Lower: {bb_levels['lower']:.2f}")
+                            self.write_log(f"    Middle: {bb_levels['middle']:.2f}")
+                    else:
+                        self.write_log(f"⚠ {symbol} 历史数据预加载完成但未准备交易")
+                else:
+                    self.write_log(f"✗ {symbol} 历史数据不足，需要{self.bb_period}个bar，实际{len(historical_bars)}个")
+                    
+            except Exception as e:
+                self.write_log(f"✗ {symbol} 历史数据预加载失败: {e}")
+    
+    def add_symbol(self, symbol: str):
+        """重写add_symbol方法，避免覆盖已预加载的指标管理器"""
+        # 如果指标管理器已存在且已预加载，不要重新创建
+        if symbol in self.indicator_managers and self.indicator_managers[symbol].is_preloaded:
+            self.write_log(f"股票 {symbol} 的指标管理器已存在且已预加载，跳过重新创建")
+            # 只创建BarGenerator
+            self.bar_generators[symbol] = self._create_bar_generator(symbol)
+            return
+        
+        # 否则调用父类方法
+        super().add_symbol(symbol)
     
     def _create_indicator_manager(self, symbol: str):
         """创建BB策略专用的技术指标管理器"""
@@ -85,15 +149,16 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
     
     def _calculate_bb_levels(self, symbol: str, indicators: dict) -> dict:
         """计算BB策略的各个价格水平"""
-        bb_levels = indicators.get('bb_levels', {})
-        if not bb_levels:
-            # 如果没有bb_levels，尝试从indicators直接获取
-            if 'upper' in indicators and 'lower' in indicators:
-                bb_levels = indicators
-            else:
-                return {}
+        # 新的HFTBBReversalIndicatorV2直接返回BB水平
+        if 'upper' in indicators and 'lower' in indicators:
+            return indicators
         
-        return bb_levels
+        # 兼容旧版本
+        bb_levels = indicators.get('bb_levels', {})
+        if bb_levels:
+            return bb_levels
+        
+        return {}
     
     def on_tick(self, event):
         """Tick数据回调函数"""
@@ -247,7 +312,7 @@ def main():
     print("启动HFT BB Reversal策略...")
     
     # 创建策略实例
-    strategy = HFTBBReversalStrategy(use_mock_gateway=True)
+    strategy = HFTBBReversalStrategy(use_mock_gateway=True, use_real_data=True, data_dir="data/brisk_agged_ohlc")
     
     try:
         # 连接Gateway
@@ -265,6 +330,8 @@ def main():
         
         # 订阅股票
         symbols = ["9984", "6098"]  # 软银、乐天
+
+        strategy.preload_historical_data(symbols, "20250717")
         strategy.subscribe(symbols)
         
         # 等待一段时间接收数据

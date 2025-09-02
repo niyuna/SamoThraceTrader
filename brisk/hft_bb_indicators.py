@@ -89,6 +89,9 @@ class HFTBBReversalIndicatorV2:
         # 记录当前日期，用于日志和调试
         self.current_date = new_date
         
+        # 重置预加载状态
+        self.is_preloaded = False
+        
         # 注意：不需要保存prev_day_last_bar，因为策略每天独立启动
         # 历史数据通过preload_historical_bars方法加载
     
