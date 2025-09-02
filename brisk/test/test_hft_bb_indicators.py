@@ -4,6 +4,10 @@
 
 import unittest
 from datetime import datetime, timedelta
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from hft_bb_indicators import HFTBBReversalIndicatorV2, MockHistoricalDataProvider
 from vnpy.trader.object import BarData
 from vnpy.trader.constant import Exchange, Interval

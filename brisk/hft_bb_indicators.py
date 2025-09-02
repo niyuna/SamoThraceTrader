@@ -2,8 +2,12 @@
 HFT BB Reversal策略专用技术指标类 - 修正版本
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+from datetime import datetime, time
+import pandas as pd
+import os
 from vnpy.trader.object import BarData
+from vnpy.trader.constant import Exchange, Interval
 from vnpy.trader.utility import ArrayManager
 
 
@@ -220,3 +224,154 @@ class MockHistoricalDataProvider(HistoricalDataProvider):
     def is_data_available(self, symbol: str, date: str) -> bool:
         """检查模拟数据是否可用"""
         return True
+
+
+class BriskHistoricalDataProvider(HistoricalDataProvider):
+    """基于Brisk CSV数据的真实历史数据提供者"""
+    
+    def __init__(self, data_dir: str = "brisk/data/brisk_agged_ohlc"):
+        self.data_dir = data_dir
+        # 缓存结构：{date: {symbol: [BarData]}}
+        # 只缓存实际请求过的股票数据
+        self.cached_data = {}  
+        self.cached_date = None
+        self.required_columns = ['sc', 'ts_1m', 'vol', 'turnover', 'o', 'h', 'l', 'c']
+    
+    def load_daily_data(self, date: str, symbols: Optional[List[str]] = None) -> None:
+        """
+        加载指定日期的数据，只加载指定股票的数据
+        只保留每个股票的最后20个bar
+        """
+        file_path = f"{self.data_dir}/brisk_ohlc_{date}_ts_1m.csv"
+        
+        if not os.path.exists(file_path):
+            print(f"警告: 数据文件不存在: {file_path}")
+            return
+        
+        try:
+            if symbols is None:
+                # 读取所有数据（不推荐）
+                df = pd.read_csv(file_path, usecols=self.required_columns, low_memory=False)
+            else:
+                # 只读取指定股票的数据
+                df = pd.read_csv(file_path, usecols=self.required_columns, low_memory=False)
+                # 确保sc列是字符串类型，symbols也是字符串类型
+                df['sc'] = df['sc'].astype(str)
+                symbols = [str(s) for s in symbols]
+                
+                df = df[df['sc'].isin(symbols)]
+            
+            # 按股票分组，每个股票只保留最后20行
+            self.cached_data[date] = {}
+            for symbol, group in df.groupby('sc'):
+                # 按ts_1m升序排序，取最后20行
+                last_20_rows = group.sort_values('ts_1m').tail(20)
+                
+                # 只转换这20行
+                bars = self._convert_rows_to_bardata(last_20_rows, symbol, date)
+                self.cached_data[date][symbol] = bars
+                
+            print(f"成功加载 {date} 的数据，包含 {len(self.cached_data[date])} 个股票")
+            
+        except Exception as e:
+            print(f"加载数据失败: {e}")
+            import traceback
+            traceback.print_exc()
+            self.cached_data[date] = {}
+    
+    def _convert_rows_to_bardata(self, df_rows, symbol: str, date: str) -> List[BarData]:
+        """
+        将DataFrame行转换为BarData列表
+        只处理传入的有限行数
+        """
+        bars = []
+        base_date = datetime.strptime(date, "%Y%m%d").date()
+        
+        for _, row in df_rows.iterrows():
+            # ts_1m范围：540~930 (09:00~15:30)
+            minutes_from_midnight = int(row['ts_1m'])
+            
+            # 计算具体时间
+            hour = minutes_from_midnight // 60
+            minute = minutes_from_midnight % 60
+            bar_datetime = datetime.combine(base_date, time(hour, minute))
+            
+            bar = BarData(
+                symbol=symbol,
+                exchange=Exchange.TSE,
+                datetime=bar_datetime,
+                interval=Interval.MINUTE,
+                volume=int(row['vol']),
+                turnover=float(row['turnover']),
+                open_price=float(row['o']),
+                high_price=float(row['h']),
+                low_price=float(row['l']),
+                close_price=float(row['c']),
+                gateway_name="BriskData"
+            )
+            bars.append(bar)
+        
+        return bars
+    
+    def get_historical_bars(self, symbol: str, date: str, count: int = 20) -> List[BarData]:
+        """获取历史bar数据"""
+        # 检查缓存
+        if date not in self.cached_data or symbol not in self.cached_data[date]:
+            # 只加载这一个股票的数据
+            self.load_daily_data(date, [symbol])
+        
+        # 从缓存返回数据
+        if date in self.cached_data and symbol in self.cached_data[date]:
+            bars = self.cached_data[date][symbol]
+            return bars[-count:] if len(bars) >= count else bars
+        else:
+            print(f"警告: 无法获取 {symbol} 在 {date} 的数据")
+            return []
+    
+    def is_data_available(self, symbol: str, date: str) -> bool:
+        """检查数据是否可用"""
+        file_path = f"{self.data_dir}/brisk_ohlc_{date}_ts_1m.csv"
+        return os.path.exists(file_path)
+    
+    def get_multiple_symbols_data(self, symbols: List[str], date: str, count: int = 20) -> Dict[str, List[BarData]]:
+        """
+        批量获取多个股票的数据，优化性能
+        """
+        # 检查哪些股票需要加载
+        missing_symbols = []
+        for symbol in symbols:
+            if date not in self.cached_data or symbol not in self.cached_data[date]:
+                missing_symbols.append(symbol)
+        
+        # 批量加载缺失的数据
+        if missing_symbols:
+            self.load_daily_data(date, missing_symbols)
+        
+        # 返回所有请求的数据
+        result = {}
+        for symbol in symbols:
+            if date in self.cached_data and symbol in self.cached_data[date]:
+                bars = self.cached_data[date][symbol]
+                result[symbol] = bars[-count:] if len(bars) >= count else bars
+            else:
+                result[symbol] = []
+        
+        return result
+    
+    def clear_cache(self, date: Optional[str] = None):
+        """清除缓存"""
+        if date is None:
+            self.cached_data.clear()
+            print("已清除所有缓存")
+        elif date in self.cached_data:
+            del self.cached_data[date]
+            print(f"已清除 {date} 的缓存")
+    
+    def get_cache_info(self) -> Dict[str, Any]:
+        """获取缓存信息"""
+        total_symbols = sum(len(symbols) for symbols in self.cached_data.values())
+        return {
+            "cached_dates": list(self.cached_data.keys()),
+            "total_symbols": total_symbols,
+            "memory_usage": f"{len(self.cached_data)} dates, {total_symbols} symbols"
+        }
