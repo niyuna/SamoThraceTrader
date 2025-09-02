@@ -36,7 +36,7 @@ def test_technical_indicators():
     print("\n=== 测试技术指标计算 ===")
     
     try:
-        from technical_indicators import HFTBBReversalIndicator
+        from hft_bb_indicators import HFTBBReversalIndicatorV2 as HFTBBReversalIndicator
         from vnpy.trader.object import BarData
         from vnpy.trader.constant import Exchange, Interval
         from datetime import datetime

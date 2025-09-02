@@ -13,7 +13,7 @@ from vnpy.trader.object import OrderRequest, CancelRequest
 from vnpy.trader.event import EVENT_ORDER, EVENT_TRADE
 
 from intraday_strategy_base import IntradayStrategyBase, StrategyState
-from technical_indicators import HFTBBReversalIndicator
+from hft_bb_indicators import HFTBBReversalIndicatorV2 as HFTBBReversalIndicator
 from enhanced_bargenerator import EnhancedBarGenerator
 
 
