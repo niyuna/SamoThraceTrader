@@ -925,7 +925,7 @@ def main():
             force_exit_atr_factor=0.5, # temperarily disable this by setting a very huge value, we don't see this to be really useful
             black_list=[],
 
-            gap_up_threshold=0.02,      # 2% gap up 
+            gap_up_threshold=0.5,      # 2% gap up 
             failure_threshold_gap_up=30,        # Gap Up时的VWAP failure次数阈值
             entry_factor_gap_up=1.3,           # Entry ATR倍数
             exit_factor_gap_up=1.7,            # Exit ATR倍数
