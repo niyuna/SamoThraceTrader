@@ -311,8 +311,11 @@ def main():
     """主函数"""
     print("启动HFT BB Reversal策略...")
     
+    using_mock_data = False
+    debug = True
+
     # 创建策略实例
-    strategy = HFTBBReversalStrategy(use_mock_gateway=True, use_real_data=True, data_dir="data/brisk_agged_ohlc")
+    strategy = HFTBBReversalStrategy(use_mock_gateway=using_mock_data, use_real_data=True, data_dir="data/brisk_agged_ohlc")
     
     try:
         # 连接Gateway
@@ -329,9 +332,16 @@ def main():
         # strategy.connect()
         
         # 订阅股票
+        # we will be using a static symbols list for this strategy, it should be a subset of TOPIX500
         symbols = ["9984", "6098"]  # 软银、乐天
 
-        strategy.preload_historical_data(symbols, "20250717")
+        if using_mock_data:
+            preload_yyyymmdd = "20250717"
+        else:
+            from common.date_utils import prev_working_day
+            preload_yyyymmdd = prev_working_day(datetime.now().strftime("%Y%m%d"))
+
+        strategy.preload_historical_data(symbols, preload_yyyymmdd)
         strategy.subscribe(symbols)
         
         # 等待一段时间接收数据
@@ -342,14 +352,16 @@ def main():
         strategy.print_simulation_summary()
         
         # 或者开始历史数据回放
-        strategy.start_replay("20250718", symbols)
+        if using_mock_data:
+            strategy.start_replay("20250718", symbols)
         
         # 保持运行
         print("按Ctrl+C退出...")
         while True:
             time.sleep(5)
             # 定期打印模拟持仓状态
-            strategy.print_simulation_summary()
+            if debug:
+                strategy.print_simulation_summary()
             
     except KeyboardInterrupt:
         print("\n收到退出信号...")
