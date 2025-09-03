@@ -580,9 +580,11 @@ class IntradayStrategyBase:
         atr_threshold = atr * self.force_exit_atr_factor if entry_direction == 'short' else atr * self.force_exit_atr_factor * 10
         # print(f"context: {context}, current_bar: {current_bar}, indicators: {indicators}, vol_ratio: {vol_ratio}, current_volume: {current_volume}, vol_ma_key: {vol_ma_key}, vol_ma: {vol_ma}, atr_key: {atr_key}, atr: {atr}, atr_threshold: {atr_threshold}, price_change: {price_change}")
 
-        if vol_ma <= 1500:
+        if vol_ma <= 1000:
             self.write_log(f"成交量异常: {symbol} 成交量={current_volume} {vol_ma_key}={vol_ma}, skip due to low volume")
             return
+
+        self.write_log(f"成交量比例: {vol_ratio:.2f} (阈值: {self.exit_vol_ma5_ratio_threshold}) current_volume: {current_volume} {vol_ma_key}: {vol_ma}")
 
         # 判断是否触发风险控制（只在不利方向时）
         if (vol_ratio >= self.exit_vol_ma5_ratio_threshold and 
