@@ -154,6 +154,9 @@ class TestOn1MinBar(unittest.TestCase):
         # Mock check_x_condition方法
         self.strategy.check_x_condition = Mock(return_value=True)
         
+        # Mock _execute_exit方法
+        self.strategy._execute_exit = Mock(return_value="EXIT_ORDER_123")
+        
         self.strategy.on_1min_bar(bar)
         
         # 验证_manage_exit_order被调用（通过日志验证）

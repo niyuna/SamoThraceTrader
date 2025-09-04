@@ -37,6 +37,18 @@ class HFTBBStockContext:
     exit_order_id: str = ""
     position: int = 0  # 持仓数量（正数为多头，负数为空头）
     
+    # Base strategy需要的字段
+    position_size: int = 100                # 持仓数量
+    already_traded: int = 0                 # 已成交数量
+    exit_price: float = 0.0                # exit成交价格
+    entry_trigger_price: float = 0.0        # 触发价格（距离目标价格2个ATR）
+    entry_trigger_order_price: float = 0.0  # 触发时的订单价格
+    trade_count: int = 0                    # 当日交易次数
+    timeout_trade_count: int = 0            # 完成的timeout exit交易数量
+    entry_price: float = 0.0               # entry成交价格
+    entry_time: Optional[datetime] = None  # entry成交时间
+    exit_start_time: Optional[datetime] = None  # exit开始时间
+    
     # HFT BB策略特定字段
     trigger_levels: Optional[TriggerLevels] = None  # 触发价格水平
     can_trade: bool = False                          # X条件满足标志
@@ -503,7 +515,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
 
     def _manage_exit_order(self, symbol: str, bb_levels: dict):
         """
-        管理出场订单（临时实现）
+        管理出场订单
         
         Args:
             symbol: 股票代码
@@ -514,12 +526,38 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         if context.position == 0:
             return  # 无持仓，不需要出场订单
         
-        # 临时实现：只记录日志
-        self.write_log(f"管理出场订单: {symbol} 持仓{context.position}")
+        # 确定出场价格和方向
         if context.position > 0:
-            self.write_log(f"  多头持仓，出场价格: {bb_levels.get('exit_long', 'N/A')}")
+            # 多头持仓，需要卖出平仓
+            exit_price = bb_levels.get('exit_long', 0)  # 使用exit_long作为出场价格
+            exit_direction = Direction.SHORT
+            self.write_log(f"管理出场订单: {symbol} 多头持仓{context.position}，出场价格: {exit_price:.2f}")
         else:
-            self.write_log(f"  空头持仓，出场价格: {bb_levels.get('exit_short', 'N/A')}")
+            # 空头持仓，需要买入平仓
+            exit_price = bb_levels.get('exit_short', 0)  # 使用exit_short作为出场价格
+            exit_direction = Direction.LONG
+            self.write_log(f"管理出场订单: {symbol} 空头持仓{context.position}，出场价格: {exit_price:.2f}")
+        
+        # 检查是否需要更新出场订单
+        if context.exit_order_id:
+            # 已有出场订单，检查价格是否需要更新
+            if abs(context.exit_price - exit_price) > 0.01:  # 价格差异超过0.01
+                # 取消旧订单
+                self._cancel_order_safely(context.exit_order_id, symbol)
+                context.exit_order_id = ""
+                self.write_log(f"取消旧出场订单: {symbol} 价格差异过大")
+            else:
+                # 价格相同，无需更新
+                return
+        
+        # 发送新的出场订单
+        if exit_price > 0:
+            # _execute_exit会自动更新context.exit_order_id, context.exit_price等字段
+            order_id = self._execute_exit(context, None, exit_price, exit_direction)
+            if order_id:
+                self.write_log(f"发送出场订单成功: {symbol} {exit_direction.value} 价格{exit_price:.2f} 订单ID: {order_id}")
+            else:
+                self.write_log(f"发送出场订单失败: {symbol} {exit_direction.value} 价格{exit_price:.2f}")
 
     def _check_entry_logic(self, symbol: str, tick, context: HFTBBStockContext):
         """
@@ -530,6 +568,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             tick: Tick数据
             context: 股票上下文
         """
+        self.write_log(f"检查入场逻辑: {symbol} 价格{tick.last_price:.2f}")
         trigger_levels = context.trigger_levels
         current_price = tick.last_price
         
@@ -543,12 +582,14 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             should_order = True
             order_direction = Direction.SHORT
             order_price = trigger_levels.upper_limit
+            self.write_log(f"触发上轨: {symbol} 价格{current_price:.2f} >= 触发价格{trigger_levels.upper_trigger:.2f}")
         
         # 检查下轨触发
         elif current_price <= trigger_levels.lower_trigger:
             should_order = True
             order_direction = Direction.LONG
             order_price = trigger_levels.lower_limit
+            self.write_log(f"触发下轨: {symbol} 价格{current_price:.2f} <= 触发价格{trigger_levels.lower_trigger:.2f}")
         
         # 检查是否需要取消订单
         should_cancel = False
@@ -556,9 +597,11 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             # 如果当前价格在两个触发价格之间，取消订单
             if (trigger_levels.lower_trigger < current_price < trigger_levels.upper_trigger):
                 should_cancel = True
+                self.write_log(f"取消订单原因: 价格在触发区间内 {current_price:.2f}")
             # 如果订单价格与当前应该下的价格不同，取消订单
-            elif context.entry_order_price != order_price:
+            elif context.entry_price != order_price:
                 should_cancel = True
+                self.write_log(f"取消订单原因: 价格不同 当前:{context.entry_price:.2f} 应该:{order_price:.2f}")
         
         # 执行订单操作
         if should_cancel:
@@ -568,41 +611,45 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
 
     def _cancel_entry_order(self, symbol: str, context: HFTBBStockContext):
         """
-        取消入场订单（临时实现）
+        取消入场订单
         
         Args:
             symbol: 股票代码
             context: 股票上下文
         """
         if context.entry_order_id:
-            # 临时实现：只记录日志
-            self.write_log(f"取消入场订单: {symbol} 订单ID: {context.entry_order_id}")
-            context.entry_order_id = ""
-            context.entry_order_price = 0.0
-            # 更新状态为空闲
-            self.update_context_state(symbol, StrategyState.IDLE)
+            # 使用base strategy的撤单方法
+            success = self._cancel_order_safely(context.entry_order_id, symbol)
+            if success:
+                self.write_log(f"取消入场订单成功: {symbol} 订单ID: {context.entry_order_id}")
+                context.entry_order_id = ""
+                # 更新状态为空闲
+                self.update_context_state(symbol, StrategyState.IDLE)
+            else:
+                self.write_log(f"取消入场订单失败: {symbol} 订单ID: {context.entry_order_id}")
 
     def _send_entry_order(self, symbol: str, direction: Direction, price: float, quantity: int):
         """
-        发送入场订单（临时实现）
+        发送入场订单
         
         Args:
             symbol: 股票代码
             direction: 交易方向
             price: 订单价格
-            quantity: 订单数量
+            quantity: 订单数量（暂时不使用，数量从context中获取）
         """
         context = self.get_hft_context(symbol)
         
-        # 临时实现：只记录日志，模拟订单ID
-        order_id = f"ENTRY_{symbol}_{direction.value}_{int(price * 100)}"
-        context.entry_order_id = order_id
-        context.entry_order_price = price
+        # 使用base strategy的入场订单执行方法
+        # 注意：_execute_entry需要bar参数，但在on_tick中我们没有bar，所以传递None
+        # _execute_entry会自动更新context.entry_order_id, context.entry_price等字段
+        self._execute_entry(context, None, price, direction)
         
-        # 更新状态为等待入场
-        self.update_context_state(symbol, StrategyState.WAITING_ENTRY)
-        
-        self.write_log(f"发送入场订单: {symbol} {direction.value} 价格{price:.2f} 数量{quantity} 订单ID: {order_id}")
+        # 检查订单是否成功发送
+        if context.entry_order_id:
+            self.write_log(f"发送入场订单成功: {symbol} {direction.value} 价格{price:.2f} 订单ID: {context.entry_order_id}")
+        else:
+            self.write_log(f"发送入场订单失败: {symbol} {direction.value} 价格{price:.2f}")
 
 
 def main():

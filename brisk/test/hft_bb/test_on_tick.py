@@ -169,6 +169,9 @@ class TestOnTick(unittest.TestCase):
         # Mock _update_simulated_positions方法
         self.strategy._update_simulated_positions = Mock()
         
+        # Mock _execute_entry方法
+        self.strategy._execute_entry = Mock()
+        
         self.strategy.on_tick(Mock(data=tick))
         
         # 验证日志包含触发上轨的信息
@@ -199,6 +202,9 @@ class TestOnTick(unittest.TestCase):
         
         # Mock _update_simulated_positions方法
         self.strategy._update_simulated_positions = Mock()
+        
+        # Mock _execute_entry方法
+        self.strategy._execute_entry = Mock()
         
         self.strategy.on_tick(Mock(data=tick))
         

@@ -52,11 +52,19 @@ class TestEntryLogic(unittest.TestCase):
         )
         context.entry_order_id = ""  # 没有现有订单
         
+        # Mock _execute_entry方法
+        def mock_execute_entry(ctx, bar, price, direction):
+            ctx.entry_order_id = "ENTRY_2330_Short_10150"
+            ctx.entry_price = price
+            self.strategy.update_context_state("2330", StrategyState.WAITING_ENTRY)
+        
+        self.strategy._execute_entry = mock_execute_entry
+        
         self.strategy._check_entry_logic("2330", tick, context)
         
         # 验证发送了空头订单
         self.assertEqual(context.entry_order_id, "ENTRY_2330_Short_10150")
-        self.assertEqual(context.entry_order_price, 101.5)
+        self.assertEqual(context.entry_price, 101.5)
         self.strategy.update_context_state.assert_called_with("2330", StrategyState.WAITING_ENTRY)
         
         # 验证日志记录
@@ -84,11 +92,19 @@ class TestEntryLogic(unittest.TestCase):
         )
         context.entry_order_id = ""  # 没有现有订单
         
+        # Mock _execute_entry方法
+        def mock_execute_entry(ctx, bar, price, direction):
+            ctx.entry_order_id = "ENTRY_2330_Long_9850"
+            ctx.entry_price = price
+            self.strategy.update_context_state("2330", StrategyState.WAITING_ENTRY)
+        
+        self.strategy._execute_entry = mock_execute_entry
+        
         self.strategy._check_entry_logic("2330", tick, context)
         
         # 验证发送了多头订单
         self.assertEqual(context.entry_order_id, "ENTRY_2330_Long_9850")
-        self.assertEqual(context.entry_order_price, 98.5)
+        self.assertEqual(context.entry_price, 98.5)
         self.strategy.update_context_state.assert_called_with("2330", StrategyState.WAITING_ENTRY)
         
         # 验证日志记录
@@ -116,11 +132,14 @@ class TestEntryLogic(unittest.TestCase):
         )
         context.entry_order_id = "EXISTING_ORDER"  # 有现有订单
         
+        # Mock _cancel_order_safely方法
+        self.strategy._cancel_order_safely = Mock(return_value=True)
+        
         self.strategy._check_entry_logic("2330", tick, context)
         
         # 验证取消了现有订单
         self.assertEqual(context.entry_order_id, "")
-        self.assertEqual(context.entry_order_price, 0.0)
+        self.assertEqual(context.entry_price, 0.0)
         self.strategy.update_context_state.assert_called_with("2330", StrategyState.IDLE)
         
         # 验证日志记录
@@ -147,13 +166,16 @@ class TestEntryLogic(unittest.TestCase):
             lower_limit=98.5
         )
         context.entry_order_id = "EXISTING_ORDER"
-        context.entry_order_price = 100.0  # 与当前应该下的价格不同
+        context.entry_price = 100.0  # 与当前应该下的价格不同
+        
+        # Mock _cancel_order_safely方法
+        self.strategy._cancel_order_safely = Mock(return_value=True)
         
         self.strategy._check_entry_logic("2330", tick, context)
         
         # 验证取消了现有订单
         self.assertEqual(context.entry_order_id, "")
-        self.assertEqual(context.entry_order_price, 0.0)
+        self.assertEqual(context.entry_price, 100.0)  # entry_price不会被清空
         self.strategy.update_context_state.assert_called_with("2330", StrategyState.IDLE)
         
         # 验证日志记录
@@ -185,7 +207,7 @@ class TestEntryLogic(unittest.TestCase):
         
         # 验证没有发送订单
         self.assertEqual(context.entry_order_id, "")
-        self.assertEqual(context.entry_order_price, 0.0)
+        self.assertEqual(context.entry_price, 0.0)
         
         # 验证没有调用update_context_state
         self.strategy.update_context_state.assert_not_called()
