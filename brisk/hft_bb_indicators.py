@@ -7,8 +7,9 @@ from datetime import datetime, time
 import pandas as pd
 import os
 from vnpy.trader.object import BarData
-from vnpy.trader.constant import Exchange, Interval
+from vnpy.trader.constant import Exchange, Interval, Direction
 from vnpy.trader.utility import ArrayManager
+from common.trading_common import next_tick_price
 
 
 class HFTBBReversalIndicatorV2:
@@ -108,12 +109,27 @@ class HFTBBReversalIndicatorV2:
             return {}
         
         # 计算BB价格水平
+        upper_raw = sma + (self.entry_std_multiplier * std)      # short entry
+        lower_raw = sma - (self.entry_std_multiplier * std)      # long entry  
+        exit_long_raw = sma - (self.exit_std_multiplier * std)   # long exit
+        exit_short_raw = sma + (self.exit_std_multiplier * std)  # short exit
+        
+        # 对实际会发送到broker的价格进行tick对齐
+        # upper用于SHORT entry，向下调整
+        upper_aligned = self._align_price_to_tick(upper_raw, Direction.SHORT)
+        # lower用于LONG entry，向上调整  
+        lower_aligned = self._align_price_to_tick(lower_raw, Direction.LONG)
+        # exit_long用于LONG exit，向上调整
+        exit_long_aligned = self._align_price_to_tick(exit_long_raw, Direction.LONG)
+        # exit_short用于SHORT exit，向下调整
+        exit_short_aligned = self._align_price_to_tick(exit_short_raw, Direction.SHORT)
+        
         bb_levels = {
-            'upper': sma + (self.entry_std_multiplier * std),      # short entry
-            'lower': sma - (self.entry_std_multiplier * std),      # long entry  
-            'middle': sma,                                          # BB中轴
-            'exit_long': sma - (self.exit_std_multiplier * std),   # long exit
-            'exit_short': sma + (self.exit_std_multiplier * std),  # short exit
+            'upper': upper_aligned,                                # short entry (对齐后)
+            'lower': lower_aligned,                                # long entry (对齐后)
+            'middle': sma,                                          # BB中轴 (不需要对齐)
+            'exit_long': exit_long_aligned,                        # long exit (对齐后)
+            'exit_short': exit_short_aligned,                      # short exit (对齐后)
             'std': std,                                             # 标准差
             'period': self.bb_period,                              # 周期
             'entry_multiplier': self.entry_std_multiplier,         # entry倍数
@@ -121,6 +137,35 @@ class HFTBBReversalIndicatorV2:
         }
         
         return bb_levels
+    
+    def _align_price_to_tick(self, price: float, direction: Direction) -> float:
+        """
+        将价格对齐到tick价格
+        
+        Args:
+            price: 原始价格
+            direction: 交易方向 (LONG/SHORT)
+            
+        Returns:
+            float: 对齐后的价格
+        """
+        try:
+            # 根据交易方向确定upside参数
+            # LONG订单向上调整，SHORT订单向下调整
+            upside = (direction == Direction.LONG)
+            
+            # 调用next_tick_price进行价格对齐
+            aligned_price = next_tick_price(self.symbol, price, upside)
+            
+            # 如果对齐失败，返回原价格
+            if aligned_price is None:
+                return price
+            
+            return aligned_price
+            
+        except Exception as e:
+            # 如果对齐失败，返回原价格
+            return price
     
     def is_ready_for_trading(self) -> bool:
         """检查是否准备好开始交易"""

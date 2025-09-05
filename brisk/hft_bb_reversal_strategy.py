@@ -96,6 +96,9 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         
         # HFT BB策略特定的context管理
         self.hft_contexts: Dict[str, HFTBBStockContext] = {}
+        
+        # Eligible stock管理（使用black list功能）
+        self.eligible_stocks = set()  # 真正满足所有条件的股票
     
     def get_hft_context(self, symbol: str) -> HFTBBStockContext:
         """获取HFT BB策略的股票Context"""
@@ -117,8 +120,9 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         检查X条件是否满足
         
         X条件包括：
-        1. 模拟持仓检查 - 目前没有持仓
-        2. 时间窗口检查 - 在指定的交易时间段内
+        1. 股票是否在eligible_stocks中
+        2. 模拟持仓检查 - 目前没有持仓
+        3. 时间窗口检查 - 在指定的交易时间段内
         
         Args:
             symbol: 股票代码
@@ -130,18 +134,31 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         if not self.x_condition_enabled:
             return True
             
-        # 1. 检查模拟持仓 - 目前没有持仓
+        # 1. 检查股票是否在eligible_stocks中
+        if symbol not in self.eligible_stocks:
+            self.write_log(f"X条件检查失败: {symbol} 不在eligible_stocks中")
+            return False
+            
+        # 2. 检查模拟持仓 - 目前没有持仓
         if not self._check_no_position(symbol):
             self.write_log(f"X条件检查失败: {symbol} 已有持仓")
             return False
             
-        # 2. 检查时间窗口
+        # 3. 检查时间窗口
         if not self._check_time_window(current_time):
             self.write_log(f"X条件检查失败: 当前时间不在交易窗口内")
             return False
             
         self.write_log(f"X条件检查通过: {symbol}")
         return True
+    
+    def get_eligible_stocks(self) -> set:
+        """获取当前eligible_stocks列表"""
+        return self.eligible_stocks.copy()
+    
+    def is_eligible_stock(self, symbol: str) -> bool:
+        """检查股票是否在eligible_stocks中"""
+        return symbol in self.eligible_stocks
     
     def _check_no_position(self, symbol: str) -> bool:
         """
@@ -232,6 +249,9 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         """重写add_symbol方法，避免覆盖已预加载的指标管理器"""
         # 创建HFT context
         self.create_hft_context(symbol)
+        
+        # 添加股票到eligible_stocks（使用base strategy的black list功能）
+        self.add_to_eligible_stocks(symbol)
         
         # 如果指标管理器已存在且已预加载，不要重新创建
         if symbol in self.indicator_managers and self.indicator_managers[symbol].is_preloaded:
@@ -381,27 +401,106 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 positions['short'] = False
                 self.write_log(f"模拟Short Exit触发: {symbol} 价格: {current_price:.2f} <= {bb_levels['exit_short']:.2f}")
     
+    def _find_hft_context_by_order_id(self, order_id: str) -> Optional[HFTBBStockContext]:
+        """
+        根据订单ID查找HFT context
+        
+        Args:
+            order_id: 订单ID
+            
+        Returns:
+            HFTBBStockContext或None
+        """
+        for symbol, context in self.hft_contexts.items():
+            if context.entry_order_id == order_id or context.exit_order_id == order_id:
+                return context
+        return None
+
     def on_order(self, event):
-        """订单状态变化回调"""
+        """
+        订单状态变化回调
+        
+        根据设计文档，只处理ALLTRADED状态：
+        1. 入场订单成交：更新position，清除entry_order_id，发送出场订单
+        2. 出场订单成交：清除position，清除exit_order_id
+        """
         order = event.data
         self.write_log(f"订单状态更新: {order.symbol} {order.direction.value} {order.offset.value} "
                       f"状态: {order.status.value} 价格: {order.price:.2f} 数量: {order.volume}")
         
-        # 更新Context状态
-        context = self.get_context_by_order_id(order.orderid)
-        if context:
-            if order.status == Status.ALLTRADED:
-                if order.offset == Offset.OPEN:
-                    # Entry订单完全成交
-                    context.already_traded = order.volume
-                    if context.already_traded >= context.position_size:
-                        self.update_context_state(context.symbol, StrategyState.HOLDING)
-                        self.write_log(f"Entry订单完全成交: {context.symbol}")
-                else:
-                    # Exit订单完全成交
-                    self.update_context_state(context.symbol, StrategyState.IDLE)
-                    context.trade_count += 1
-                    self.write_log(f"Exit订单完全成交: {context.symbol}")
+        # 只处理完全成交的订单
+        if order.status != Status.ALLTRADED:
+            return
+        
+        # 查找对应的HFT context
+        context = self._find_hft_context_by_order_id(order.orderid)
+        if not context:
+            self.write_log(f"警告: 未找到订单ID {order.orderid} 对应的HFT context")
+            return
+        
+        # 处理入场订单成交
+        if order.orderid == context.entry_order_id:
+            self._handle_entry_filled(order.symbol, context, order)
+        # 处理出场订单成交
+        elif order.orderid == context.exit_order_id:
+            self._handle_exit_filled(order.symbol, context, order)
+        else:
+            self.write_log(f"警告: 订单ID {order.orderid} 不匹配任何已知订单")
+    
+    def _handle_entry_filled(self, symbol: str, context: HFTBBStockContext, order):
+        """
+        处理入场订单成交
+        
+        Args:
+            symbol: 股票代码
+            context: HFT context
+            order: 订单数据
+        """
+        # 更新持仓
+        if order.direction == Direction.LONG:
+            context.position = order.volume
+        else:  # Direction.SHORT
+            context.position = -order.volume
+        
+        # 清除入场订单信息
+        context.entry_order_id = ""
+        context.entry_price = order.price
+        context.entry_time = order.datetime
+        
+        # 更新状态
+        self.update_context_state(symbol, StrategyState.HOLDING)
+        
+        self.write_log(f"入场订单成交: {symbol} {order.direction.value} 价格{order.price:.2f} 数量{order.volume}")
+        
+        # 立即发送出场订单
+        if context.bb_levels:
+            self._manage_exit_order(symbol, context.bb_levels)
+        else:
+            self.write_log(f"警告: {symbol} 没有BB水平数据，无法发送出场订单")
+    
+    def _handle_exit_filled(self, symbol: str, context: HFTBBStockContext, order):
+        """
+        处理出场订单成交
+        
+        Args:
+            symbol: 股票代码
+            context: HFT context
+            order: 订单数据
+        """
+        # 清除持仓
+        context.position = 0
+        
+        # 清除出场订单信息
+        context.exit_order_id = ""
+        context.exit_price = order.price
+        
+        # 更新交易统计
+        context.trade_count += 1
+        
+        # 更新状态
+        self.update_context_state(symbol, StrategyState.IDLE)
+        
+        self.write_log(f"出场订单成交: {symbol} {order.direction.value} 价格{order.price:.2f} 数量{order.volume}")
     
     def on_trade(self, event):
         """成交回调"""

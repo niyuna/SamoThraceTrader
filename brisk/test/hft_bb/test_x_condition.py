@@ -8,7 +8,7 @@ import os
 from datetime import datetime, time
 
 # 添加路径以导入模块
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from hft_bb_reversal_strategy import HFTBBReversalStrategy
 from vnpy.trader.object import BarData
@@ -72,6 +72,9 @@ class TestXCondition(unittest.TestCase):
         print("测试完整的X条件检查")
         
         symbol = "9984"
+        
+        # 先将股票添加到eligible_stocks中
+        self.strategy.eligible_stocks.add(symbol)
         
         # 测试满足X条件的情况
         morning_time = datetime(2025, 1, 1, 9, 20, 0)

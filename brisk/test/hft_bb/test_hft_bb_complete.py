@@ -10,7 +10,7 @@ import os
 from datetime import datetime, timedelta
 
 # 添加路径以导入模块
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from hft_bb_indicators import HFTBBReversalIndicatorV2, MockHistoricalDataProvider, BriskHistoricalDataProvider
 from hft_bb_reversal_strategy import HFTBBReversalStrategy

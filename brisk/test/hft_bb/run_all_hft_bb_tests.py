@@ -24,6 +24,7 @@ def run_all_tests():
         'test_on_tick',
         'test_entry_logic',
         'test_manage_exit_order',
+        'test_on_order',
         'test_hft_bb_complete',
         'test_x_condition'
     ]
