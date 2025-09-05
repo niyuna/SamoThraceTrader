@@ -17,19 +17,21 @@ def run_all_tests():
     
     # 添加所有测试模块
     test_modules = [
-        'test_trigger_levels',
-        'test_hft_bb_stock_context', 
-        'test_trigger_calculation',
-        'test_tick_price_alignment',       # tick价格对齐测试
-        'test_eligible_stocks',            # eligible stock功能测试
-        'test_on_1min_bar',
-        'test_on_tick',
-        'test_entry_logic',
-        'test_manage_exit_order',
-        'test_on_order',
-        'test_hft_bb_complete',
-        'test_x_condition'
-    ]
+    'test_trigger_levels',
+    'test_hft_bb_stock_context',
+    'test_trigger_calculation',
+    'test_tick_price_alignment',       # tick价格对齐测试
+    'test_eligible_stocks',            # eligible stock功能测试
+    'test_entry_order_time_optimization',  # entry_order_time优化测试
+    'test_partial_fill_logging',       # 部分成交日志记录测试
+    'test_on_1min_bar',
+    'test_on_tick',
+    'test_entry_logic',
+    'test_manage_exit_order',
+    'test_on_order',
+    'test_hft_bb_complete',
+    'test_x_condition'
+]
     
     # 加载并添加每个测试模块
     for module_name in test_modules:

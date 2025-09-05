@@ -56,6 +56,7 @@ class HFTBBStockContext:
     bb_levels: Optional[dict] = None                 # 布林带水平
     entry_order_price: float = 0.0                   # 入场订单价格
     exit_order_price: float = 0.0                    # 出场订单价格
+    entry_order_time: Optional[datetime] = None      # 入场订单发送时间
 
 
 class HFTBBReversalStrategy(IntradayStrategyBase):
@@ -430,6 +431,12 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.write_log(f"订单状态更新: {order.symbol} {order.direction.value} {order.offset.value} "
                       f"状态: {order.status.value} 价格: {order.price:.2f} 数量: {order.volume}")
         
+        # 记录部分成交情况
+        if order.status == Status.PARTTRADED:
+            self.write_log(f"部分成交: {order.symbol} {order.direction.value} {order.offset.value} "
+                          f"已成交数量: {order.traded} 剩余数量: {order.volume - order.traded}")
+            return
+        
         # 只处理完全成交的订单
         if order.status != Status.ALLTRADED:
             return
@@ -466,6 +473,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         
         # 清除入场订单信息
         context.entry_order_id = ""
+        context.entry_order_time = None  # 清除订单发送时间
         context.entry_price = order.price
         context.entry_time = order.datetime
         
@@ -699,6 +707,15 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # 检查是否需要取消订单
         should_cancel = False
         if context.entry_order_id:
+            # 检查是否在同一分钟内发送的订单，如果是则不取消
+            current_time = datetime.now()
+            if context.entry_order_time:
+                # 检查是否在同一分钟内
+                time_diff = current_time - context.entry_order_time
+                if time_diff.total_seconds() < 60:  # 同一分钟内
+                    self.write_log(f"跳过取消订单: {symbol} 订单在同一分钟内发送，避免频繁撤单")
+                    return  # 直接返回，不执行任何订单操作
+            
             # 如果当前价格在两个触发价格之间，取消订单
             if (trigger_levels.lower_trigger < current_price < trigger_levels.upper_trigger):
                 should_cancel = True
@@ -728,6 +745,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             if success:
                 self.write_log(f"取消入场订单成功: {symbol} 订单ID: {context.entry_order_id}")
                 context.entry_order_id = ""
+                context.entry_order_time = None  # 清除订单发送时间
                 # 更新状态为空闲
                 self.update_context_state(symbol, StrategyState.IDLE)
             else:
@@ -752,6 +770,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         
         # 检查订单是否成功发送
         if context.entry_order_id:
+            # 更新订单发送时间
+            context.entry_order_time = datetime.now()
             self.write_log(f"发送入场订单成功: {symbol} {direction.value} 价格{price:.2f} 订单ID: {context.entry_order_id}")
         else:
             self.write_log(f"发送入场订单失败: {symbol} {direction.value} 价格{price:.2f}")
