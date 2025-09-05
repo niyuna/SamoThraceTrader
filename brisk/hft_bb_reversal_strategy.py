@@ -16,6 +16,7 @@ from vnpy.trader.event import EVENT_ORDER, EVENT_TRADE
 from intraday_strategy_base import IntradayStrategyBase, StrategyState
 from hft_bb_indicators import HFTBBReversalIndicatorV2 as HFTBBReversalIndicator, BriskHistoricalDataProvider
 from enhanced_bargenerator import EnhancedBarGenerator
+from common.trading_common import next_n_tick_price
 
 
 @dataclass
@@ -67,6 +68,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.bb_period = 20
         self.bb_entry_std_multiplier = 3.0
         self.bb_exit_std_multiplier = 0.1
+        self.trigger_tick_count = 3  # trigger价格调整的tick数量
         
         # 模拟持仓管理
         self.simulated_positions = {}  # symbol -> {'long': bool, 'short': bool}
@@ -302,7 +304,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             if bb_levels:
                 # 更新BB水平和触发价格
                 context.bb_levels = bb_levels
-                context.trigger_levels = self._calculate_trigger_levels(bb_levels)
+                context.trigger_levels = self._calculate_trigger_levels(symbol, bb_levels)
                 
                 self.write_log(f"更新BB价格水平: {symbol}")
                 self.write_log(f"  Upper: {bb_levels['upper']:.2f} (Short Entry)")
@@ -573,11 +575,12 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             else:
                 print(f"  {symbol}: 技术指标未初始化")
 
-    def _calculate_trigger_levels(self, bb_levels: dict) -> Optional[TriggerLevels]:
+    def _calculate_trigger_levels(self, symbol: str, bb_levels: dict) -> Optional[TriggerLevels]:
         """
         计算触发价格水平
         
         Args:
+            symbol: 股票代码
             bb_levels: 布林带水平字典
             
         Returns:
@@ -592,14 +595,17 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 self.write_log(f"布林带数据不完整: {bb_levels}")
                 return None
             
-            # 计算触发价格（可以根据策略需求调整）
-            # 上轨触发：当价格接近上轨时触发
-            upper_trigger = upper_bb * 0.999  # 上轨触发价格（上轨的99.9%）
-            upper_limit = upper_bb * 1.001    # 上轨限价价格（上轨的100.1%）
+            # 计算触发价格
+            # upper_limit和lower_limit直接使用BB价格（已在tech indicator中tick对齐）
+            upper_limit = upper_bb
+            lower_limit = lower_bb
             
-            # 下轨触发：当价格接近下轨时触发
-            lower_trigger = lower_bb * 1.001  # 下轨触发价格（下轨的100.1%）
-            lower_limit = lower_bb * 0.999    # 下轨限价价格（下轨的99.9%）
+            # trigger价格使用next_n_tick_price进行调整
+            # upper_trigger: 从upper_bb向下调整trigger_tick_count个tick
+            upper_trigger = next_n_tick_price(self.trigger_tick_count, symbol, upper_bb, upside=False)
+            
+            # lower_trigger: 从lower_bb向上调整trigger_tick_count个tick  
+            lower_trigger = next_n_tick_price(self.trigger_tick_count, symbol, lower_bb, upside=True)
             
             return TriggerLevels(
                 upper_trigger=upper_trigger,

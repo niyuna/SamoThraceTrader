@@ -20,6 +20,8 @@ def run_all_tests():
         'test_trigger_levels',
         'test_hft_bb_stock_context', 
         'test_trigger_calculation',
+        'test_tick_price_alignment',       # tick价格对齐测试
+        'test_eligible_stocks',            # eligible stock功能测试
         'test_on_1min_bar',
         'test_on_tick',
         'test_entry_logic',
