@@ -76,6 +76,18 @@ class TestXCondition(unittest.TestCase):
         # 先将股票添加到eligible_stocks中
         self.strategy.eligible_stocks.add(symbol)
         
+        # 添加股票到策略并设置BB levels
+        self.strategy.add_symbol(symbol)
+        context = self.strategy.get_hft_context(symbol)
+        context.bb_levels = {
+            'std': 0.8,
+            'middle': 1000.0,
+            'upper': 1003.0,
+            'lower': 997.0,
+            'exit_long': 1001.0,
+            'exit_short': 999.0
+        }
+        
         # 测试满足X条件的情况
         morning_time = datetime(2025, 1, 1, 9, 20, 0)
         self.assertTrue(self.strategy.check_x_condition(symbol, morning_time))

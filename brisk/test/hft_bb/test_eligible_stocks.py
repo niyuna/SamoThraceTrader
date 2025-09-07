@@ -157,6 +157,18 @@ class TestEligibleStocks(unittest.TestCase):
         # 添加股票到eligible_stocks
         self.strategy.eligible_stocks.add("2330")
         
+        # 添加股票到策略并设置BB levels
+        self.strategy.add_symbol("2330")
+        context = self.strategy.get_hft_context("2330")
+        context.bb_levels = {
+            'std': 0.8,
+            'middle': 1000.0,
+            'upper': 1003.0,
+            'lower': 997.0,
+            'exit_long': 1001.0,
+            'exit_short': 999.0
+        }
+        
         # 设置时间在交易窗口内
         test_time = datetime.now().replace(hour=9, minute=20, second=0, microsecond=0)
         

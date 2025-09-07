@@ -195,7 +195,7 @@ class HistoricalReplayEngine:
             files = glob.glob(pattern)
             
             if not files:
-                self.gateway.write_log(f"未找到{self.replay_date}的历史数据文件")
+                self.gateway.write_log(f"未找到{self.replay_date}的历史数据文件 {pattern}")
                 return False
                 
             # 加载和排序数据

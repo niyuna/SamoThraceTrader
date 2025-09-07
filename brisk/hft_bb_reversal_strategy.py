@@ -16,7 +16,7 @@ from vnpy.trader.event import EVENT_ORDER, EVENT_TRADE
 from intraday_strategy_base import IntradayStrategyBase, StrategyState
 from hft_bb_indicators import HFTBBReversalIndicatorV2 as HFTBBReversalIndicator, BriskHistoricalDataProvider
 from enhanced_bargenerator import EnhancedBarGenerator
-from common.trading_common import next_n_tick_price
+from common.trading_common import next_n_tick_price, topix500
 
 
 @dataclass
@@ -70,6 +70,11 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.bb_entry_std_multiplier = 3.0
         self.bb_exit_std_multiplier = 0.1
         self.trigger_tick_count = 3  # trigger价格调整的tick数量
+        
+        # X条件std_pct阈值参数
+        self.std_pct_threshold_morning = 0.00073    # 早上9:15-9:35阈值
+        self.std_pct_threshold_noon = 0.000001      # 中午11:29-11:30阈值（极小的值，几乎总是通过）
+        self.std_pct_threshold_afternoon = 0.00036  # 下午14:35-15:20阈值
         
         # 模拟持仓管理
         self.simulated_positions = {}  # symbol -> {'long': bool, 'short': bool}
@@ -126,6 +131,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         1. 股票是否在eligible_stocks中
         2. 模拟持仓检查 - 目前没有持仓
         3. 时间窗口检查 - 在指定的交易时间段内
+        4. std_pct阈值检查 - 根据时间段检查不同的波动率阈值
         
         Args:
             symbol: 股票代码
@@ -147,12 +153,19 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             self.write_log(f"X条件检查失败: {symbol} 已有持仓")
             return False
             
-        # 3. 检查时间窗口
-        if not self._check_time_window(current_time):
+        # 3. 检查时间窗口和std_pct阈值
+        time_window_result = self._check_time_window_with_std_pct(symbol, current_time)
+        if not time_window_result['in_window']:
             self.write_log(f"X条件检查失败: 当前时间不在交易窗口内")
             return False
             
-        self.write_log(f"X条件检查通过: {symbol}")
+        if not time_window_result['std_pct_ok']:
+            self.write_log(f"X条件检查失败: {symbol} std_pct={time_window_result['std_pct']:.6f} "
+                          f"低于{time_window_result['time_period']}阈值{time_window_result['threshold']:.6f}")
+            return False
+            
+        self.write_log(f"X条件检查通过: {symbol} {time_window_result['time_period']} "
+                      f"std_pct={time_window_result['std_pct']:.6f}")
         return True
     
     def get_eligible_stocks(self) -> set:
@@ -202,6 +215,114 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 return True
                 
         return False
+    
+    def _check_time_window_with_std_pct(self, symbol: str, current_time: datetime = None) -> dict:
+        """
+        检查当前时间是否在交易窗口内，并验证std_pct阈值
+        
+        Args:
+            symbol: 股票代码
+            current_time: 当前时间，如果为None则使用系统当前时间
+            
+        Returns:
+            dict: 包含检查结果的字典
+        """
+        if current_time is None:
+            current_time = datetime.now()
+            
+        current_time_only = current_time.time()
+        
+        # 定义时间窗口和对应的阈值
+        time_windows = [
+            {
+                'start': time(9, 15),
+                'end': time(9, 35),
+                'threshold': self.std_pct_threshold_morning,
+                'name': 'morning'
+            },
+            {
+                'start': time(11, 29),
+                'end': time(11, 30),
+                'threshold': self.std_pct_threshold_noon,
+                'name': 'noon'
+            },
+            {
+                'start': time(14, 35),
+                'end': time(15, 20),
+                'threshold': self.std_pct_threshold_afternoon,
+                'name': 'afternoon'
+            }
+        ]
+        
+        # 检查是否在时间窗口内
+        for window in time_windows:
+            # 检查下午窗口时排除15:00
+            if window['name'] == 'afternoon':
+                if window['start'] <= current_time_only <= window['end'] and current_time_only != time(15, 0):
+                    # 在时间窗口内，检查std_pct
+                    std_pct_result = self._calculate_and_check_std_pct(symbol, window['threshold'])
+                    return {
+                        'in_window': True,
+                        'time_period': window['name'],
+                        'threshold': window['threshold'],
+                        'std_pct': std_pct_result['std_pct'],
+                        'std_pct_ok': std_pct_result['ok']
+                    }
+            else:
+                if window['start'] <= current_time_only <= window['end']:
+                    # 在时间窗口内，检查std_pct
+                    std_pct_result = self._calculate_and_check_std_pct(symbol, window['threshold'])
+                    return {
+                        'in_window': True,
+                        'time_period': window['name'],
+                        'threshold': window['threshold'],
+                        'std_pct': std_pct_result['std_pct'],
+                        'std_pct_ok': std_pct_result['ok']
+                    }
+        
+        return {
+            'in_window': False,
+            'time_period': None,
+            'threshold': None,
+            'std_pct': None,
+            'std_pct_ok': False
+        }
+    
+    def _calculate_and_check_std_pct(self, symbol: str, threshold: float) -> dict:
+        """
+        计算并检查std_pct是否满足阈值
+        
+        Args:
+            symbol: 股票代码
+            threshold: 阈值
+            
+        Returns:
+            dict: 包含std_pct计算结果和是否满足阈值
+        """
+        try:
+            # 获取BB levels
+            context = self.get_hft_context(symbol)
+            if not context.bb_levels:
+                return {'std_pct': 0.0, 'ok': False}
+            
+            bb_levels = context.bb_levels
+            std = bb_levels.get('std', 0)
+            middle = bb_levels.get('middle', 0)
+            
+            if middle == 0:
+                return {'std_pct': 0.0, 'ok': False}
+            
+            # 计算std_pct
+            std_pct = std / middle
+            
+            return {
+                'std_pct': std_pct,
+                'ok': std_pct > threshold
+            }
+            
+        except Exception as e:
+            self.write_log(f"计算std_pct失败: {e}")
+            return {'std_pct': 0.0, 'ok': False}
     
     def preload_historical_data(self, symbols: List[str], date: str = None):
         """预加载历史数据"""
@@ -828,8 +949,9 @@ def main():
         # 连接Gateway
         mock_setting = {
             "tick_mode": "replay",
-            "replay_data_dir": "D:\\dev\\github\\brisk-hack\\brisk_in_day_frames",
-            "replay_date": "20250718",  # 根据实际数据文件调整
+            # "replay_data_dir": "D:\\dev\\github\\brisk-hack\\brisk_in_day_frames",
+            "replay_data_dir": "F:\\brisk_in_day_frames",
+            "replay_date": "20250905",  # 根据实际数据文件调整
             "replay_speed": 100.0,       # 100倍速回放
             "mock_account_balance": 10000000,
         }
@@ -839,10 +961,21 @@ def main():
         
         # 订阅股票
         # we will be using a static symbols list for this strategy, it should be a subset of TOPIX500
-        symbols = ["9984", "6098"]  # 软银、乐天
+        # symbols = ["9984", "6098"]  # 软银、乐天
+        symbols = []
+        strategy.initialize_stock_master()
+        for symbol in topix500:
+            prev_close = strategy.get_stock_prev_close(symbol)
+            # morning test
+            if 1000 >= prev_close > 600:
+                symbols.append(symbol)
+            # after noon use 1500 >= prev_close > 1000
+        
+        print(f"订阅股票: {symbols}")
+        print(f"订阅股票数量: {len(symbols)}")
 
         if using_mock_data:
-            preload_yyyymmdd = "20250717"
+            preload_yyyymmdd = "20250904"
         else:
             from common.date_utils import prev_working_day
             preload_yyyymmdd = prev_working_day(datetime.now().strftime("%Y%m%d"))
@@ -859,7 +992,7 @@ def main():
         
         # 或者开始历史数据回放
         if using_mock_data:
-            strategy.start_replay("20250718", symbols)
+            strategy.start_replay("20250905", symbols)
         
         # 保持运行
         print("按Ctrl+C退出...")
