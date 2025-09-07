@@ -24,6 +24,7 @@ def run_all_tests():
     'test_eligible_stocks',            # eligible stock功能测试
     'test_entry_order_time_optimization',  # entry_order_time优化测试
     'test_partial_fill_logging',       # 部分成交日志记录测试
+    'test_partial_fill_handling',      # 部分成交处理测试
     'test_on_1min_bar',
     'test_on_tick',
     'test_entry_logic',

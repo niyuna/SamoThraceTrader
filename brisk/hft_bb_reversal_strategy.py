@@ -435,6 +435,26 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         if order.status == Status.PARTTRADED:
             self.write_log(f"部分成交: {order.symbol} {order.direction.value} {order.offset.value} "
                           f"已成交数量: {order.traded} 剩余数量: {order.volume - order.traded}")
+            
+            # 更新已成交数量和持仓
+            context = self._find_hft_context_by_order_id(order.orderid)
+            if context:
+                context.already_traded = order.traded
+                
+                # 更新持仓（部分成交）
+                if order.offset == Offset.OPEN:
+                    if order.direction == Direction.LONG:
+                        context.position = order.traded
+                    else:  # SHORT
+                        context.position = -order.traded
+                elif order.offset == Offset.CLOSE:
+                    if order.direction == Direction.LONG:
+                        context.position += order.traded
+                    else:  # SHORT
+                        context.position -= order.traded
+                
+                self.write_log(f"更新持仓: {order.symbol} position={context.position} already_traded={context.already_traded}")
+            
             return
         
         # 只处理完全成交的订单
@@ -649,7 +669,17 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             # 空头持仓，需要买入平仓
             exit_price = bb_levels.get('exit_short', 0)  # 使用exit_short作为出场价格
             exit_direction = Direction.LONG
-            self.write_log(f"管理出场订单: {symbol} 空头持仓{context.position}，出场价格: {exit_price:.2f}")
+            self.write_log(f"管理出场订单: {symbol} 空头持仓{abs(context.position)}，出场价格: {exit_price:.2f}")
+        
+        # 检查是否有部分成交的入场订单需要取消
+        if (context.entry_order_id and 
+            context.already_traded > 0 and 
+            context.already_traded < context.position_size):
+            # 取消部分成交的入场订单
+            self.write_log(f"取消部分成交的入场订单: {symbol} 已成交{context.already_traded}")
+            self._cancel_order_safely(context.entry_order_id, symbol)
+            context.entry_order_id = ""
+            context.entry_order_time = None
         
         # 检查是否需要更新出场订单
         if context.exit_order_id:
@@ -665,6 +695,13 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         
         # 发送新的出场订单
         if exit_price > 0:
+            # 关键：调整already_traded为position_size - 实际持仓
+            # 这样base strategy会计算正确的数量
+            context.already_traded = context.position_size - abs(context.position)
+            
+            self.write_log(f"调整already_traded为{context.already_traded} "
+                          f"用于发送{abs(context.position)}股exit订单")
+            
             # _execute_exit会自动更新context.exit_order_id, context.exit_price等字段
             order_id = self._execute_exit(context, None, exit_price, exit_direction)
             if order_id:

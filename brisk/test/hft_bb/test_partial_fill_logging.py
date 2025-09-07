@@ -32,6 +32,9 @@ class TestPartialFillLogging(unittest.TestCase):
         
     def test_partial_fill_entry_order_logging(self):
         """测试入场订单部分成交的日志记录"""
+        # 设置入场订单ID
+        self.context.entry_order_id = "entry_123"
+        
         # 创建部分成交的订单事件
         order = OrderData(
             symbol="9984",
@@ -62,9 +65,8 @@ class TestPartialFillLogging(unittest.TestCase):
             "部分成交: 9984 Long Open 已成交数量: 50 剩余数量: 50"
         )
         
-        # 验证没有处理成交逻辑（因为只是部分成交）
-        # 检查position是否仍然为0
-        self.assertEqual(self.context.position, 0)
+        # 验证部分成交时position被更新
+        self.assertEqual(self.context.position, 50)
         self.assertEqual(self.context.entry_order_id, "entry_123")
         
     def test_partial_fill_exit_order_logging(self):
@@ -103,9 +105,8 @@ class TestPartialFillLogging(unittest.TestCase):
             "部分成交: 9984 Short Close 已成交数量: 30 剩余数量: 70"
         )
         
-        # 验证没有处理成交逻辑（因为只是部分成交）
-        # 检查position是否仍然为100
-        self.assertEqual(self.context.position, 100)
+        # 验证部分成交时position被更新
+        self.assertEqual(self.context.position, 70)  # 100 - 30
         self.assertEqual(self.context.exit_order_id, "exit_456")
         
     def test_partial_fill_unknown_order_logging(self):
