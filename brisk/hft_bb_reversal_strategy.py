@@ -849,14 +849,14 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         order_price = 0.0
         
         # 检查上轨触发
-        if current_price >= trigger_levels.upper_trigger:
+        if current_price >= trigger_levels.upper_trigger and not context.entry_order_id:
             should_order = True
             order_direction = Direction.SHORT
             order_price = trigger_levels.upper_limit
             self.write_log(f"触发上轨: {symbol} 价格{current_price:.2f} >= 触发价格{trigger_levels.upper_trigger:.2f}")
         
         # 检查下轨触发
-        elif current_price <= trigger_levels.lower_trigger:
+        elif current_price <= trigger_levels.lower_trigger and not context.entry_order_id:
             should_order = True
             order_direction = Direction.LONG
             order_price = trigger_levels.lower_limit
@@ -886,7 +886,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # 执行订单操作
         if should_cancel:
             self._cancel_entry_order(symbol, context)
-        elif should_order and not context.entry_order_id:
+        elif not context.entry_order_id and should_order:
             self._send_entry_order(symbol, order_direction, order_price, 100)  # 使用固定数量100
 
     def _cancel_entry_order(self, symbol: str, context: HFTBBStockContext):
@@ -939,7 +939,7 @@ def main():
     """主函数"""
     print("启动HFT BB Reversal策略...")
     
-    using_mock_data = True
+    using_mock_data = False
     debug = True
 
     # 创建策略实例
