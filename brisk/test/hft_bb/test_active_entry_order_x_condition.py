@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+
+import unittest
+from unittest.mock import Mock, patch
+from datetime import datetime, time
+
+from brisk.hft_bb_reversal_strategy import HFTBBReversalStrategy
+
+
+class TestActiveEntryOrderXCondition(unittest.TestCase):
+    """测试活跃entry订单的X条件逻辑"""
+    
+    def setUp(self):
+        """设置测试环境"""
+        self.strategy = HFTBBReversalStrategy()
+        self.strategy.write_log = Mock()
+        
+        # 添加测试股票
+        self.strategy.add_symbol("9984")
+        self.context = self.strategy.get_hft_context("9984")
+        
+        # 设置BB levels
+        self.context.bb_levels = {
+            'std': 0.8,
+            'middle': 1000.0,
+            'upper': 1003.0,
+            'lower': 997.0,
+            'exit_long': 1001.0,
+            'exit_short': 999.0
+        }
+        
+    def test_x_condition_with_active_entry_order(self):
+        """测试有活跃entry订单时X条件通过"""
+        # 设置活跃的entry订单
+        self.context.entry_order_id = "test_order_123"
+        
+        # 设置早上时间（满足时间窗口）
+        morning_time = datetime(2024, 1, 1, 9, 20)
+        
+        result = self.strategy.check_x_condition("9984", morning_time)
+        
+        self.assertTrue(result)
+        self.strategy.write_log.assert_any_call(
+            "X条件检查通过: 9984 有活跃的entry订单，允许继续交易"
+        )
+        
+    def test_x_condition_with_active_entry_order_ignores_position(self):
+        """测试有活跃entry订单时忽略持仓状态"""
+        # 设置活跃的entry订单
+        self.context.entry_order_id = "test_order_123"
+        
+        # 设置模拟持仓（通常会导致X条件失败）
+        self.strategy.simulated_positions["9984"] = {'long': True, 'short': False}
+        
+        # 设置早上时间（满足时间窗口）
+        morning_time = datetime(2024, 1, 1, 9, 20)
+        
+        result = self.strategy.check_x_condition("9984", morning_time)
+        
+        self.assertTrue(result)
+        self.strategy.write_log.assert_any_call(
+            "X条件检查通过: 9984 有活跃的entry订单，允许继续交易"
+        )
+        
+    def test_x_condition_with_active_entry_order_ignores_time_window(self):
+        """测试有活跃entry订单时忽略时间窗口限制"""
+        # 设置活跃的entry订单
+        self.context.entry_order_id = "test_order_123"
+        
+        # 设置非交易时间（通常会导致X条件失败）
+        outside_time = datetime(2024, 1, 1, 10, 0)  # 不在任何交易窗口内
+        
+        result = self.strategy.check_x_condition("9984", outside_time)
+        
+        self.assertTrue(result)
+        self.strategy.write_log.assert_any_call(
+            "X条件检查通过: 9984 有活跃的entry订单，允许继续交易"
+        )
+        
+    def test_x_condition_with_active_entry_order_ignores_std_pct(self):
+        """测试有活跃entry订单时忽略std_pct限制"""
+        # 设置活跃的entry订单
+        self.context.entry_order_id = "test_order_123"
+        
+        # 设置较低的std值，使其低于早上阈值
+        self.context.bb_levels['std'] = 0.1  # std_pct = 0.1/1000 = 0.0001 < 0.00073
+        
+        # 设置早上时间（满足时间窗口但std_pct不足）
+        morning_time = datetime(2024, 1, 1, 9, 20)
+        
+        result = self.strategy.check_x_condition("9984", morning_time)
+        
+        self.assertTrue(result)
+        self.strategy.write_log.assert_any_call(
+            "X条件检查通过: 9984 有活跃的entry订单，允许继续交易"
+        )
+        
+    def test_x_condition_without_active_entry_order_normal_check(self):
+        """测试没有活跃entry订单时进行正常检查"""
+        # 确保没有活跃的entry订单
+        self.context.entry_order_id = ""
+        
+        # 设置早上时间（满足时间窗口和std_pct）
+        morning_time = datetime(2024, 1, 1, 9, 20)
+        
+        result = self.strategy.check_x_condition("9984", morning_time)
+        
+        # 应该通过正常的X条件检查
+        self.assertTrue(result)
+        self.strategy.write_log.assert_any_call(
+            "X条件检查通过: 9984 morning std_pct=0.000800"
+        )
+        
+    def test_x_condition_without_active_entry_order_with_position(self):
+        """测试没有活跃entry订单但有持仓时X条件失败"""
+        # 确保没有活跃的entry订单
+        self.context.entry_order_id = ""
+        
+        # 设置模拟持仓
+        self.strategy.simulated_positions["9984"] = {'long': True, 'short': False}
+        
+        # 设置早上时间（满足时间窗口和std_pct）
+        morning_time = datetime(2024, 1, 1, 9, 20)
+        
+        result = self.strategy.check_x_condition("9984", morning_time)
+        
+        self.assertFalse(result)
+        self.strategy.write_log.assert_any_call(
+            "X条件检查失败: 9984 已有持仓"
+        )
+        
+    def test_x_condition_empty_entry_order_id(self):
+        """测试entry_order_id为空字符串时进行正常检查"""
+        # 设置空的entry_order_id
+        self.context.entry_order_id = ""
+        
+        # 设置早上时间（满足时间窗口和std_pct）
+        morning_time = datetime(2024, 1, 1, 9, 20)
+        
+        result = self.strategy.check_x_condition("9984", morning_time)
+        
+        # 应该通过正常的X条件检查
+        self.assertTrue(result)
+        self.strategy.write_log.assert_any_call(
+            "X条件检查通过: 9984 morning std_pct=0.000800"
+        )
+        
+    def test_x_condition_priority_order(self):
+        """测试X条件检查的优先级顺序"""
+        # 设置活跃的entry订单
+        self.context.entry_order_id = "test_order_123"
+        
+        # 设置所有会导致X条件失败的条件
+        # 1. 不在eligible_stocks中
+        self.strategy.eligible_stocks.discard("9984")
+        
+        # 2. 有持仓
+        self.strategy.simulated_positions["9984"] = {'long': True, 'short': False}
+        
+        # 3. 非交易时间
+        outside_time = datetime(2024, 1, 1, 10, 0)
+        
+        # 4. 低std_pct
+        self.context.bb_levels['std'] = 0.1
+        
+        result = self.strategy.check_x_condition("9984", outside_time)
+        
+        # 即使所有其他条件都失败，有活跃entry订单时应该通过
+        self.assertTrue(result)
+        self.strategy.write_log.assert_any_call(
+            "X条件检查通过: 9984 有活跃的entry订单，允许继续交易"
+        )
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -26,6 +26,7 @@ def run_all_tests():
     'test_partial_fill_logging',       # 部分成交日志记录测试
     'test_partial_fill_handling',      # 部分成交处理测试
     'test_std_pct_x_condition',        # std_pct X条件测试
+    'test_active_entry_order_x_condition',  # 活跃entry订单X条件测试
     'test_on_1min_bar',
     'test_on_tick',
     'test_entry_logic',

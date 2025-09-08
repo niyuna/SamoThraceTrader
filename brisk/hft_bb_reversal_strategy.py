@@ -143,17 +143,23 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         if not self.x_condition_enabled:
             return True
             
-        # 1. 检查股票是否在eligible_stocks中
+        # 1. 检查是否有活跃的entry订单（最高优先级）
+        context = self.get_hft_context(symbol)
+        if context.entry_order_id:  # 非空字符串表示有活跃订单
+            self.write_log(f"X条件检查通过: {symbol} 有活跃的entry订单，允许继续交易")
+            return True
+            
+        # 2. 检查股票是否在eligible_stocks中
         if symbol not in self.eligible_stocks:
             self.write_log(f"X条件检查失败: {symbol} 不在eligible_stocks中")
             return False
             
-        # 2. 检查模拟持仓 - 目前没有持仓
+        # 3. 检查模拟持仓 - 目前没有持仓
         if not self._check_no_position(symbol):
             self.write_log(f"X条件检查失败: {symbol} 已有持仓")
             return False
             
-        # 3. 检查时间窗口和std_pct阈值
+        # 4. 检查时间窗口和std_pct阈值
         time_window_result = self._check_time_window_with_std_pct(symbol, current_time)
         if not time_window_result['in_window']:
             self.write_log(f"X条件检查失败: 当前时间不在交易窗口内")
