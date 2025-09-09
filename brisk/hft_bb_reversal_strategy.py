@@ -845,6 +845,16 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             tick: Tick数据
             context: 股票上下文
         """
+        # 如果已经有持仓，不应该再下entry订单
+        if context.position != 0:
+            self.write_log(f"跳过entry逻辑: {symbol} 已有持仓 {context.position}")
+            return
+            
+        # 如果已经有exit订单，也不应该再下entry订单
+        if context.exit_order_id:
+            self.write_log(f"跳过entry逻辑: {symbol} 已有exit订单")
+            return
+        
         self.write_log(f"检查入场逻辑: {symbol} 价格{tick.last_price:.2f}")
         trigger_levels = context.trigger_levels
         current_price = tick.last_price
