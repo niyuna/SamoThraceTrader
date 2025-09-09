@@ -53,8 +53,7 @@ class TestOn1MinBar(unittest.TestCase):
         # 验证调用了父类方法
         mock_super_on_1min_bar.assert_called_once_with(bar)
     
-    @patch('intraday_strategy_base.IntradayStrategyBase.on_1min_bar')
-    def test_on_1min_bar_with_indicator_manager(self, mock_super_on_1min_bar):
+    def test_on_1min_bar_with_indicator_manager(self):
         """测试有技术指标管理器的情况"""
         bar = BarData(
             symbol="2330",
@@ -77,6 +76,7 @@ class TestOn1MinBar(unittest.TestCase):
             'bb_middle': 100.0
         }
         mock_manager.update_bar.return_value = mock_indicators
+        mock_manager.get_indicators.return_value = mock_indicators
         
         self.strategy.indicator_managers = {"2330": mock_manager}
         
@@ -95,8 +95,11 @@ class TestOn1MinBar(unittest.TestCase):
         
         self.strategy.on_1min_bar(bar)
         
-        # 验证技术指标管理器被调用
+        # 验证技术指标管理器被调用（现在在父类中调用）
         mock_manager.update_bar.assert_called_once_with(bar)
+        
+        # 验证get_indicators被调用（现在在子类中调用）
+        mock_manager.get_indicators.assert_called_once()
         
         # 验证BB水平计算被调用
         self.strategy._calculate_bb_levels.assert_called_once_with("2330", mock_indicators)
@@ -164,8 +167,7 @@ class TestOn1MinBar(unittest.TestCase):
         log_calls = [call[0][0] for call in self.strategy.write_log.call_args_list]
         self.assertTrue(any("管理出场订单" in call for call in log_calls))
     
-    @patch('intraday_strategy_base.IntradayStrategyBase.on_1min_bar')
-    def test_on_1min_bar_bb_levels_none(self, mock_super_on_1min_bar):
+    def test_on_1min_bar_bb_levels_none(self):
         """测试BB水平为None的情况"""
         bar = BarData(
             symbol="2330",
@@ -188,6 +190,7 @@ class TestOn1MinBar(unittest.TestCase):
             'bb_middle': 100.0
         }
         mock_manager.update_bar.return_value = mock_indicators
+        mock_manager.get_indicators.return_value = mock_indicators
         
         self.strategy.indicator_managers = {"2330": mock_manager}
         
@@ -196,8 +199,11 @@ class TestOn1MinBar(unittest.TestCase):
         
         self.strategy.on_1min_bar(bar)
         
-        # 验证技术指标管理器被调用
+        # 验证技术指标管理器被调用（现在在父类中调用）
         mock_manager.update_bar.assert_called_once_with(bar)
+        
+        # 验证get_indicators被调用（现在在子类中调用）
+        mock_manager.get_indicators.assert_called_once()
         
         # 验证BB水平计算被调用
         self.strategy._calculate_bb_levels.assert_called_once_with("2330", mock_indicators)

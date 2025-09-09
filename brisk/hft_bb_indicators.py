@@ -102,6 +102,9 @@ class HFTBBReversalIndicatorV2:
             return {}
         
         # 获取SMA和STD
+        # print(self.am.close)
+        # print(len(self.am.close))
+        # print(sum(self.am.close) / len(self.am.close))
         sma = self.am.sma(self.bb_period)
         std = self.am.std(self.bb_period)
         

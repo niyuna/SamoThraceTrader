@@ -433,9 +433,12 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                       f"开:{bar.open_price:.2f} 高:{bar.high_price:.2f} 低:{bar.low_price:.2f} "
                       f"收:{bar.close_price:.2f} 量:{bar.volume}")
         
-        # 1. 更新技术指标和触发价格
+        # 先调用父类方法（更新指标并打印信息）
+        super().on_1min_bar(bar)
+        
+        # 1. 获取技术指标和触发价格（不再重复调用update_bar）
         if symbol in self.indicator_managers:
-            indicators = self.indicator_managers[symbol].update_bar(bar)
+            indicators = self.indicator_managers[symbol].get_indicators()
             bb_levels = self._calculate_bb_levels(symbol, indicators)
             
             if bb_levels:
@@ -464,9 +467,6 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 # 3. 如果有持仓，维护出场订单
                 if context.position != 0:
                     self._manage_exit_order(symbol, bb_levels)
-        
-        # 调用父类方法（保持原有逻辑）
-        super().on_1min_bar(bar)
     
     def _calculate_bb_levels(self, symbol: str, indicators: dict) -> dict:
         """计算BB策略的各个价格水平"""
@@ -1056,7 +1056,7 @@ def main():
     """主函数"""
     print("启动HFT BB Reversal策略...")
     
-    using_mock_data = False
+    using_mock_data = True
     debug = True
 
     # 创建策略实例
@@ -1068,7 +1068,7 @@ def main():
             "tick_mode": "replay",
             # "replay_data_dir": "D:\\dev\\github\\brisk-hack\\brisk_in_day_frames",
             "replay_data_dir": "F:\\brisk_in_day_frames",
-            "replay_date": "20250905",  # 根据实际数据文件调整
+            "replay_date": "20250909",  # 根据实际数据文件调整
             "replay_speed": 100.0,       # 100倍速回放
             "mock_account_balance": 10000000,
         }
@@ -1080,24 +1080,27 @@ def main():
         # we will be using a static symbols list for this strategy, it should be a subset of TOPIX500
         # symbols = ["9984", "6098"]  # 软银、乐天
         symbols = []
-        strategy.initialize_stock_master()
-        for symbol in topix500:
-            prev_close = strategy.get_stock_prev_close(symbol)
-            # morning test
-            if 1000 >= prev_close > 600:
-                symbols.append(symbol)
-            # after noon use 1500 >= prev_close > 1000
+        if using_mock_data:
+            symbols = ["9501"]
+        else:
+            strategy.initialize_stock_master()
+            for symbol in topix500:
+                prev_close = strategy.get_stock_prev_close(symbol)
+                # morning test
+                if 1000 >= prev_close > 600:
+                    symbols.append(symbol)
+                # after noon use 1500 >= prev_close > 1000
         
         print(f"订阅股票: {symbols}")
         print(f"订阅股票数量: {len(symbols)}")
 
         if using_mock_data:
-            preload_yyyymmdd = "20250904"
+            preload_yyyymmdd = "20250908"
         else:
             from common.date_utils import prev_working_day
             preload_yyyymmdd = prev_working_day(datetime.now().strftime("%Y%m%d"))
 
-        # strategy.preload_historical_data(symbols, preload_yyyymmdd)
+        strategy.preload_historical_data(symbols, preload_yyyymmdd)
         strategy.subscribe(symbols)
         
         # 注册收盘前平仓定时器
@@ -1113,7 +1116,7 @@ def main():
         
         # 或者开始历史数据回放
         if using_mock_data:
-            strategy.start_replay("20250905", symbols)
+            strategy.start_replay(mock_setting["replay_date"], symbols)
         
         # 保持运行
         print("按Ctrl+C退出...")

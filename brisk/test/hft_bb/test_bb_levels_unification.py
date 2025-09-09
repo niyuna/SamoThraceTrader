@@ -217,6 +217,7 @@ class TestBBLevelsUnification(unittest.TestCase):
         # Mock indicator manager
         mock_indicator = Mock()
         mock_indicator.update_bar.return_value = {'bb_levels': self.bb_levels}
+        mock_indicator.get_indicators.return_value = self.bb_levels
         self.strategy.indicator_managers["9984"] = mock_indicator
         
         # 调用on_1min_bar
