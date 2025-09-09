@@ -76,9 +76,14 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.std_pct_threshold_noon = 0.000001      # 中午11:29-11:30阈值（极小的值，几乎总是通过）
         self.std_pct_threshold_afternoon = 0.00036  # 下午14:35-15:20阈值
         
+        # 收盘前平仓参数
+        self.market_close_liquidation_enabled = True  # 是否启用收盘前平仓
+        self.market_close_time = time(15, 24)        # 普通交易结束时间
+        self.liquidation_check_time = time(15, 25)   # 平仓检查时间
+        self.liquidation_executed = False            # 是否已执行平仓
+        
         # 模拟持仓管理
         self.simulated_positions = {}  # symbol -> {'long': bool, 'short': bool}
-        self.bb_levels = {}            # symbol -> BB价格水平
 
         self.indicator_size = 20  # 修改为20以匹配真实数据
         
@@ -99,7 +104,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             (time(11, 29), time(11, 30)),  # 中午 11:29~11:30
             (time(14, 35), time(15, 20))   # 下午 14:35~15:20
         ]
-        
+
         self.write_log(f"策略初始化完成: {self.strategy_name}")
         
         # HFT BB策略特定的context管理
@@ -359,10 +364,14 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                     if self.indicator_managers[symbol].is_ready_for_trading():
                         self.write_log(f"✓ {symbol} 历史数据预加载成功，准备交易")
                         
-                        # 获取初始BB水平
+                        # 获取初始BB水平并存储到context中
                         bb_levels = self.indicator_managers[symbol].get_bb_levels()
                         if bb_levels:
-                            self.bb_levels[symbol] = bb_levels
+                            # 确保context存在，如果不存在则创建
+                            if symbol not in self.hft_contexts:
+                                self.create_hft_context(symbol)
+                            context = self.get_hft_context(symbol)
+                            context.bb_levels = bb_levels
                             self.write_log(f"  {symbol} 初始BB水平:")
                             self.write_log(f"    Upper: {bb_levels['upper']:.2f}")
                             self.write_log(f"    Lower: {bb_levels['lower']:.2f}")
@@ -476,6 +485,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         """Tick数据回调函数"""
         tick = event.data
         symbol = tick.symbol
+        if symbol not in self.hft_contexts:
+            self.create_hft_context(symbol)
         context = self.get_hft_context(symbol)
 
         # print(f"收到Tick: {symbol} {tick.datetime.strftime('%H:%M:%S')} {tick.last_price}")
@@ -494,11 +505,12 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
     def _update_simulated_positions(self, tick):
         """根据tick价格更新模拟持仓状态"""
         symbol = tick.symbol
-        if symbol not in self.bb_levels:
+        context = self.get_hft_context(symbol)
+        if not context.bb_levels:
             return
         
         current_price = tick.last_price
-        bb_levels = self.bb_levels[symbol]
+        bb_levels = context.bb_levels
         
         # 初始化模拟持仓
         if symbol not in self.simulated_positions:
@@ -711,8 +723,9 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 status.append("NONE")
             
             bb_info = ""
-            if symbol in self.bb_levels:
-                bb = self.bb_levels[symbol]
+            context = self.get_hft_context(symbol)
+            if context.bb_levels:
+                bb = context.bb_levels
                 bb_info = f" | BB: U={bb['upper']:.2f} L={bb['lower']:.2f} M={bb['middle']:.2f}"
             
             print(f"  {symbol}: {', '.join(status)}{bb_info}")
@@ -729,6 +742,94 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 print(f"  {symbol}: {bb_info}")
             else:
                 print(f"  {symbol}: 技术指标未初始化")
+
+    def _register_market_close_timer(self):
+        """注册收盘前平仓定时器"""
+        if not self.market_close_liquidation_enabled or not self.event_engine:
+            return
+            
+        from vnpy.trader.event import EVENT_TIMER
+        self.event_engine.register(EVENT_TIMER, self._on_market_close_timer)
+        self.write_log("收盘前平仓定时器已注册")
+
+    def _on_market_close_timer(self, event):
+        """收盘前平仓定时器回调"""
+        current_time = datetime.now().time()
+        
+        # 每1分钟输出log验证执行
+        if current_time.second <= 1:  # 每分钟的0秒输出
+            self.write_log(f"收盘前平仓定时器运行中，当前时间: {current_time.strftime('%H:%M:%S')}, "
+                          f"liquidation_executed: {self.liquidation_executed}")
+        
+        if self.liquidation_executed:
+            return  # 已经下了所有平仓订单，避免重复
+            
+        if current_time < self.liquidation_check_time:
+            return  # 还没到检查时间
+            
+        self.write_log("开始执行收盘前平仓流程...")
+        self._execute_market_close_liquidation()
+
+    def _execute_market_close_liquidation(self):
+        """执行收盘前平仓"""
+        liquidation_count = 0
+        failed_count = 0
+        
+        for symbol in list(self.hft_contexts.keys()):
+            context = self.hft_contexts[symbol]
+
+            # 检查是否已经在进行closing处理
+            if context.state == StrategyState.WAITING_TIMEOUT_EXIT:
+                self.write_log(f"跳过已在closing处理的股票: {symbol}")
+                continue
+                
+            # 1. 取消entry订单
+            if context.entry_order_id:
+                self.write_log(f"取消entry订单: {symbol} {context.entry_order_id}")
+                success = self._cancel_order_safely(context.entry_order_id, symbol)
+                if success:
+                    context.entry_order_id = ""
+                    context.entry_order_time = None
+                    liquidation_count += 1
+                else:
+                    failed_count += 1
+                    self.write_log(f"取消entry订单失败: {symbol} {context.entry_order_id}")
+                
+            # 2. 处理exit订单
+            if context.exit_order_id:
+                # 取消原limit订单
+                self.write_log(f"取消原exit订单: {symbol} {context.exit_order_id}")
+                success = self._cancel_order_safely(context.exit_order_id, symbol)
+                if not success:
+                    failed_count += 1
+                    self.write_log(f"取消exit订单失败: {symbol} {context.exit_order_id}")
+                
+            # 3. 发送market订单（如果有持仓）
+            if context.position != 0:
+                if context.position > 0:
+                    # 多头持仓，卖出平仓
+                    direction = Direction.SHORT
+                else:
+                    # 空头持仓，买入平仓
+                    direction = Direction.LONG
+                    
+                # 发送market订单
+                order_id = self._execute_exit(context, None, 0, direction, OrderType.MARKET)
+                if order_id:
+                    context.exit_order_id = order_id
+                    context.state = StrategyState.WAITING_TIMEOUT_EXIT  # 标记为closing状态
+                    liquidation_count += 1
+                    self.write_log(f"发送market平仓订单成功: {symbol} {order_id}")
+                else:
+                    failed_count += 1
+                    self.write_log(f"发送market平仓订单失败: {symbol}")
+        
+        # 只有当没有失败时才设置liquidation_executed为True
+        if failed_count == 0:
+            self.liquidation_executed = True
+            self.write_log(f"收盘前平仓订单发送完成，成功: {liquidation_count}个")
+        else:
+            self.write_log(f"收盘前平仓部分失败，成功: {liquidation_count}个，失败: {failed_count}个，将重试")
 
     def _calculate_trigger_levels(self, symbol: str, bb_levels: dict) -> Optional[TriggerLevels]:
         """
@@ -996,8 +1097,12 @@ def main():
             from common.date_utils import prev_working_day
             preload_yyyymmdd = prev_working_day(datetime.now().strftime("%Y%m%d"))
 
-        strategy.preload_historical_data(symbols, preload_yyyymmdd)
+        # strategy.preload_historical_data(symbols, preload_yyyymmdd)
         strategy.subscribe(symbols)
+        
+        # 注册收盘前平仓定时器
+        strategy._register_market_close_timer()
+        
         
         # 等待一段时间接收数据
         print("等待接收数据...")

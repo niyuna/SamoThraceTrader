@@ -28,6 +28,9 @@ def run_all_tests():
     'test_std_pct_x_condition',        # std_pct X条件测试
     'test_active_entry_order_x_condition',  # 活跃entry订单X条件测试
     'test_entry_logic_position_protection',  # entry逻辑持仓保护测试
+    'test_bb_levels_unification',           # BB levels统一化测试
+    'test_preload_context_edge_case',       # preload context edge case测试
+    'test_market_close_liquidation',        # 收盘前平仓测试
     'test_on_1min_bar',
     'test_on_tick',
     'test_entry_logic',

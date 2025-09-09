@@ -340,7 +340,7 @@ class IntradayStrategyBase:
 
     # ==================== 核心交易执行方法 ====================
     
-    # call flow: _check_and_execute_trigger -> _execute_triggered_entry ->_execute_entry/_execute_exit -> _execute_trade -> _execute_order
+    # call flow: _check_and_execute_trigger -> _execute_triggered_entry -> _execute_entry/_execute_exit -> _execute_trade -> _execute_order
 
     def _execute_order(self, context, bar, price: float, direction: Direction, offset: Offset, order_type: OrderType = OrderType.LIMIT, reference_prefix: str = "order"):
         """统一的订单执行方法"""
