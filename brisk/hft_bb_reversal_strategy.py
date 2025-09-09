@@ -1003,7 +1003,7 @@ def main():
         # 保持运行
         print("按Ctrl+C退出...")
         while True:
-            time_module.sleep(5)
+            time_module.sleep(30)
             # 定期打印模拟持仓状态
             if debug:
                 strategy.print_simulation_summary()
