@@ -46,7 +46,7 @@ class BriskGateway(BaseGateway):
         "tick_server_http_url": "http://127.0.0.1:8001",
         "reconnect_interval": 5,
         "heartbeat_interval": 30,
-        "max_reconnect_attempts": 10,
+        "max_reconnect_attempts": 20,
         "polling_interval": 1,  # 订单状态轮询间隔（秒）
     }
     exchanges: List[Exchange] = [Exchange.TSE]
@@ -229,7 +229,17 @@ class BriskGateway(BaseGateway):
                 asyncio.run(self._connect_websocket())
             except Exception as e:
                 self.write_log(f"WebSocket连接异常: {e}")
-                time.sleep(self._reconnect_interval)
+                
+                # 检查重连次数限制
+                if self._max_reconnect_attempts > 0 and self._reconnect_attempts >= self._max_reconnect_attempts:
+                    self.write_log(f"达到最大重连次数限制 ({self._max_reconnect_attempts})，停止重连")
+                    break
+                
+                # 指数退避重连间隔
+                self._reconnect_attempts += 1
+                wait_time = min(self._reconnect_interval * (2 ** (self._reconnect_attempts - 1)), 60)  # 最大60秒
+                self.write_log(f"第 {self._reconnect_attempts} 次重连尝试，等待 {wait_time} 秒...")
+                time.sleep(wait_time)
 
     async def _connect_websocket(self) -> None:
         """连接WebSocket"""
@@ -248,16 +258,24 @@ class BriskGateway(BaseGateway):
                     break
                 await self._on_message(message)
 
-        except ConnectionClosed:
-            self.write_log("WebSocket连接已关闭")
+        except ConnectionClosed as e:
+            self.write_log(f"WebSocket连接已关闭: {e}")
+            raise  # 重新抛出异常以触发重连
         except WebSocketException as e:
             self.write_log(f"WebSocket异常: {e}")
+            raise  # 重新抛出异常以触发重连
         except Exception as e:
             self.write_log(f"WebSocket连接失败: {e}")
+            raise  # 重新抛出异常以触发重连
         finally:
             self._connected = False
             if self._ws:
-                await self._ws.close()
+                try:
+                    await self._ws.close()
+                except Exception as e:
+                    self.write_log(f"关闭WebSocket连接时出错: {e}")
+                finally:
+                    self._ws = None
 
     async def _send_subscribe_message(self) -> None:
         """发送订阅消息"""
@@ -269,7 +287,11 @@ class BriskGateway(BaseGateway):
             "symbols": list(self._subscribed_symbols)
         }
         self.write_log(f"发送订阅消息: {subscribe_msg}")
-        await self._ws.send(json.dumps(subscribe_msg))
+        try:
+            await self._ws.send(json.dumps(subscribe_msg))
+        except Exception as e:
+            self.write_log(f"发送订阅消息失败: {e}")
+            raise  # 重新抛出异常以触发重连
 
     async def _on_message(self, message: str) -> None:
         """处理接收到的消息"""
@@ -279,15 +301,14 @@ class BriskGateway(BaseGateway):
             # 处理tick数据
             if "frames" in data:
                 await self._process_tick_data(data["frames"])
-            
-            # 处理心跳
-            elif data.get("type") == "heartbeat":
-                self._last_heartbeat = time.time()
                 
         except json.JSONDecodeError as e:
             self.write_log(f"JSON解析失败: {e}")
         except Exception as e:
             self.write_log(f"消息处理失败: {e}")
+            # 如果是连接相关异常，重新抛出以触发重连
+            if "ConnectionClosed" in str(type(e)) or "WebSocketException" in str(type(e)):
+                raise
 
     async def _process_tick_data(self, frames: Dict[str, List[Dict]]) -> None:
         """处理tick数据"""
