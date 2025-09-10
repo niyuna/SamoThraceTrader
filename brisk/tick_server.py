@@ -88,7 +88,8 @@ class ConnectionManager:
             logger.error(f"发送个人消息超时: {timeout}秒")
             self.disconnect(websocket)
         except Exception as e:
-            logger.error(f"发送个人消息失败: {e}")
+            logger.error(f"发送个人消息失败: {type(e).__name__}: {str(e) if str(e) else repr(e)}")
+            logger.error(f"异常详情: {e}", exc_info=True)
             self.disconnect(websocket)
 
     async def broadcast(self, message: str, timeout: float = None):
@@ -103,7 +104,8 @@ class ConnectionManager:
                     logger.error(f"广播消息超时: {timeout}秒")
                     disconnected.append(connection)
                 except Exception as e:
-                    logger.error(f"广播消息失败: {e}")
+                    logger.error(f"广播消息失败: {type(e).__name__}: {str(e) if str(e) else repr(e)}")
+                    logger.error(f"异常详情: {e}", exc_info=True)
                     disconnected.append(connection)
             
             # 清理断开的连接
@@ -144,7 +146,8 @@ class ConnectionManager:
                         connections_to_send.append((connection, message_text))
                         
                 except Exception as e:
-                    logger.error(f"准备发送数据失败: {e}")
+                    logger.error(f"准备发送数据失败: {type(e).__name__}: {str(e) if str(e) else repr(e)}")
+                    logger.error(f"异常详情: {e}", exc_info=True)
                     self.disconnect(connection)
         
         # 锁外：执行异步发送操作
@@ -161,8 +164,13 @@ class ConnectionManager:
                 except asyncio.TimeoutError:
                     logger.error(f"广播tick数据超时: {timeout}秒")
                     self.disconnect(connection)
+                except WebSocketDisconnect:
+                    logger.warning(f"WebSocket连接已断开: {connection}")
+                    self.disconnect(connection)
                 except Exception as e:
-                    logger.error(f"广播tick数据失败: {e}")
+                    # 记录更详细的异常信息
+                    logger.error(f"广播tick数据失败: {type(e).__name__}: {str(e) if str(e) else repr(e)}")
+                    logger.error(f"异常详情: {e}", exc_info=True)
                     self.disconnect(connection)
         
         logger.info("广播tick数据完成")
@@ -340,7 +348,8 @@ async def post_in_day_frames(frames: Dict[str, List[Frame]]):
             
         except Exception as e:
             # 发生错误时，尝试清理临时文件
-            logger.error(f"Error writing frames: {str(e)}")
+            logger.error(f"Error writing frames: {type(e).__name__}: {str(e) if str(e) else repr(e)}")
+            logger.error(f"异常详情: {e}", exc_info=True)
             try:
                 if os.path.exists(temp_file_path):
                     os.remove(temp_file_path)
