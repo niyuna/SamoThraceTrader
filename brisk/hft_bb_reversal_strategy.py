@@ -730,18 +730,18 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             
             print(f"  {symbol}: {', '.join(status)}{bb_info}")
         
-        print("\n技术指标状态:")
-        for symbol in self.indicator_managers:
-            manager = self.indicator_managers[symbol]
-            if manager.is_inited():
-                indicators = manager.get_indicators()
-                if indicators:
-                    bb_info = f"BB已初始化 (周期: {indicators.get('period', 'N/A')})"
-                else:
-                    bb_info = "BB未初始化"
-                print(f"  {symbol}: {bb_info}")
-            else:
-                print(f"  {symbol}: 技术指标未初始化")
+        # print("\n技术指标状态:")
+        # for symbol in self.indicator_managers:
+        #     manager = self.indicator_managers[symbol]
+        #     if manager.is_inited():
+        #         indicators = manager.get_indicators()
+        #         if indicators:
+        #             bb_info = f"BB已初始化 (周期: {indicators.get('period', 'N/A')})"
+        #         else:
+        #             bb_info = "BB未初始化"
+        #         print(f"  {symbol}: {bb_info}")
+        #     else:
+        #         print(f"  {symbol}: 技术指标未初始化")
 
     def _register_market_close_timer(self):
         """注册收盘前平仓定时器"""
@@ -956,7 +956,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             self.write_log(f"跳过entry逻辑: {symbol} 已有exit订单")
             return
         
-        self.write_log(f"检查入场逻辑: {symbol} 价格{tick.last_price:.2f}")
+        # self.write_log(f"检查入场逻辑: {symbol} 价格{tick.last_price:.2f}")
         trigger_levels = context.trigger_levels
         current_price = tick.last_price
         
@@ -1056,7 +1056,7 @@ def main():
     """主函数"""
     print("启动HFT BB Reversal策略...")
     
-    using_mock_data = True
+    using_mock_data = False
     debug = True
 
     # 创建策略实例
@@ -1087,7 +1087,7 @@ def main():
             for symbol in topix500:
                 prev_close = strategy.get_stock_prev_close(symbol)
                 # morning test
-                if 1000 >= prev_close > 600:
+                if 1500 >= prev_close > 600:
                     symbols.append(symbol)
                 # after noon use 1500 >= prev_close > 1000
         
@@ -1100,7 +1100,7 @@ def main():
             from common.date_utils import prev_working_day
             preload_yyyymmdd = prev_working_day(datetime.now().strftime("%Y%m%d"))
 
-        strategy.preload_historical_data(symbols, preload_yyyymmdd)
+        # strategy.preload_historical_data(symbols, preload_yyyymmdd)
         strategy.subscribe(symbols)
         
         # 注册收盘前平仓定时器
