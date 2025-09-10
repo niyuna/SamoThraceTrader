@@ -632,7 +632,7 @@ class IntradayStrategyBase:
         
         if not order_id:
             # 订单被拒绝，回到 IDLE 状态
-            self.update_context_state(bar.symbol, StrategyState.IDLE)
+            self.update_context_state(context.symbol, StrategyState.IDLE)
             context.entry_order_id = ""
 
     def _execute_exit(self, context, bar, price, direction: Direction, order_type: OrderType = OrderType.LIMIT):

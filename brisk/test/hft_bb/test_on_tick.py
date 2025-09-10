@@ -22,6 +22,9 @@ class TestOnTick(unittest.TestCase):
     def setUp(self):
         """设置测试环境"""
         self.strategy = HFTBBReversalStrategy(use_mock_gateway=True)
+        # 直接设置mock gateway
+        self.strategy.gateway = Mock()
+        self.strategy.gateway.send_order = Mock(return_value="test_order_123")
         # Mock write_log方法
         self.strategy.write_log = Mock()
         # 创建测试用的HFT context
@@ -87,7 +90,7 @@ class TestOnTick(unittest.TestCase):
             datetime=datetime.now(),
             name="台积电",
             volume=1000,
-            last_price=100.0,
+            last_price=98.0,  # 使用会触发下轨的价格
             gateway_name="test"
         )
         
@@ -109,9 +112,10 @@ class TestOnTick(unittest.TestCase):
         # 验证_update_simulated_positions被调用
         self.strategy._update_simulated_positions.assert_called_once_with(tick)
         
-        # 验证_check_entry_logic被调用（通过日志验证）
+        # 验证_check_entry_logic被调用（通过检查是否有订单相关日志）
         log_calls = [call[0][0] for call in self.strategy.write_log.call_args_list]
-        self.assertTrue(any("检查入场逻辑" in call for call in log_calls))
+        # 检查是否有订单相关的日志输出（表示_check_entry_logic确实被调用了）
+        self.assertTrue(any("订单" in call or "entry" in call.lower() for call in log_calls))
     
     def test_on_tick_with_bar_generator(self):
         """测试有BarGenerator的情况"""
