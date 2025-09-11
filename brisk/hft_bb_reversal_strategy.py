@@ -567,7 +567,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         2. 出场订单成交：清除position，清除exit_order_id
         """
         order = event.data
-        self.write_log(f"订单状态更新: {order.symbol} {order.direction.value} {order.offset.value} "
+        self.write_log(f"订单状态更新: {order.orderid} {order.symbol} {order.direction.value} {order.offset.value} "
                       f"状态: {order.status.value} 价格: {order.price:.2f} 数量: {order.volume}")
         
         # 记录部分成交情况

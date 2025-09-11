@@ -468,11 +468,32 @@ class BriskGateway(BaseGateway):
                     self.local_orders[orderid] = order
                     self.on_order(order)  # 推送事件
                     self.write_log(f"订单状态更新: {orderid} {old_order.status if old_order else 'NEW'} -> {order.status}")
+                else:
+                    self.write_log(f"WARNING: kabus query order API: 订单状态未变化: {orderid} {old_order.status if old_order else 'NEW'} -> {order.status}")
             except Exception as e:
                 self.write_log(f"订单转换失败: {e}")
 
         # 4. 更新last_updtime为当前时间
         self.last_updtime = current_time
+
+
+    def query_single_order(self, orderid: str) -> OrderData:
+        """查询单个订单"""
+        try:
+            broker_order = kabus_api.query_order_status(orderid)
+            order = self._convert_broker_order_to_vnpy(broker_order)
+            old_order = self.local_orders.get(orderid)
+            if (not old_order) or (old_order.status != order.status or old_order.traded != order.traded):
+                self.local_orders[orderid] = order
+                self.on_order(order)  # 推送事件
+                self.write_log(f"(query_single_order) 订单状态更新: {orderid} {old_order.status if old_order else 'NEW'} -> {order.status}")
+            else:
+                self.write_log(f"(query_single_order) WARNING: kabus query order API: 订单状态未变化: {orderid} {old_order.status if old_order else 'NEW'} -> {order.status}")
+
+            return order
+        except Exception as e:
+            self.write_log(f"查询订单失败: {e}")
+            return None
 
     def _convert_broker_order_to_vnpy(self, broker_order: Dict) -> OrderData:
         """将kabus API订单格式转换为vnpy格式"""
