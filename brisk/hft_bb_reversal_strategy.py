@@ -1006,6 +1006,13 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         elif not context.entry_order_id and should_order:
             self._send_entry_order(symbol, order_direction, order_price, 100)  # 使用固定数量100
 
+    def update_context_state(self, symbol: str, new_state: StrategyState):
+        """更新 HFT Context 状态"""
+        context = self.get_hft_context(symbol)
+        old_state = context.state
+        context.state = new_state
+        self.write_log(f"Context state changed for {symbol}: {old_state.value} -> {new_state.value}")
+
     def _cancel_entry_order(self, symbol: str, context: HFTBBStockContext):
         """
         取消入场订单
@@ -1015,16 +1022,22 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             context: 股票上下文
         """
         if context.entry_order_id:
-            # 使用base strategy的撤单方法
-            success = self._cancel_order_safely(context.entry_order_id, symbol)
+            # 使用增强的撤单方法
+            success = self._cancel_order_with_verification(
+                context.entry_order_id, 
+                symbol
+            )
+            
             if success:
+                # 撤单成功，立即更新状态
                 self.write_log(f"取消入场订单成功: {symbol} 订单ID: {context.entry_order_id}")
                 context.entry_order_id = ""
-                context.entry_order_time = None  # 清除订单发送时间
-                # 更新状态为空闲
+                context.entry_order_time = None
                 self.update_context_state(symbol, StrategyState.IDLE)
             else:
-                self.write_log(f"取消入场订单失败: {symbol} 订单ID: {context.entry_order_id}")
+                # 撤单失败，不更新状态，等待on_order事件处理
+                self.write_log(f"取消入场订单失败，等待订单状态更新: {symbol} 订单ID: {context.entry_order_id}")
+                # 注意：不更新context状态，让on_order事件自然处理
 
     def _send_entry_order(self, symbol: str, direction: Direction, price: float, quantity: int):
         """

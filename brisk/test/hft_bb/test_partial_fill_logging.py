@@ -3,7 +3,8 @@
 
 import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+# 添加项目根目录到Python路径
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 import unittest
 from unittest.mock import Mock, patch
@@ -11,7 +12,7 @@ from datetime import datetime
 from vnpy.trader.constant import Direction, Offset, Status, OrderType, Exchange
 from vnpy.trader.object import OrderData
 
-from brisk.hft_bb_reversal_strategy import HFTBBReversalStrategy
+from hft_bb_reversal_strategy import HFTBBReversalStrategy
 
 
 class TestPartialFillLogging(unittest.TestCase):
@@ -59,7 +60,7 @@ class TestPartialFillLogging(unittest.TestCase):
         
         # 验证日志记录
         self.strategy.write_log.assert_any_call(
-            "订单状态更新: 9984 Long Open 状态: Part Traded 价格: 100.00 数量: 100"
+            "订单状态更新: entry_123 9984 Long Open 状态: Part Traded 价格: 100.00 数量: 100"
         )
         self.strategy.write_log.assert_any_call(
             "部分成交: 9984 Long Open 已成交数量: 50 剩余数量: 50"
@@ -99,7 +100,7 @@ class TestPartialFillLogging(unittest.TestCase):
         
         # 验证日志记录
         self.strategy.write_log.assert_any_call(
-            "订单状态更新: 9984 Short Close 状态: Part Traded 价格: 99.00 数量: 100"
+            "订单状态更新: exit_456 9984 Short Close 状态: Part Traded 价格: 99.00 数量: 100"
         )
         self.strategy.write_log.assert_any_call(
             "部分成交: 9984 Short Close 已成交数量: 30 剩余数量: 70"
@@ -135,7 +136,7 @@ class TestPartialFillLogging(unittest.TestCase):
         
         # 验证日志记录
         self.strategy.write_log.assert_any_call(
-            "订单状态更新: 9984 Long Open 状态: Part Traded 价格: 100.00 数量: 100"
+            "订单状态更新: unknown_789 9984 Long Open 状态: Part Traded 价格: 100.00 数量: 100"
         )
         self.strategy.write_log.assert_any_call(
             "部分成交: 9984 Long Open 已成交数量: 25 剩余数量: 75"
@@ -167,7 +168,7 @@ class TestPartialFillLogging(unittest.TestCase):
         
         # 验证日志记录
         self.strategy.write_log.assert_any_call(
-            "订单状态更新: 9984 Long Open 状态: All Traded 价格: 100.00 数量: 100"
+            "订单状态更新: entry_123 9984 Long Open 状态: All Traded 价格: 100.00 数量: 100"
         )
         
         # 验证没有部分成交日志
@@ -205,7 +206,7 @@ class TestPartialFillLogging(unittest.TestCase):
         
         # 验证只有基本日志记录
         self.strategy.write_log.assert_any_call(
-            "订单状态更新: 9984 Long Open 状态: Not Traded 价格: 100.00 数量: 100"
+            "订单状态更新: entry_123 9984 Long Open 状态: Not Traded 价格: 100.00 数量: 100"
         )
         
         # 验证没有部分成交日志

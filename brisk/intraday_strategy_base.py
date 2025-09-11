@@ -669,6 +669,65 @@ class IntradayStrategyBase:
             self.write_log(f"撤单失败: {order_id}, 错误: {e}")
             return False
 
+    def _query_order_status_and_update(self, order_id: str, symbol: str) -> bool:
+        """
+        查询订单状态并触发on_order事件
+        
+        Args:
+            order_id: 订单ID
+            symbol: 股票代码
+            
+        Returns:
+            bool: 查询是否成功
+        """
+        if not order_id or not self.brisk_gateway:
+            return False
+            
+        try:
+            order_data = self.brisk_gateway.query_single_order(order_id)
+            if order_data:
+                self.write_log(f"查询订单状态成功: {symbol} 订单ID: {order_id} 状态: {order_data.status}")
+                return True
+            else:
+                self.write_log(f"查询订单状态失败: {symbol} 订单ID: {order_id}")
+                return False
+        except Exception as e:
+            self.write_log(f"查询订单状态异常: {symbol} 订单ID: {order_id} 错误: {e}")
+            return False
+
+    def _cancel_order_with_verification(self, order_id: str, symbol: str) -> bool:
+        """
+        撤单并验证结果，如果撤单失败则查询订单状态
+        
+        Args:
+            order_id: 订单ID
+            symbol: 股票代码
+            
+        Returns:
+            bool: 撤单是否成功
+        """
+        if not order_id:
+            return True
+            
+        # 尝试撤单
+        success = self._cancel_order_safely(order_id, symbol)
+        
+        if success:
+            self.write_log(f"撤单成功: {symbol} 订单ID: {order_id}")
+            return True
+        else:
+            self.write_log(f"撤单失败，查询订单状态: {symbol} 订单ID: {order_id}")
+            
+            # 撤单失败时，查询订单状态以获取最新信息
+            query_success = self._query_order_status_and_update(order_id, symbol)
+            
+            if query_success:
+                self.write_log(f"订单状态查询成功，等待on_order事件更新状态: {symbol} 订单ID: {order_id}")
+            else:
+                self.write_log(f"订单状态查询失败: {symbol} 订单ID: {order_id}")
+                
+            return False  # 撤单失败
+
     def _update_entry_order_price(self, context, bar, indicators, change_only: bool = False):
         """更新 entry 订单价格 - 子类可以重写"""
         # 安全性验证：确保在 WAITING_ENTRY 状态下调用
