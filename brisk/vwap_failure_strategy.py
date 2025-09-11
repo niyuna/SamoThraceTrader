@@ -352,8 +352,9 @@ class VWAPFailureStrategy(IntradayStrategyBase):
     def _generate_exit_order_from_order(self, context, entry_order: OrderData):
         """从entry订单生成exit订单"""
         # 记录 entry 成交信息（使用订单价格）
-        context.entry_price = entry_order.price
-        context.entry_time = entry_order.datetime
+        if entry_order:
+            context.entry_price = entry_order.price
+            context.entry_time = entry_order.datetime
         
         self.write_log(f"Generating exit order for {context.symbol} after entry order {entry_order.orderid} completed")
         
@@ -529,6 +530,10 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         elif (context.state == StrategyState.WAITING_EXIT or context.state == StrategyState.WAITING_TIMEOUT_EXIT) and context.exit_order_id:
             if not self._check_exit_timeout(context, bar):
                 self._update_exit_order_price(context, bar, indicators, change_only=True)
+        # this is to fix the case that the exit order failed
+        elif context.state == StrategyState.HOLDING and not context.exit_order_id:
+            # we don't have the entry order right now
+            self._generate_exit_order(context, None)
 
     def _check_exit_timeout(self, context, bar):
         """检查 exit 订单是否超时"""
