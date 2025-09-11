@@ -105,7 +105,7 @@ class TestOn1MinBar(unittest.TestCase):
         self.strategy._calculate_bb_levels.assert_called_once_with("2330", mock_indicators)
         
         # 验证X条件检查被调用
-        self.strategy.check_x_condition.assert_called_once_with("2330", bar.datetime)
+        self.strategy.check_x_condition.assert_called_once_with("2330")
         
         # 验证context被正确更新
         context = self.strategy.get_hft_context("2330")

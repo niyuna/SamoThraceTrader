@@ -100,9 +100,9 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # X条件相关参数
         self.x_condition_enabled = True  # 是否启用X条件
         self.x_condition_time_windows = [
-            (time(9, 15), time(9, 35)),    # 早上 9:15~9:35
-            (time(11, 29), time(11, 30)),  # 中午 11:29~11:30
-            (time(14, 35), time(15, 20))   # 下午 14:35~15:20
+            (time(9, 15), time(9, 36)),    # 早上 9:15~9:35. need to +1 to end_time minutes because we are using time <= time(h, m) to test
+            (time(11, 29), time(11, 31)),  # 中午 11:29~11:30
+            (time(14, 35), time(15, 21))   # 下午 14:35~15:20
         ]
 
         self.write_log(f"策略初始化完成: {self.strategy_name}")
@@ -462,7 +462,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                     self.write_log(f"  下轨限价: {context.trigger_levels.lower_limit:.2f}")
                 
                 # 2. 检查X条件并更新交易标志
-                context.can_trade = self.check_x_condition(symbol, bar.datetime)
+                context.can_trade = self.check_x_condition(symbol)
                 
                 # 3. 如果有持仓，维护出场订单
                 if context.position != 0:
@@ -966,19 +966,21 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         order_price = 0.0
         
         # 检查上轨触发
-        if current_price >= trigger_levels.upper_trigger and not context.entry_order_id:
-            should_order = True
-            order_direction = Direction.SHORT
+        if current_price >= trigger_levels.upper_trigger:
+            if not context.entry_order_id:
+                should_order = True
+                order_direction = Direction.SHORT
+                self.write_log(f"触发上轨: {symbol} 价格{current_price:.2f} >= 触发价格{trigger_levels.upper_trigger:.2f}")
             order_price = trigger_levels.upper_limit
-            self.write_log(f"触发上轨: {symbol} 价格{current_price:.2f} >= 触发价格{trigger_levels.upper_trigger:.2f}")
         
         # 检查下轨触发
-        elif current_price <= trigger_levels.lower_trigger and not context.entry_order_id:
-            should_order = True
-            order_direction = Direction.LONG
+        elif current_price <= trigger_levels.lower_trigger :
+            if not context.entry_order_id:
+                should_order = True
+                order_direction = Direction.LONG
+                self.write_log(f"触发下轨: {symbol} 价格{current_price:.2f} <= 触发价格{trigger_levels.lower_trigger:.2f}")
             order_price = trigger_levels.lower_limit
-            self.write_log(f"触发下轨: {symbol} 价格{current_price:.2f} <= 触发价格{trigger_levels.lower_trigger:.2f}")
-        
+
         # 检查是否需要取消订单
         should_cancel = False
         if context.entry_order_id:

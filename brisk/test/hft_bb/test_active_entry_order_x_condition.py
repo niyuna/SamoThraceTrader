@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import Mock, patch
 from datetime import datetime, time
 
-from brisk.hft_bb_reversal_strategy import HFTBBReversalStrategy
+from hft_bb_reversal_strategy import HFTBBReversalStrategy
 
 
 class TestActiveEntryOrderXCondition(unittest.TestCase):
@@ -42,7 +42,9 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         # 设置早上时间（满足时间窗口）
         morning_time = datetime(2024, 1, 1, 9, 20)
         
-        result = self.strategy.check_x_condition("9984", morning_time)
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = morning_time
+            result = self.strategy.check_x_condition("9984")
         
         self.assertTrue(result)
         self.strategy.write_log.assert_any_call(
@@ -60,7 +62,9 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         # 设置早上时间（满足时间窗口）
         morning_time = datetime(2024, 1, 1, 9, 20)
         
-        result = self.strategy.check_x_condition("9984", morning_time)
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = morning_time
+            result = self.strategy.check_x_condition("9984")
         
         self.assertTrue(result)
         self.strategy.write_log.assert_any_call(
@@ -75,7 +79,9 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         # 设置非交易时间（通常会导致X条件失败）
         outside_time = datetime(2024, 1, 1, 10, 0)  # 不在任何交易窗口内
         
-        result = self.strategy.check_x_condition("9984", outside_time)
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = outside_time
+            result = self.strategy.check_x_condition("9984")
         
         self.assertTrue(result)
         self.strategy.write_log.assert_any_call(
@@ -93,7 +99,9 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         # 设置早上时间（满足时间窗口但std_pct不足）
         morning_time = datetime(2024, 1, 1, 9, 20)
         
-        result = self.strategy.check_x_condition("9984", morning_time)
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = morning_time
+            result = self.strategy.check_x_condition("9984")
         
         self.assertTrue(result)
         self.strategy.write_log.assert_any_call(
@@ -108,7 +116,9 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         # 设置早上时间（满足时间窗口和std_pct）
         morning_time = datetime(2024, 1, 1, 9, 20)
         
-        result = self.strategy.check_x_condition("9984", morning_time)
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = morning_time
+            result = self.strategy.check_x_condition("9984")
         
         # 应该通过正常的X条件检查
         self.assertTrue(result)
@@ -127,7 +137,9 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         # 设置早上时间（满足时间窗口和std_pct）
         morning_time = datetime(2024, 1, 1, 9, 20)
         
-        result = self.strategy.check_x_condition("9984", morning_time)
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = morning_time
+            result = self.strategy.check_x_condition("9984")
         
         self.assertFalse(result)
         self.strategy.write_log.assert_any_call(
@@ -142,7 +154,9 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         # 设置早上时间（满足时间窗口和std_pct）
         morning_time = datetime(2024, 1, 1, 9, 20)
         
-        result = self.strategy.check_x_condition("9984", morning_time)
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = morning_time
+            result = self.strategy.check_x_condition("9984")
         
         # 应该通过正常的X条件检查
         self.assertTrue(result)
@@ -168,7 +182,9 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         # 4. 低std_pct
         self.context.bb_levels['std'] = 0.1
         
-        result = self.strategy.check_x_condition("9984", outside_time)
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = outside_time
+            result = self.strategy.check_x_condition("9984")
         
         # 即使所有其他条件都失败，有活跃entry订单时应该通过
         self.assertTrue(result)

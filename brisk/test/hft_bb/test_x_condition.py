@@ -6,6 +6,7 @@ import unittest
 import sys
 import os
 from datetime import datetime, time
+from unittest.mock import patch
 
 # 添加路径以导入模块
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -90,15 +91,21 @@ class TestXCondition(unittest.TestCase):
         
         # 测试满足X条件的情况
         morning_time = datetime(2025, 1, 1, 9, 20, 0)
-        self.assertTrue(self.strategy.check_x_condition(symbol, morning_time))
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = morning_time
+            self.assertTrue(self.strategy.check_x_condition(symbol))
         
         # 测试不满足时间窗口的情况
         off_time = datetime(2025, 1, 1, 10, 0, 0)
-        self.assertFalse(self.strategy.check_x_condition(symbol, off_time))
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = off_time
+            self.assertFalse(self.strategy.check_x_condition(symbol))
         
         # 测试不满足持仓条件的情况
         self.strategy.simulated_positions[symbol] = {'long': True, 'short': False}
-        self.assertFalse(self.strategy.check_x_condition(symbol, morning_time))
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = morning_time
+            self.assertFalse(self.strategy.check_x_condition(symbol))
         
         print("✓ 完整X条件检查测试通过")
         

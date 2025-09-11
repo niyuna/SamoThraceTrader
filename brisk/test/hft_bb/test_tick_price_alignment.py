@@ -114,8 +114,8 @@ class TestTickPriceAlignment(unittest.TestCase):
         calls = mock_next_tick_price.call_args_list
         self.assertEqual(calls[0], (("2330", 106.0, False),))  # upper, SHORT
         self.assertEqual(calls[1], (("2330", 94.0, True),))    # lower, LONG
-        self.assertEqual(calls[2], (("2330", 99.8, True),))    # exit_long, LONG
-        self.assertEqual(calls[3], (("2330", 100.2, False),))  # exit_short, SHORT
+        self.assertEqual(calls[2], (("2330", 99.8, False),))   # exit_long, SHORT (平仓LONG头寸)
+        self.assertEqual(calls[3], (("2330", 100.2, True),))   # exit_short, LONG (平仓SHORT头寸)
     
     @patch('brisk.hft_bb_indicators.next_tick_price')
     def test_calculate_bb_levels_alignment_failure(self, mock_next_tick_price):

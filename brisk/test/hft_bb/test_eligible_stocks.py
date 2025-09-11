@@ -173,7 +173,9 @@ class TestEligibleStocks(unittest.TestCase):
         test_time = datetime.now().replace(hour=9, minute=20, second=0, microsecond=0)
         
         # 测试X条件
-        result = self.strategy.check_x_condition("2330", test_time)
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = test_time
+            result = self.strategy.check_x_condition("2330")
         
         # 验证X条件通过
         self.assertTrue(result)
@@ -191,7 +193,9 @@ class TestEligibleStocks(unittest.TestCase):
         test_time = datetime.now().replace(hour=9, minute=20, second=0, microsecond=0)
         
         # 测试X条件
-        result = self.strategy.check_x_condition("2330", test_time)
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = test_time
+            result = self.strategy.check_x_condition("2330")
         
         # 验证X条件失败
         self.assertFalse(result)

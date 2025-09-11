@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import Mock, patch
 from datetime import datetime, time
 
-from brisk.hft_bb_reversal_strategy import HFTBBReversalStrategy
+from hft_bb_reversal_strategy import HFTBBReversalStrategy
 
 
 class TestStdPctXCondition(unittest.TestCase):
@@ -163,7 +163,9 @@ class TestStdPctXCondition(unittest.TestCase):
         # 设置早上时间和足够的std_pct
         morning_time = datetime(2024, 1, 1, 9, 20)
         
-        result = self.strategy.check_x_condition("9984", morning_time)
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = morning_time
+            result = self.strategy.check_x_condition("9984")
         
         # 测试逻辑：如果std_pct大于早上阈值，应该通过
         expected_std_pct = 0.0008
@@ -181,7 +183,9 @@ class TestStdPctXCondition(unittest.TestCase):
         self.context.bb_levels['std'] = 0.1  # std_pct = 0.1/1000 = 0.0001
         morning_time = datetime(2024, 1, 1, 9, 20)
         
-        result = self.strategy.check_x_condition("9984", morning_time)
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = morning_time
+            result = self.strategy.check_x_condition("9984")
         
         # 测试逻辑：如果std_pct小于早上阈值，应该失败
         expected_std_pct = 0.0001
@@ -198,7 +202,9 @@ class TestStdPctXCondition(unittest.TestCase):
         # 设置中午时间和足够的std_pct
         noon_time = datetime(2024, 1, 1, 11, 29, 30)
         
-        result = self.strategy.check_x_condition("9984", noon_time)
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = noon_time
+            result = self.strategy.check_x_condition("9984")
         
         # 测试逻辑：如果std_pct大于中午阈值，应该通过
         expected_std_pct = 0.0008
@@ -215,7 +221,9 @@ class TestStdPctXCondition(unittest.TestCase):
         # 设置下午时间（非15:00）和足够的std_pct
         afternoon_time = datetime(2024, 1, 1, 14, 40)
         
-        result = self.strategy.check_x_condition("9984", afternoon_time)
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = afternoon_time
+            result = self.strategy.check_x_condition("9984")
         
         # 测试逻辑：如果std_pct大于下午阈值，应该通过
         expected_std_pct = 0.0008
@@ -232,7 +240,9 @@ class TestStdPctXCondition(unittest.TestCase):
         # 设置15:00时间
         exclude_time = datetime(2024, 1, 1, 15, 0)
         
-        result = self.strategy.check_x_condition("9984", exclude_time)
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = exclude_time
+            result = self.strategy.check_x_condition("9984")
         
         self.assertFalse(result)
         self.strategy.write_log.assert_any_call(
@@ -273,7 +283,9 @@ class TestStdPctXCondition(unittest.TestCase):
         
         morning_time = datetime(2024, 1, 1, 9, 20)
         
-        result = self.strategy.check_x_condition("9984", morning_time)
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = morning_time
+            result = self.strategy.check_x_condition("9984")
         
         self.assertFalse(result)
         # 由于middle为0，std_pct计算会返回0.0，导致不满足阈值
