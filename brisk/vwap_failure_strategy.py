@@ -299,6 +299,11 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             context.already_traded = order.traded
             self.write_log(f"Entry order partially filled for {context.symbol}, already_traded: {context.already_traded}")
 
+        elif order.status == Status.CANCELLED:
+            self.write_log(f"Entry order cancelled for {context.symbol}")
+            context.entry_order_id = ""
+            self.update_context_state(context.symbol, StrategyState.IDLE)
+
     def _handle_exit_order_update(self, order: OrderData, context):
         """处理 exit 订单状态更新"""
         self.write_log(f"exit order update: {order}")
@@ -461,9 +466,9 @@ class VWAPFailureStrategy(IntradayStrategyBase):
             # 取消订单
             if context.entry_order_id and not context.entry_canceled_by_vol_ma5:
                 if self._cancel_order_safely(context.entry_order_id, symbol):
-                    # 重置状态
-                    context.entry_order_id = ""
-                    self.update_context_state(symbol, StrategyState.IDLE)
+                    # can't reset the status here because there is no guarantee that the order is cancelled actually
+                    # context.entry_order_id = ""
+                    # self.update_context_state(symbol, StrategyState.IDLE)
                     
                     # 记录日志
                     self.write_log(f"当前bar成交量异常取消订单: {symbol}, "
