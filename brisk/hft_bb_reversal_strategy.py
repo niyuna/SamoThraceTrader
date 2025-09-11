@@ -79,7 +79,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # 收盘前平仓参数
         self.market_close_liquidation_enabled = True  # 是否启用收盘前平仓
         self.market_close_time = time(15, 24)        # 普通交易结束时间
-        self.liquidation_check_time = time(15, 25)   # 平仓检查时间
+        self.liquidation_check_time = time(15, 26)   # 平仓检查时间
         self.liquidation_executed = False            # 是否已执行平仓
         
         # 模拟持仓管理
@@ -247,19 +247,19 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         time_windows = [
             {
                 'start': time(9, 15),
-                'end': time(9, 35),
+                'end': time(9, 36),
                 'threshold': self.std_pct_threshold_morning,
                 'name': 'morning'
             },
             {
                 'start': time(11, 29),
-                'end': time(11, 30),
+                'end': time(11, 31),
                 'threshold': self.std_pct_threshold_noon,
                 'name': 'noon'
             },
             {
                 'start': time(14, 35),
-                'end': time(15, 20),
+                'end': time(15, 21),
                 'threshold': self.std_pct_threshold_afternoon,
                 'name': 'afternoon'
             }
@@ -795,6 +795,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                     failed_count += 1
                     self.write_log(f"取消entry订单失败: {symbol} {context.entry_order_id}")
                 
+                time_module.sleep(0.5)
+                
             # 2. 处理exit订单
             if context.exit_order_id:
                 # 取消原limit订单
@@ -803,6 +805,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 if not success:
                     failed_count += 1
                     self.write_log(f"取消exit订单失败: {symbol} {context.exit_order_id}")
+                
+                time_module.sleep(0.5)
                 
             # 3. 发送market订单（如果有持仓）
             if context.position != 0:
@@ -817,12 +821,14 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 order_id = self._execute_exit(context, None, 0, direction, OrderType.MARKET)
                 if order_id:
                     context.exit_order_id = order_id
-                    context.state = StrategyState.WAITING_TIMEOUT_EXIT  # 标记为closing状态
+                    context.state = StrategyState.WAITING_TIMEOUT_EXIT  # 标记为closing状态, override the status update in execute order
                     liquidation_count += 1
                     self.write_log(f"发送market平仓订单成功: {symbol} {order_id}")
                 else:
                     failed_count += 1
                     self.write_log(f"发送market平仓订单失败: {symbol}")
+                
+                time_module.sleep(0.5)
         
         # 只有当没有失败时才设置liquidation_executed为True
         if failed_count == 0:
@@ -905,20 +911,21 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             context.already_traded < context.position_size):
             # 取消部分成交的入场订单
             self.write_log(f"取消部分成交的入场订单: {symbol} 已成交{context.already_traded}")
-            self._cancel_order_safely(context.entry_order_id, symbol)
-            context.entry_order_id = ""
-            context.entry_order_time = None
+            if self._cancel_order_safely(context.entry_order_id, symbol):
+                context.entry_order_id = ""
+                context.entry_order_time = None
         
         # 检查是否需要更新出场订单
         if context.exit_order_id:
             # 已有出场订单，检查价格是否需要更新
-            if abs(context.exit_price - exit_price) > 0.01:  # 价格差异超过0.01
+            if abs(context.exit_price - exit_price) > 0.1:  # 价格差异超过0.01
                 # 取消旧订单
-                self._cancel_order_safely(context.exit_order_id, symbol)
-                context.exit_order_id = ""
-                self.write_log(f"取消旧出场订单: {symbol} 价格差异过大")
+                if self._cancel_order_safely(context.exit_order_id, symbol):
+                    context.exit_order_id = ""
+                    self.write_log(f"取消旧出场订单: {symbol} 价格差异过大")
             else:
                 # 价格相同，无需更新
+                self.write_log(f"价格相同，无需更新出场订单: {symbol} 价格{exit_price:.2f}")
                 return
         
         # 发送新的出场订单
