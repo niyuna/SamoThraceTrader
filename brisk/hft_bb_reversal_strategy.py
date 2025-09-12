@@ -761,6 +761,11 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             self.write_log(f"收盘前平仓定时器运行中，当前时间: {current_time.strftime('%H:%M:%S')}, "
                           f"liquidation_executed: {self.liquidation_executed}")
         
+        # 午休时间取消 entry orders (12:10 ~ 12:15)
+        if time(12, 10) <= current_time <= time(12, 15):
+            self._cancel_all_entry_orders_during_lunch_break()
+            return  # 午休时间只处理取消订单，不执行其他逻辑
+        
         if self.liquidation_executed:
             return  # 已经下了所有平仓订单，避免重复
             
@@ -836,6 +841,39 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             self.write_log(f"收盘前平仓订单发送完成，成功: {liquidation_count}个")
         else:
             self.write_log(f"收盘前平仓部分失败，成功: {liquidation_count}个，失败: {failed_count}个，将重试")
+
+    def _cancel_all_entry_orders_during_lunch_break(self):
+        """午休时间取消所有未成交的 entry orders"""
+        cancelled_count = 0
+        failed_count = 0
+        
+        self.write_log("午休时间开始，取消所有未成交的 entry orders")
+        
+        for symbol in list(self.hft_contexts.keys()):
+            context = self.hft_contexts[symbol]
+            
+            # 只处理有 entry_order_id 且状态为 WAITING_ENTRY 的 context
+            if context.entry_order_id and context.state == StrategyState.WAITING_ENTRY:
+                success = self._cancel_order_with_verification(
+                    context.entry_order_id, 
+                    symbol
+                )
+                
+                if success:
+                    cancelled_count += 1
+                    # 更新 context 状态
+                    context.entry_order_id = ""
+                    context.entry_order_time = None
+                    self.update_context_state(symbol, StrategyState.IDLE)
+                    self.write_log(f"午休取消 entry 订单成功: {symbol}")
+                else:
+                    failed_count += 1
+                    self.write_log(f"午休取消 entry 订单失败: {symbol}")
+                
+                # 每个取消操作之间sleep 0.5秒防止过度调用API
+                time_module.sleep(0.5)
+        
+        self.write_log(f"午休取消 entry 订单完成: 成功 {cancelled_count} 个，失败 {failed_count} 个")
 
     def _calculate_trigger_levels(self, symbol: str, bb_levels: dict) -> Optional[TriggerLevels]:
         """
@@ -1122,7 +1160,7 @@ def main():
             from common.date_utils import prev_working_day
             preload_yyyymmdd = prev_working_day(datetime.now().strftime("%Y%m%d"))
 
-        # strategy.preload_historical_data(symbols, preload_yyyymmdd)
+        strategy.preload_historical_data(symbols, preload_yyyymmdd)
         strategy.subscribe(symbols)
         
         # 注册收盘前平仓定时器

@@ -32,6 +32,7 @@ def run_all_tests():
     'test_preload_context_edge_case',       # preload context edge case测试
     'test_market_close_liquidation',        # 收盘前平仓测试
     'test_enhanced_cancel_order',           # 增强撤单功能测试
+    'test_lunch_break_cancel',              # 午休时间取消entry orders测试
     'test_on_1min_bar',
     'test_on_tick',
     'test_entry_logic',
