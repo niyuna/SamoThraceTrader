@@ -450,19 +450,19 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 context.trigger_levels = self._calculate_trigger_levels(symbol, bb_levels)
                 
                 self.write_log(f"更新BB价格水平: {symbol}")
-                self.write_log(f"  Upper: {bb_levels['upper']:.2f} (Short Entry)")
-                self.write_log(f"  Lower: {bb_levels['lower']:.2f} (Long Entry)")
-                self.write_log(f"  Middle: {bb_levels['middle']:.2f} (SMA)")
-                self.write_log(f"  Exit_Long: {bb_levels['exit_long']:.2f}")
-                self.write_log(f"  Exit_Short: {bb_levels['exit_short']:.2f}")
-                self.write_log(f"  STD: {bb_levels['std']:.2f}")
+                self.write_log(f"  Upper: {bb_levels['upper']:.4f} (Short Entry)")
+                self.write_log(f"  Lower: {bb_levels['lower']:.4f} (Long Entry)")
+                self.write_log(f"  Middle: {bb_levels['middle']:.4f} (SMA)")
+                self.write_log(f"  Exit_Long: {bb_levels['exit_long']:.4f}")
+                self.write_log(f"  Exit_Short: {bb_levels['exit_short']:.4f}")
+                self.write_log(f"  STD: {bb_levels['std']:.4f}")
                 
                 if context.trigger_levels:
                     self.write_log(f"更新触发价格水平: {symbol}")
-                    self.write_log(f"  上轨触发: {context.trigger_levels.upper_trigger:.2f}")
-                    self.write_log(f"  上轨限价: {context.trigger_levels.upper_limit:.2f}")
-                    self.write_log(f"  下轨触发: {context.trigger_levels.lower_trigger:.2f}")
-                    self.write_log(f"  下轨限价: {context.trigger_levels.lower_limit:.2f}")
+                    self.write_log(f"  上轨触发: {context.trigger_levels.upper_trigger:.4f}")
+                    self.write_log(f"  上轨限价: {context.trigger_levels.upper_limit:.4f}")
+                    self.write_log(f"  下轨触发: {context.trigger_levels.lower_trigger:.4f}")
+                    self.write_log(f"  下轨限价: {context.trigger_levels.lower_limit:.4f}")
                 
                 # 2. 检查X条件并更新交易标志
                 context.can_trade = self.check_x_condition(symbol)
