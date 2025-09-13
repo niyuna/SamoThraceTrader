@@ -247,19 +247,19 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         time_windows = [
             {
                 'start': time(9, 15),
-                'end': time(9, 36),
+                'end': time(9, 41),
                 'threshold': self.std_pct_threshold_morning,
                 'name': 'morning'
             },
             {
-                'start': time(11, 29),
+                'start': time(11, 25),
                 'end': time(11, 31),
                 'threshold': self.std_pct_threshold_noon,
                 'name': 'noon'
             },
             {
-                'start': time(14, 35),
-                'end': time(15, 21),
+                'start': time(14, 26),
+                'end': time(15, 25),
                 'threshold': self.std_pct_threshold_afternoon,
                 'name': 'afternoon'
             }
@@ -267,9 +267,12 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         
         # 检查是否在时间窗口内
         for window in time_windows:
-            # 检查下午窗口时排除15:00
+            # 检查下午窗口时排除15:00分钟
             if window['name'] == 'afternoon':
-                if window['start'] <= current_time_only <= window['end'] and current_time_only != time(15, 0):
+                # 排除15:00分钟（15:00:00 到 15:00:59）
+                is_15_00_minute = current_time_only.hour == 15 and current_time_only.minute == 0
+                is_14_30_minute = current_time_only.hour == 14 and 30 <= current_time_only.minute <= 31
+                if window['start'] <= current_time_only <= window['end'] and not is_15_00_minute and not is_14_30_minute:
                     # 在时间窗口内，检查std_pct
                     std_pct_result = self._calculate_and_check_std_pct(symbol, window['threshold'])
                     return {
@@ -1160,7 +1163,7 @@ def main():
             from common.date_utils import prev_working_day
             preload_yyyymmdd = prev_working_day(datetime.now().strftime("%Y%m%d"))
 
-        strategy.preload_historical_data(symbols, preload_yyyymmdd)
+        # strategy.preload_historical_data(symbols, preload_yyyymmdd)
         strategy.subscribe(symbols)
         
         # 注册收盘前平仓定时器
