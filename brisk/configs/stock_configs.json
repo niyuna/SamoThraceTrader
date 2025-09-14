@@ -1,0 +1,48 @@
+{
+  "999Z": {
+    "bb_entry_std_multiplier": 2.5,
+    "bb_exit_std_multiplier": 1.8,
+    "trading_windows": [
+      {
+        "start_time": "09:30",
+        "end_time": "11:30",
+        "allowed_directions": ["long", "short"]
+      },
+      {
+        "start_time": "13:00",
+        "end_time": "15:00",
+        "allowed_directions": ["long"]
+      }
+    ],
+    "exclude_minutes": ["12:00", "15:00"]
+  },
+  "999Y": {
+    "bb_entry_std_multiplier": 3.0,
+    "bb_exit_std_multiplier": 2.0,
+    "trading_windows": [
+      {
+        "start_time": "09:30",
+        "end_time": "11:00",
+        "allowed_directions": ["short"]
+      },
+      {
+        "start_time": "14:00",
+        "end_time": "15:25",
+        "allowed_directions": ["long", "short"]
+      }
+    ],
+    "exclude_minutes": ["12:00", "15:00"]
+  },
+  "8593": {
+    "bb_entry_std_multiplier": 3.0,
+    "bb_exit_std_multiplier": -0.5,
+    "trading_windows": [
+      {
+        "start_time": "09:30",
+        "end_time": "15:25",
+        "allowed_directions": ["long"]
+      }
+    ],
+    "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
+  }
+}

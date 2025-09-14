@@ -3,10 +3,12 @@ HFT BB Reversal Strategy
 基于布林带反转的日内高频交易策略
 """
 
+from os import truncate
 import time as time_module
 from datetime import datetime, timedelta, time
 from typing import Dict, Optional, List, Any
 from dataclasses import dataclass, field
+from stock_config import StockConfigManager
 
 from vnpy.trader.object import BarData, TickData
 from vnpy.trader.constant import Direction, Offset, OrderType, Status
@@ -85,6 +87,13 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # 模拟持仓管理
         self.simulated_positions = {}  # symbol -> {'long': bool, 'short': bool}
 
+        # 个股配置管理器
+        # 在测试模式下使用空的配置文件，避免影响测试
+        # if use_mock_gateway:
+        #     self.stock_config_manager = StockConfigManager("nonexistent.json")
+        # else:
+        self.stock_config_manager = StockConfigManager("configs/stock_configs.json")
+
         self.indicator_size = 20  # 修改为20以匹配真实数据
         
         # 历史数据提供者
@@ -130,7 +139,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
     
     def check_x_condition(self, symbol: str, current_time: datetime = None) -> List[str]:
         """
-        检查X条件是否满足
+        检查X条件是否满足，优先使用个股配置
         
         X条件包括：
         1. 股票是否在eligible_stocks中
@@ -147,7 +156,54 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         """
         if not self.x_condition_enabled:
             return ['long', 'short']
+        
+        # 检查个股是否有自定义配置
+        stock_config = self.stock_config_manager.get_stock_config(symbol)
+        if stock_config and stock_config.trading_windows:
+            return self._check_custom_trading_windows(symbol, stock_config, current_time)
+        else:
+            # 使用默认的X条件检查逻辑
+            return self._check_default_x_condition(symbol, current_time)
+    
+    def _check_custom_trading_windows(self, symbol: str, stock_config, current_time: datetime = None) -> List[str]:
+        """检查自定义交易窗口（完全使用个股配置）"""
+        if current_time is None:
+            current_time = datetime.now()
+        
+        current_time_only = current_time.time()
+        
+        # 1. 检查股票是否在eligible_stocks中
+        if symbol not in self.eligible_stocks:
+            self.write_log(f"X条件检查失败: {symbol} 不在eligible_stocks中")
+            return []
             
+        # 2. 检查模拟持仓 - 目前没有持仓
+        if not self._check_no_position(symbol):
+            self.write_log(f"X条件检查失败: {symbol} 已有持仓")
+            return []
+        
+        # 3. 检查是否在排除的分钟内
+        for exclude_minute in stock_config.exclude_minutes:
+            if self._is_time_in_exclude_minute(current_time_only, exclude_minute):
+                self.write_log(f"X条件检查失败: {symbol} 在排除分钟内 {exclude_minute}")
+                return []
+        
+        # 4. 检查是否在任何交易窗口内
+        allowed_directions = set()
+        for window in stock_config.trading_windows:
+            if self._is_time_in_window(current_time_only, window.start_time, window.end_time):
+                allowed_directions.update(window.allowed_directions)
+        
+        if allowed_directions:
+            result = list(allowed_directions)
+            self.write_log(f"X条件检查通过: {symbol} 自定义窗口 {result}")
+            return result
+        else:
+            self.write_log(f"X条件检查失败: {symbol} 不在任何交易窗口内")
+            return []
+    
+    def _check_default_x_condition(self, symbol: str, current_time: datetime = None) -> List[str]:
+        """检查默认X条件（原有逻辑）"""
         # 1. 检查股票是否在eligible_stocks中
         if symbol not in self.eligible_stocks:
             self.write_log(f"X条件检查失败: {symbol} 不在eligible_stocks中")
@@ -172,6 +228,20 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.write_log(f"X条件检查通过: {symbol} {time_window_result['time_period']} "
                       f"std_pct={time_window_result['std_pct']:.6f}")
         return ['long', 'short']
+    
+    def _is_time_in_exclude_minute(self, current_time: time, exclude_minute: time) -> bool:
+        """检查当前时间是否在排除的分钟内"""
+        return (current_time.hour == exclude_minute.hour and 
+                current_time.minute == exclude_minute.minute)
+    
+    def _is_time_in_window(self, current_time: time, start_time: time, end_time: time) -> bool:
+        """检查当前时间是否在窗口内"""
+        if start_time <= end_time:
+            # 同一天内的窗口
+            return start_time <= current_time < end_time
+        else:
+            # 跨天的窗口（如 23:00 到 01:00）
+            return current_time >= start_time or current_time < end_time
     
     def get_eligible_stocks(self) -> set:
         """获取当前eligible_stocks列表"""
@@ -400,13 +470,27 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         super().add_symbol(symbol)
     
     def _create_indicator_manager(self, symbol: str):
-        """创建BB策略专用的技术指标管理器"""
+        """创建BB策略专用的技术指标管理器，使用个股配置"""
+        # 获取个股配置
+        stock_config = self.stock_config_manager.get_stock_config(symbol)
+        
+        # 确定使用的参数
+        if stock_config and stock_config.bb_entry_std_multiplier is not None:
+            entry_std_multiplier = stock_config.bb_entry_std_multiplier
+        else:
+            entry_std_multiplier = self.bb_entry_std_multiplier
+        
+        if stock_config and stock_config.bb_exit_std_multiplier is not None:
+            exit_std_multiplier = stock_config.bb_exit_std_multiplier
+        else:
+            exit_std_multiplier = self.bb_exit_std_multiplier
+        
         return HFTBBReversalIndicator(
             symbol=symbol, 
             size=self.indicator_size,
             bb_period=self.bb_period,
-            entry_std_multiplier=self.bb_entry_std_multiplier,
-            exit_std_multiplier=self.bb_exit_std_multiplier
+            entry_std_multiplier=entry_std_multiplier,
+            exit_std_multiplier=exit_std_multiplier
         )
     
     def _create_bar_generator(self, symbol: str):
