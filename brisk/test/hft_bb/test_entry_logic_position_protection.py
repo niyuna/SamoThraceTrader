@@ -170,7 +170,7 @@ class TestEntryLogicPositionProtection(unittest.TestCase):
             self.assertNotIn("跳过entry逻辑", " ".join(log_calls))
             
             # 验证触发了取消逻辑（价格在触发范围内）
-            mock_cancel.assert_called_once_with("9984", self.context)
+            mock_cancel.assert_called_once_with("9984", self.context, None)
             
     def test_entry_logic_position_check_priority(self):
         """测试持仓检查的优先级高于exit订单检查"""

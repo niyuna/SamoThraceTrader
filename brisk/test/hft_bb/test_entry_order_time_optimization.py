@@ -86,7 +86,7 @@ class TestEntryOrderTimeOptimization(unittest.TestCase):
             self.strategy._check_entry_logic("9984", tick, self.context)
             
             # 验证调用了取消订单方法
-            mock_cancel.assert_called_once_with("9984", self.context)
+            mock_cancel.assert_called_once_with("9984", self.context, None)
     
     def test_no_entry_order_time_cancel_order(self):
         """测试没有entry_order_time时正常取消订单"""
@@ -104,7 +104,7 @@ class TestEntryOrderTimeOptimization(unittest.TestCase):
             self.strategy._check_entry_logic("9984", tick, self.context)
             
             # 验证调用了取消订单方法
-            mock_cancel.assert_called_once_with("9984", self.context)
+            mock_cancel.assert_called_once_with("9984", self.context, None)
     
     def test_cancel_order_clears_entry_order_time(self):
         """测试取消订单时清除entry_order_time"""
@@ -173,7 +173,7 @@ class TestEntryOrderTimeOptimization(unittest.TestCase):
             self.strategy._check_entry_logic("9984", tick, self.context)
             
             # 验证调用了取消订单方法
-            mock_cancel.assert_called_once_with("9984", self.context)
+            mock_cancel.assert_called_once_with("9984", self.context, None)
     
     def test_no_existing_order_send_new_order(self):
         """测试没有现有订单时发送新订单"""

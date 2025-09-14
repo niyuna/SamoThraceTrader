@@ -3,7 +3,7 @@
 
 import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 import unittest
 from unittest.mock import Mock, patch
@@ -35,7 +35,7 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         }
         
     def test_x_condition_with_active_entry_order(self):
-        """测试有活跃entry订单时X条件通过"""
+        """测试有活跃entry订单时仍然进行正常X条件检查"""
         # 设置活跃的entry订单
         self.context.entry_order_id = "test_order_123"
         
@@ -46,13 +46,14 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
             mock_datetime.now.return_value = morning_time
             result = self.strategy.check_x_condition("9984")
         
+        # 现在有entry订单时不再有优先级，需要满足所有条件
         self.assertTrue(result)
         self.strategy.write_log.assert_any_call(
-            "X条件检查通过: 9984 有活跃的entry订单，允许继续交易"
+            "X条件检查通过: 9984 morning std_pct=0.000800"
         )
         
     def test_x_condition_with_active_entry_order_ignores_position(self):
-        """测试有活跃entry订单时忽略持仓状态"""
+        """测试有活跃entry订单时不再忽略持仓状态"""
         # 设置活跃的entry订单
         self.context.entry_order_id = "test_order_123"
         
@@ -66,13 +67,14 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
             mock_datetime.now.return_value = morning_time
             result = self.strategy.check_x_condition("9984")
         
-        self.assertTrue(result)
+        # 现在有entry订单时不再有优先级，有持仓时应该失败
+        self.assertFalse(result)
         self.strategy.write_log.assert_any_call(
-            "X条件检查通过: 9984 有活跃的entry订单，允许继续交易"
+            "X条件检查失败: 9984 已有持仓"
         )
         
     def test_x_condition_with_active_entry_order_ignores_time_window(self):
-        """测试有活跃entry订单时忽略时间窗口限制"""
+        """测试有活跃entry订单时不再忽略时间窗口限制"""
         # 设置活跃的entry订单
         self.context.entry_order_id = "test_order_123"
         
@@ -83,13 +85,14 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
             mock_datetime.now.return_value = outside_time
             result = self.strategy.check_x_condition("9984")
         
-        self.assertTrue(result)
+        # 现在有entry订单时不再有优先级，时间窗口外应该失败
+        self.assertFalse(result)
         self.strategy.write_log.assert_any_call(
-            "X条件检查通过: 9984 有活跃的entry订单，允许继续交易"
+            "X条件检查失败: 当前时间不在交易窗口内"
         )
         
     def test_x_condition_with_active_entry_order_ignores_std_pct(self):
-        """测试有活跃entry订单时忽略std_pct限制"""
+        """测试有活跃entry订单时不再忽略std_pct限制"""
         # 设置活跃的entry订单
         self.context.entry_order_id = "test_order_123"
         
@@ -103,9 +106,10 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
             mock_datetime.now.return_value = morning_time
             result = self.strategy.check_x_condition("9984")
         
-        self.assertTrue(result)
+        # 现在有entry订单时不再有优先级，std_pct不足应该失败
+        self.assertFalse(result)
         self.strategy.write_log.assert_any_call(
-            "X条件检查通过: 9984 有活跃的entry订单，允许继续交易"
+            "X条件检查失败: 9984 std_pct=0.000100 低于morning阈值0.000730"
         )
         
     def test_x_condition_without_active_entry_order_normal_check(self):
@@ -165,7 +169,7 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         )
         
     def test_x_condition_priority_order(self):
-        """测试X条件检查的优先级顺序"""
+        """测试X条件检查的优先级顺序（现在entry订单不再有优先级）"""
         # 设置活跃的entry订单
         self.context.entry_order_id = "test_order_123"
         
@@ -186,10 +190,10 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
             mock_datetime.now.return_value = outside_time
             result = self.strategy.check_x_condition("9984")
         
-        # 即使所有其他条件都失败，有活跃entry订单时应该通过
-        self.assertTrue(result)
+        # 现在有entry订单时不再有优先级，应该失败
+        self.assertFalse(result)
         self.strategy.write_log.assert_any_call(
-            "X条件检查通过: 9984 有活跃的entry订单，允许继续交易"
+            "X条件检查失败: 9984 不在eligible_stocks中"
         )
 
 

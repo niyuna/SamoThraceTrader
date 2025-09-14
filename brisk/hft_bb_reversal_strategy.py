@@ -74,7 +74,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # X条件std_pct阈值参数
         self.std_pct_threshold_morning = 0.00073    # 早上9:15-9:35阈值
         self.std_pct_threshold_noon = 0.000001      # 中午11:29-11:30阈值（极小的值，几乎总是通过）
-        self.std_pct_threshold_afternoon = 0.00036  # 下午14:35-15:20阈值
+        self.std_pct_threshold_afternoon = 0.00030  # 下午14:35-15:20阈值
         
         # 收盘前平仓参数
         self.market_close_liquidation_enabled = True  # 是否启用收盘前平仓
@@ -148,23 +148,17 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         if not self.x_condition_enabled:
             return True
             
-        # 1. 检查是否有活跃的entry订单（最高优先级）
-        context = self.get_hft_context(symbol)
-        if context.entry_order_id:  # 非空字符串表示有活跃订单
-            self.write_log(f"X条件检查通过: {symbol} 有活跃的entry订单，允许继续交易")
-            return True
-            
-        # 2. 检查股票是否在eligible_stocks中
+        # 1. 检查股票是否在eligible_stocks中
         if symbol not in self.eligible_stocks:
             self.write_log(f"X条件检查失败: {symbol} 不在eligible_stocks中")
             return False
             
-        # 3. 检查模拟持仓 - 目前没有持仓
+        # 2. 检查模拟持仓 - 目前没有持仓
         if not self._check_no_position(symbol):
             self.write_log(f"X条件检查失败: {symbol} 已有持仓")
             return False
             
-        # 4. 检查时间窗口和std_pct阈值
+        # 3. 检查时间窗口和std_pct阈值
         time_window_result = self._check_time_window_with_std_pct(symbol, current_time)
         if not time_window_result['in_window']:
             self.write_log(f"X条件检查失败: 当前时间不在交易窗口内")
@@ -494,13 +488,13 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
 
         # print(f"收到Tick: {symbol} {tick.datetime.strftime('%H:%M:%S')} {tick.last_price}")
         
-        # 1. 检查X条件是否满足，如果满足则检查入场订单逻辑
-        if context.can_trade and context.trigger_levels:
-            self._check_entry_logic(symbol, tick, context)
-        
-        # 2. 更新BarGenerator（复用base strategy方法）
+        # 1. 先更新BarGenerator（可能触发on_1min_bar更新BB levels）
         if symbol in self.bar_generators:
             self.bar_generators[symbol].update_tick(tick)
+        
+        # 2. 再检查入场订单逻辑（使用最新的BB levels）
+        if context.can_trade and context.trigger_levels:
+            self._check_entry_logic(symbol, tick, context)
         
         # 3. 更新模拟持仓（复用base strategy方法）
         self._update_simulated_positions(tick)
@@ -560,7 +554,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             if context.entry_order_id == order_id or context.exit_order_id == order_id:
                 return context
         return None
-
+    
     def on_order(self, event):
         """
         订单状态变化回调
@@ -1015,22 +1009,24 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         
         # 检查上轨触发
         if current_price >= trigger_levels.upper_trigger:
+            order_direction = Direction.SHORT  # 总是设置方向
             if not context.entry_order_id:
                 should_order = True
-                order_direction = Direction.SHORT
                 self.write_log(f"触发上轨: {symbol} 价格{current_price:.2f} >= 触发价格{trigger_levels.upper_trigger:.2f}")
             order_price = trigger_levels.upper_limit
         
         # 检查下轨触发
         elif current_price <= trigger_levels.lower_trigger :
+            order_direction = Direction.LONG  # 总是设置方向
             if not context.entry_order_id:
                 should_order = True
-                order_direction = Direction.LONG
                 self.write_log(f"触发下轨: {symbol} 价格{current_price:.2f} <= 触发价格{trigger_levels.lower_trigger:.2f}")
             order_price = trigger_levels.lower_limit
 
         # 检查是否需要取消订单
         should_cancel = False
+        new_order_info = None  # 用于存储新订单信息
+        
         if context.entry_order_id:
             # 检查是否在同一分钟内发送的订单，如果是则不取消
             current_time = datetime.now()
@@ -1041,18 +1037,19 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                     self.write_log(f"跳过取消订单: {symbol} 订单在同一分钟内发送，避免频繁撤单")
                     return  # 直接返回，不执行任何订单操作
             
-            # 如果当前价格在两个触发价格之间，取消订单
+            # 如果当前价格在两个触发价格之间，取消订单（不立即下新订单）
             if (trigger_levels.lower_trigger < current_price < trigger_levels.upper_trigger):
                 should_cancel = True
                 self.write_log(f"取消订单原因: 价格在触发区间内 {current_price:.2f}")
-            # 如果订单价格与当前应该下的价格不同，取消订单
-            elif context.entry_price != order_price:
+            # 如果订单价格与当前应该下的价格不同，取消订单并准备下新订单
+            elif context.entry_price != order_price and order_price > 0:
                 should_cancel = True
+                new_order_info = (order_direction, order_price, 100)  # 准备新订单信息
                 self.write_log(f"取消订单原因: 价格不同 当前:{context.entry_price:.2f} 应该:{order_price:.2f}")
         
         # 执行订单操作
         if should_cancel:
-            self._cancel_entry_order(symbol, context)
+            self._cancel_entry_order(symbol, context, new_order_info)
         elif not context.entry_order_id and should_order:
             self._send_entry_order(symbol, order_direction, order_price, 100)  # 使用固定数量100
 
@@ -1063,13 +1060,14 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         context.state = new_state
         self.write_log(f"Context state changed for {symbol}: {old_state.value} -> {new_state.value}")
 
-    def _cancel_entry_order(self, symbol: str, context: HFTBBStockContext):
+    def _cancel_entry_order(self, symbol: str, context: HFTBBStockContext, new_order_info=None):
         """
         取消入场订单
         
         Args:
             symbol: 股票代码
             context: 股票上下文
+            new_order_info: 新订单信息，格式为 (direction, price, quantity)，如果提供则在取消成功后立即下新订单
         """
         if context.entry_order_id:
             # 使用增强的撤单方法
@@ -1081,9 +1079,17 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             if success:
                 # 撤单成功，立即更新状态
                 self.write_log(f"取消入场订单成功: {symbol} 订单ID: {context.entry_order_id}")
+                # actually this is risky because the cancel API might return True even the cancel failed in the broker side, 
+                # this edge case only happens when cancel is right after send order in a very short interval
                 context.entry_order_id = ""
                 context.entry_order_time = None
                 self.update_context_state(symbol, StrategyState.IDLE)
+                
+                # 如果提供了新订单信息，立即下新订单
+                if new_order_info:
+                    direction, price, quantity = new_order_info
+                    self.write_log(f"价格变化，立即下新订单: {symbol} {direction.value} {price:.2f}")
+                    self._send_entry_order(symbol, direction, price, quantity)
             else:
                 # 撤单失败，不更新状态，等待on_order事件处理
                 self.write_log(f"取消入场订单失败，等待订单状态更新: {symbol} 订单ID: {context.entry_order_id}")
