@@ -68,7 +68,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # BB策略特定参数
         self.bb_period = 20
         self.bb_entry_std_multiplier = 3.0
-        self.bb_exit_std_multiplier = 0.1
+        self.bb_exit_std_multiplier = -0.5
         self.trigger_tick_count = 3  # trigger价格调整的tick数量
         
         # X条件std_pct阈值参数
@@ -1155,8 +1155,14 @@ def main():
             strategy.initialize_stock_master()
             for symbol in topix500:
                 prev_close = strategy.get_stock_prev_close(symbol)
-                # morning test
-                if 1500 >= prev_close > 600:
+                # 600~1500 63 stocks
+                # 600~2000 contains ~140 stocks, we will do further filter in x_condition
+                # 2000~3000 contains 97 stock
+                # 3000~4000 contains 89 stock
+                # 4000~5000 contains 66 stock
+                # 5000~10000 contains 76 stocks
+                # >10000 only 29 stocks
+                if 2000 >= prev_close > 600:
                     symbols.append(symbol)
                 # after noon use 1500 >= prev_close > 1000
         
