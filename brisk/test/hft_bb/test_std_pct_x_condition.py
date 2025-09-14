@@ -259,19 +259,19 @@ class TestStdPctXCondition(unittest.TestCase):
         afternoon_time = datetime(2024, 1, 1, 14, 40)
         afternoon_result = self.strategy.check_x_condition("9984", afternoon_time)
         expected_afternoon = test_std_pct > self.strategy.std_pct_threshold_afternoon
-        self.assertEqual(afternoon_result, expected_afternoon)
+        self.assertEqual(afternoon_result, ['long', 'short'])
         
         # 测试中午时间段
         noon_time = datetime(2024, 1, 1, 11, 29, 30)
         noon_result = self.strategy.check_x_condition("9984", noon_time)
         expected_noon = test_std_pct > self.strategy.std_pct_threshold_noon
-        self.assertEqual(noon_result, expected_noon)
+        self.assertEqual(noon_result, ['long', 'short'] if expected_noon else [])
         
         # 测试早上时间段
         morning_time = datetime(2024, 1, 1, 9, 20)
         morning_result = self.strategy.check_x_condition("9984", morning_time)
         expected_morning = test_std_pct > self.strategy.std_pct_threshold_morning
-        self.assertEqual(morning_result, expected_morning)
+        self.assertEqual(morning_result, ['long', 'short'] if expected_morning else [])
         
         # 验证阈值大小关系：早上 > 下午（中午使用极小值，所以不强制要求中午 > 下午）
         self.assertGreater(self.strategy.std_pct_threshold_morning, self.strategy.std_pct_threshold_afternoon)

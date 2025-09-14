@@ -71,7 +71,7 @@ class TestOnTick(unittest.TestCase):
         
         # 设置context的can_trade为True，但没有trigger_levels
         context = self.strategy.get_hft_context("2330")
-        context.can_trade = True
+        context.can_trade = ['long', 'short']
         context.trigger_levels = None
         
         # Mock _update_simulated_positions方法
@@ -96,7 +96,7 @@ class TestOnTick(unittest.TestCase):
         
         # 设置context的can_trade为True，并有trigger_levels
         context = self.strategy.get_hft_context("2330")
-        context.can_trade = True
+        context.can_trade = ['long', 'short']
         context.trigger_levels = TriggerLevels(
             upper_trigger=101.0,
             upper_limit=101.5,
@@ -162,7 +162,7 @@ class TestOnTick(unittest.TestCase):
         
         # 设置context的can_trade为True，并有trigger_levels
         context = self.strategy.get_hft_context("2330")
-        context.can_trade = True
+        context.can_trade = ['long', 'short']
         context.trigger_levels = TriggerLevels(
             upper_trigger=101.0,
             upper_limit=101.5,
@@ -196,7 +196,7 @@ class TestOnTick(unittest.TestCase):
         
         # 设置context的can_trade为True，并有trigger_levels
         context = self.strategy.get_hft_context("2330")
-        context.can_trade = True
+        context.can_trade = ['long', 'short']
         context.trigger_levels = TriggerLevels(
             upper_trigger=101.0,
             upper_limit=101.5,

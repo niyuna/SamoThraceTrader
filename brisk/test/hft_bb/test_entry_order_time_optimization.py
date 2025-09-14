@@ -32,7 +32,7 @@ class TestEntryOrderTimeOptimization(unittest.TestCase):
             lower_trigger=99.6,
             lower_limit=99.5
         )
-        self.context.can_trade = True
+        self.context.can_trade = ['long', 'short']
     
     def test_entry_order_time_initialization(self):
         """测试entry_order_time初始化"""

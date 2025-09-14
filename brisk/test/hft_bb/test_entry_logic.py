@@ -51,6 +51,7 @@ class TestEntryLogic(unittest.TestCase):
             lower_limit=98.5
         )
         context.entry_order_id = ""  # 没有现有订单
+        context.can_trade = ['long', 'short']  # 设置X条件满足
         
         # Mock _execute_entry方法
         def mock_execute_entry(ctx, bar, price, direction):
@@ -91,6 +92,7 @@ class TestEntryLogic(unittest.TestCase):
             lower_limit=98.5
         )
         context.entry_order_id = ""  # 没有现有订单
+        context.can_trade = ['long', 'short']  # 设置X条件满足
         
         # Mock _execute_entry方法
         def mock_execute_entry(ctx, bar, price, direction):
@@ -167,6 +169,7 @@ class TestEntryLogic(unittest.TestCase):
         )
         context.entry_order_id = "EXISTING_ORDER"
         context.entry_price = 100.0  # 与当前应该下的价格不同
+        context.can_trade = ['long', 'short']  # 设置X条件满足
         
         # Mock _cancel_order_safely方法和gateway
         self.strategy._cancel_order_safely = Mock(return_value=True)
@@ -206,6 +209,7 @@ class TestEntryLogic(unittest.TestCase):
             lower_limit=98.5
         )
         context.entry_order_id = ""  # 没有现有订单
+        context.can_trade = ['long', 'short']  # 设置X条件满足
         
         self.strategy._check_entry_logic("2330", tick, context)
         

@@ -45,8 +45,8 @@ class TestEntryLogicPositionProtection(unittest.TestCase):
             lower_limit=997.0
         )
         
-        # 设置can_trade为True（模拟X条件通过）
-        self.context.can_trade = True
+        # 设置can_trade为['long', 'short']（模拟X条件通过）
+        self.context.can_trade = ['long', 'short']
         
         # 创建模拟tick数据
         self.tick = TickData(

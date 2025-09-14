@@ -43,6 +43,7 @@ class TestEntryPriceChangeLogic(unittest.TestCase):
         context.entry_order_id = "test_entry_123"
         context.entry_order_time = datetime.now()
         context.state = StrategyState.WAITING_ENTRY
+        context.can_trade = ['long', 'short']  # 设置X条件满足
         
         # Mock gateway
         self.strategy.gateway = Mock()

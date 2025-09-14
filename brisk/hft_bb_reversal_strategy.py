@@ -6,7 +6,7 @@ HFT BB Reversal Strategy
 import time as time_module
 from datetime import datetime, timedelta, time
 from typing import Dict, Optional, List, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from vnpy.trader.object import BarData, TickData
 from vnpy.trader.constant import Direction, Offset, OrderType, Status
@@ -52,7 +52,7 @@ class HFTBBStockContext:
     
     # HFT BB策略特定字段
     trigger_levels: Optional[TriggerLevels] = None  # 触发价格水平
-    can_trade: bool = False                          # X条件满足标志
+    can_trade: List[str] = field(default_factory=list)  # X条件满足标志，存储允许的交易方向
     bb_levels: Optional[dict] = None                 # 布林带水平
     entry_order_price: float = 0.0                   # 入场订单价格
     exit_order_price: float = 0.0                    # 出场订单价格
@@ -128,7 +128,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             self.write_log(f"Created HFT context for symbol {symbol}")
         return self.hft_contexts[symbol]
     
-    def check_x_condition(self, symbol: str, current_time: datetime = None) -> bool:
+    def check_x_condition(self, symbol: str, current_time: datetime = None) -> List[str]:
         """
         检查X条件是否满足
         
@@ -143,35 +143,35 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             current_time: 当前时间，如果为None则使用系统当前时间
             
         Returns:
-            bool: 是否满足X条件
+            List[str]: 允许的交易方向列表，如 ['long', 'short'] 或 []
         """
         if not self.x_condition_enabled:
-            return True
+            return ['long', 'short']
             
         # 1. 检查股票是否在eligible_stocks中
         if symbol not in self.eligible_stocks:
             self.write_log(f"X条件检查失败: {symbol} 不在eligible_stocks中")
-            return False
+            return []
             
         # 2. 检查模拟持仓 - 目前没有持仓
         if not self._check_no_position(symbol):
             self.write_log(f"X条件检查失败: {symbol} 已有持仓")
-            return False
+            return []
             
         # 3. 检查时间窗口和std_pct阈值
         time_window_result = self._check_time_window_with_std_pct(symbol, current_time)
         if not time_window_result['in_window']:
             self.write_log(f"X条件检查失败: 当前时间不在交易窗口内")
-            return False
+            return []
             
         if not time_window_result['std_pct_ok']:
             self.write_log(f"X条件检查失败: {symbol} std_pct={time_window_result['std_pct']:.6f} "
                           f"低于{time_window_result['time_period']}阈值{time_window_result['threshold']:.6f}")
-            return False
+            return []
             
         self.write_log(f"X条件检查通过: {symbol} {time_window_result['time_period']} "
                       f"std_pct={time_window_result['std_pct']:.6f}")
-        return True
+        return ['long', 'short']
     
     def get_eligible_stocks(self) -> set:
         """获取当前eligible_stocks列表"""
@@ -459,7 +459,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                     self.write_log(f"  下轨限价: {context.trigger_levels.lower_limit:.4f}")
                 
                 # 2. 检查X条件并更新交易标志
-                context.can_trade = self.check_x_condition(symbol)
+                allowed_directions = self.check_x_condition(symbol)
+                context.can_trade = allowed_directions
                 
                 # 3. 如果有持仓，维护出场订单
                 if context.position != 0:
@@ -998,6 +999,12 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             self.write_log(f"跳过entry逻辑: {symbol} 已有exit订单")
             return
         
+        # 如果X条件不满足，取消现有的entry订单
+        if context.entry_order_id and not context.can_trade:
+            self.write_log(f"X条件不满足，取消entry订单: {symbol}")
+            self._cancel_entry_order(symbol, context)
+            return
+        
         # self.write_log(f"检查入场逻辑: {symbol} 价格{tick.last_price:.2f}")
         trigger_levels = context.trigger_levels
         current_price = tick.last_price
@@ -1010,7 +1017,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # 检查上轨触发
         if current_price >= trigger_levels.upper_trigger:
             order_direction = Direction.SHORT  # 总是设置方向
-            if not context.entry_order_id:
+            if not context.entry_order_id and 'short' in context.can_trade:
                 should_order = True
                 self.write_log(f"触发上轨: {symbol} 价格{current_price:.2f} >= 触发价格{trigger_levels.upper_trigger:.2f}")
             order_price = trigger_levels.upper_limit
@@ -1018,7 +1025,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # 检查下轨触发
         elif current_price <= trigger_levels.lower_trigger :
             order_direction = Direction.LONG  # 总是设置方向
-            if not context.entry_order_id:
+            if not context.entry_order_id and 'long' in context.can_trade:
                 should_order = True
                 self.write_log(f"触发下轨: {symbol} 价格{current_price:.2f} <= 触发价格{trigger_levels.lower_trigger:.2f}")
             order_price = trigger_levels.lower_limit

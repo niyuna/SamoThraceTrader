@@ -43,7 +43,7 @@ class TestHFTBBStockContext(unittest.TestCase):
         context = HFTBBStockContext(
             symbol="2330",
             trigger_levels=trigger_levels,
-            can_trade=True,
+            can_trade=['long', 'short'],
             bb_levels={'upper': 100.0, 'lower': 99.0, 'middle': 99.5}
         )
         
