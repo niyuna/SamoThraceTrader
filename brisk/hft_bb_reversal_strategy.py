@@ -344,7 +344,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 'allowed_directions': ['long', 'short']  # 中午窗口允许多空双向
             },
             {
-                'start': time(14, 4),
+                'start': time(14, 10),
                 'end': time(15, 25),
                 'threshold': self.std_pct_threshold_afternoon,
                 'name': 'afternoon',
