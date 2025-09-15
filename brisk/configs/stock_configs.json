@@ -38,9 +38,165 @@
     "bb_exit_std_multiplier": -0.5,
     "trading_windows": [
       {
-        "start_time": "09:30",
+        "start_time": "10:00",
         "end_time": "15:25",
         "allowed_directions": ["long"]
+      }
+    ],
+    "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
+  },
+  "7272": {
+    "bb_entry_std_multiplier": 3.0,
+    "bb_exit_std_multiplier": -0.5,
+    "trading_windows": [
+      {
+        "start_time": "10:00",
+        "end_time": "15:25",
+        "allowed_directions": ["long", "short"]
+      }
+    ],
+    "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
+  },
+  "8750": {
+    "bb_entry_std_multiplier": 3.0,
+    "bb_exit_std_multiplier": -0.5,
+    "trading_windows": [
+      {
+        "start_time": "10:00",
+        "end_time": "15:25",
+        "allowed_directions": ["long", "short"]
+      }
+    ],
+    "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
+  },
+  "4503": {
+    "bb_entry_std_multiplier": 3.0,
+    "bb_exit_std_multiplier": -0.5,
+    "trading_windows": [
+      {
+        "start_time": "10:00",
+        "end_time": "15:25",
+        "allowed_directions": ["long", "short"]
+      }
+    ],
+    "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
+  },
+  "8601": {
+    "bb_entry_std_multiplier": 3.0,
+    "bb_exit_std_multiplier": -0.5,
+    "trading_windows": [
+      {
+        "start_time": "10:00",
+        "end_time": "15:25",
+        "allowed_directions": ["long", "short"]
+      }
+    ],
+    "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
+  },
+  "8113": {
+    "bb_entry_std_multiplier": 3.0,
+    "bb_exit_std_multiplier": -0.5,
+    "trading_windows": [
+      {
+        "start_time": "10:00",
+        "end_time": "15:25",
+        "allowed_directions": ["long", "short"]
+      }
+    ],
+    "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
+  },
+  "7182": {
+    "bb_entry_std_multiplier": 3.0,
+    "bb_exit_std_multiplier": -0.5,
+    "trading_windows": [
+      {
+        "start_time": "10:00",
+        "end_time": "15:25",
+        "allowed_directions": ["long", "short"]
+      }
+    ],
+    "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
+  },
+  "3407": {
+    "bb_entry_std_multiplier": 3.0,
+    "bb_exit_std_multiplier": -0.5,
+    "trading_windows": [
+      {
+        "start_time": "10:00",
+        "end_time": "15:25",
+        "allowed_directions": ["long", "short"]
+      }
+    ],
+    "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
+  },
+  "6178": {
+    "bb_entry_std_multiplier": 3.0,
+    "bb_exit_std_multiplier": -0.5,
+    "trading_windows": [
+      {
+        "start_time": "10:00",
+        "end_time": "15:25",
+        "allowed_directions": ["long", "short"]
+      }
+    ],
+    "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
+  },
+  "6952": {
+    "bb_entry_std_multiplier": 3.0,
+    "bb_exit_std_multiplier": -0.5,
+    "trading_windows": [
+      {
+        "start_time": "10:00",
+        "end_time": "15:25",
+        "allowed_directions": ["long", "short"]
+      }
+    ],
+    "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
+  },
+  "2331": {
+    "bb_entry_std_multiplier": 3.0,
+    "bb_exit_std_multiplier": -0.5,
+    "trading_windows": [
+      {
+        "start_time": "10:00",
+        "end_time": "15:25",
+        "allowed_directions": ["long", "short"]
+      }
+    ],
+    "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
+  },
+  "7267": {
+    "bb_entry_std_multiplier": 3.0,
+    "bb_exit_std_multiplier": -0.5,
+    "trading_windows": [
+      {
+        "start_time": "10:00",
+        "end_time": "15:25",
+        "allowed_directions": ["long", "short"]
+      }
+    ],
+    "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
+  },
+  "3003": {
+    "bb_entry_std_multiplier": 3.0,
+    "bb_exit_std_multiplier": -0.5,
+    "trading_windows": [
+      {
+        "start_time": "10:00",
+        "end_time": "15:25",
+        "allowed_directions": ["long", "short"]
+      }
+    ],
+    "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
+  },
+  "4612": {
+    "bb_entry_std_multiplier": 3.0,
+    "bb_exit_std_multiplier": -0.5,
+    "trading_windows": [
+      {
+        "start_time": "10:00",
+        "end_time": "15:25",
+        "allowed_directions": ["long", "short"]
       }
     ],
     "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
