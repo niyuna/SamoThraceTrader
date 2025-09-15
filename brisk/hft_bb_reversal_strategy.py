@@ -340,7 +340,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 'name': 'noon'
             },
             {
-                'start': time(14, 26),
+                'start': time(14, 29),
                 'end': time(15, 25),
                 'threshold': self.std_pct_threshold_afternoon,
                 'name': 'afternoon'
