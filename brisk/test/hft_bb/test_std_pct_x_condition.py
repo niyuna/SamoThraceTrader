@@ -109,6 +109,8 @@ class TestStdPctXCondition(unittest.TestCase):
         self.assertEqual(result['std_pct'], 0.0008)  # 0.8/1000
         # 测试逻辑：如果std_pct大于阈值，应该通过
         self.assertEqual(result['std_pct_ok'], result['std_pct'] > result['threshold'])
+        # 检查允许的交易方向
+        self.assertEqual(result['allowed_directions'], ['long', 'short'])
         
     def test_time_window_noon_with_std_pct(self):
         """测试中午时间窗口std_pct检查"""
@@ -123,6 +125,8 @@ class TestStdPctXCondition(unittest.TestCase):
         self.assertEqual(result['std_pct'], 0.0008)  # 0.8/1000
         # 测试逻辑：如果std_pct大于阈值，应该通过
         self.assertEqual(result['std_pct_ok'], result['std_pct'] > result['threshold'])
+        # 检查允许的交易方向
+        self.assertEqual(result['allowed_directions'], ['long', 'short'])
         
     def test_time_window_afternoon_with_std_pct(self):
         """测试下午时间窗口std_pct检查"""
@@ -137,6 +141,8 @@ class TestStdPctXCondition(unittest.TestCase):
         self.assertEqual(result['std_pct'], 0.0008)  # 0.8/1000
         # 测试逻辑：如果std_pct大于阈值，应该通过
         self.assertEqual(result['std_pct_ok'], result['std_pct'] > result['threshold'])
+        # 检查允许的交易方向
+        self.assertEqual(result['allowed_directions'], ['long', 'short'])
         
     def test_time_window_afternoon_exclude_15_00(self):
         """测试下午时间窗口排除15:00"""
@@ -147,6 +153,8 @@ class TestStdPctXCondition(unittest.TestCase):
         
         self.assertFalse(result['in_window'])
         self.assertIsNone(result['time_period'])
+        # 检查允许的交易方向为空
+        self.assertEqual(result['allowed_directions'], [])
         
     def test_time_window_outside_trading_hours(self):
         """测试交易时间外的时间窗口检查"""
@@ -157,6 +165,8 @@ class TestStdPctXCondition(unittest.TestCase):
         
         self.assertFalse(result['in_window'])
         self.assertIsNone(result['time_period'])
+        # 检查允许的交易方向为空
+        self.assertEqual(result['allowed_directions'], [])
         
     def test_x_condition_morning_std_pct_pass(self):
         """测试早上X条件std_pct通过"""

@@ -243,9 +243,11 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                           f"低于{time_window_result['time_period']}阈值{time_window_result['threshold']:.6f}")
             return []
             
+        # 使用时间窗口配置的允许交易方向
+        allowed_directions = time_window_result['allowed_directions']
         self.write_log(f"X条件检查通过: {symbol} {time_window_result['time_period']} "
-                      f"std_pct={time_window_result['std_pct']:.6f}")
-        return ['long', 'short']
+                      f"std_pct={time_window_result['std_pct']:.6f} 允许方向: {allowed_directions}")
+        return allowed_directions
     
     def _is_time_in_exclude_minute(self, current_time: time, exclude_minute: time) -> bool:
         """检查当前时间是否在排除的分钟内"""
@@ -325,25 +327,28 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             
         current_time_only = current_time.time()
         
-        # 定义时间窗口和对应的阈值
+        # 定义时间窗口和对应的阈值及允许的交易方向
         time_windows = [
             {
                 'start': time(9, 15),
                 'end': time(9, 41),
                 'threshold': self.std_pct_threshold_morning,
-                'name': 'morning'
+                'name': 'morning',
+                'allowed_directions': ['long']  # 早上窗口允许多空双向
             },
             {
                 'start': time(11, 25),
                 'end': time(11, 31),
                 'threshold': self.std_pct_threshold_noon,
-                'name': 'noon'
+                'name': 'noon',
+                'allowed_directions': ['long', 'short']  # 中午窗口允许多空双向
             },
             {
-                'start': time(14, 29),
+                'start': time(14, 4),
                 'end': time(15, 25),
                 'threshold': self.std_pct_threshold_afternoon,
-                'name': 'afternoon'
+                'name': 'afternoon',
+                'allowed_directions': ['long']  # 下午窗口允许多空双向
             }
         ]
         
@@ -362,7 +367,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                         'time_period': window['name'],
                         'threshold': window['threshold'],
                         'std_pct': std_pct_result['std_pct'],
-                        'std_pct_ok': std_pct_result['ok']
+                        'std_pct_ok': std_pct_result['ok'],
+                        'allowed_directions': window['allowed_directions']
                     }
             else:
                 if window['start'] <= current_time_only <= window['end']:
@@ -373,7 +379,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                         'time_period': window['name'],
                         'threshold': window['threshold'],
                         'std_pct': std_pct_result['std_pct'],
-                        'std_pct_ok': std_pct_result['ok']
+                        'std_pct_ok': std_pct_result['ok'],
+                        'allowed_directions': window['allowed_directions']
                     }
         
         return {
@@ -381,7 +388,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             'time_period': None,
             'threshold': None,
             'std_pct': None,
-            'std_pct_ok': False
+            'std_pct_ok': False,
+            'allowed_directions': []
         }
     
     def _calculate_and_check_std_pct(self, symbol: str, threshold: float) -> dict:
@@ -1362,7 +1370,7 @@ def main():
                 # 4000~5000 contains 66 stock
                 # 5000~10000 contains 76 stocks
                 # >10000 only 29 stocks
-                if 2000 >= prev_close > 600:
+                if 2500 >= prev_close > 600:
                     symbols.append(symbol)
                 # after noon use 1500 >= prev_close > 1000
         
