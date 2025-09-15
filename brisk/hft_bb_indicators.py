@@ -37,6 +37,13 @@ class HFTBBReversalIndicatorV2:
         # 预加载状态（新增功能）
         self.is_preloaded = False
     
+    def update_parameters(self, entry_std_multiplier: float = None, exit_std_multiplier: float = None):
+        """更新技术指标参数"""
+        if entry_std_multiplier is not None:
+            self.entry_std_multiplier = entry_std_multiplier
+        if exit_std_multiplier is not None:
+            self.exit_std_multiplier = exit_std_multiplier
+        # 注意：BB水平将在下次bar更新时使用新参数重新计算
     def preload_historical_bars(self, historical_bars: List[BarData]):
         """预加载历史bar数据（前一天最后20个bar）"""
         if not historical_bars:

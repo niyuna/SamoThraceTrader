@@ -70,7 +70,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # BB策略特定参数
         self.bb_period = 20
         self.bb_entry_std_multiplier = 3.0
-        self.bb_exit_std_multiplier = -0.5
+        self.bb_exit_std_multiplier = -1.0
         self.trigger_tick_count = 3  # trigger价格调整的tick数量
         
         # X条件std_pct阈值参数
@@ -113,6 +113,24 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             (time(11, 29), time(11, 31)),  # 中午 11:29~11:30
             (time(14, 35), time(15, 21))   # 下午 14:35~15:20
         ]
+
+        # 参数更新配置
+        self.parameter_update_schedule = {
+            time(10, 00): {
+                'bb_entry_std_multiplier': 3.0,
+                'bb_exit_std_multiplier': -0.5,
+                'trigger_tick_count': 3
+            }
+        }
+        
+        # 参数更新历史
+        self.parameter_updates = []
+        
+        # 参数更新状态
+        self.parameter_update_completed = False
+        
+        # 注册参数更新定时器
+        self._register_parameter_update_timer()
 
         self.write_log(f"策略初始化完成: {self.strategy_name}")
         
@@ -957,6 +975,96 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         
         self.write_log(f"午休取消 entry 订单完成: 成功 {cancelled_count} 个，失败 {failed_count} 个")
 
+    def _register_parameter_update_timer(self):
+        """注册参数更新定时器"""
+        if not self.event_engine:
+            return
+            
+        from vnpy.trader.event import EVENT_TIMER
+        self.event_engine.register(EVENT_TIMER, self._on_parameter_update_timer)
+        self.write_log("参数更新定时器已注册")
+
+    def _on_parameter_update_timer(self, event):
+        """参数更新定时器回调"""
+        # 如果已经完成参数更新，直接返回
+        if self.parameter_update_completed:
+            return
+            
+        current_time = datetime.now().time()
+        
+        # 检查是否有需要更新的参数
+        for update_time, params in self.parameter_update_schedule.items():
+            if self._is_time_matching(current_time, update_time):
+                self._execute_parameter_update(params)
+                return
+
+    def _is_time_matching(self, current_time: time, target_time: time) -> bool:
+        """检查当前时间是否匹配目标时间（允许1秒误差）"""
+        time_diff = abs((current_time.hour * 3600 + current_time.minute * 60 + current_time.second) - 
+                       (target_time.hour * 3600 + target_time.minute * 60))
+        return time_diff <= 5  # 允许5秒误差
+
+    def _execute_parameter_update(self, params: dict):
+        """执行参数更新"""
+        try:
+            self.update_parameters(params)
+            self.write_log(f"参数更新成功: {params}")
+            
+            # 标记参数更新完成
+            self.parameter_update_completed = True
+            
+            # 取消定时器注册以节省运算开支
+            self._unregister_parameter_update_timer()
+            
+        except Exception as e:
+            self.write_log(f"参数更新失败: {e}")
+
+    def _unregister_parameter_update_timer(self):
+        """取消参数更新定时器注册"""
+        if self.event_engine:
+            from vnpy.trader.event import EVENT_TIMER
+            self.event_engine.unregister(EVENT_TIMER, self._on_parameter_update_timer)
+            self.write_log("已取消参数更新定时器注册")
+
+    def update_parameters(self, new_params: dict):
+        """更新策略参数"""
+        # 记录更新前的参数
+        old_params = {
+            'bb_entry_std_multiplier': self.bb_entry_std_multiplier,
+            'bb_exit_std_multiplier': self.bb_exit_std_multiplier,
+            'trigger_tick_count': self.trigger_tick_count
+        }
+        
+        # 更新策略参数
+        if 'bb_entry_std_multiplier' in new_params:
+            self.bb_entry_std_multiplier = new_params['bb_entry_std_multiplier']
+        if 'bb_exit_std_multiplier' in new_params:
+            self.bb_exit_std_multiplier = new_params['bb_exit_std_multiplier']
+        if 'trigger_tick_count' in new_params:
+            self.trigger_tick_count = new_params['trigger_tick_count']
+        
+        # 更新所有技术指标管理器的参数
+        self._update_indicator_managers_parameters()
+        
+        # 记录更新历史
+        self.parameter_updates.append({
+            'timestamp': datetime.now(),
+            'old_parameters': old_params,
+            'new_parameters': new_params
+        })
+        
+        self.write_log(f"策略参数已更新: {old_params} -> {new_params}")
+
+    def _update_indicator_managers_parameters(self):
+        """更新所有技术指标管理器的参数"""
+        for symbol, manager in self.indicator_managers.items():
+            if hasattr(manager, 'update_parameters'):
+                manager.update_parameters(
+                    entry_std_multiplier=self.bb_entry_std_multiplier,
+                    exit_std_multiplier=self.bb_exit_std_multiplier
+                )
+                self.write_log(f"已更新 {symbol} 的技术指标参数")
+
     def _calculate_trigger_levels(self, symbol: str, bb_levels: dict) -> Optional[TriggerLevels]:
         """
         计算触发价格水平
@@ -1135,14 +1243,14 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             # 如果订单价格与当前应该下的价格不同，取消订单并准备下新订单
             elif context.entry_price != order_price and order_price > 0:
                 should_cancel = True
-                new_order_info = (order_direction, order_price, 100)  # 准备新订单信息
+                new_order_info = (order_direction, order_price, context.position_size)  # 使用context中的position_size
                 self.write_log(f"取消订单原因: 价格不同 当前:{context.entry_price:.2f} 应该:{order_price:.2f}")
         
         # 执行订单操作
         if should_cancel:
             self._cancel_entry_order(symbol, context, new_order_info)
         elif not context.entry_order_id and should_order:
-            self._send_entry_order(symbol, order_direction, order_price, 100)  # 使用固定数量100
+            self._send_entry_order(symbol, order_direction, order_price, context.position_size)  # 使用context中的position_size
 
     def update_context_state(self, symbol: str, new_state: StrategyState):
         """更新 HFT Context 状态"""
@@ -1186,7 +1294,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 self.write_log(f"取消入场订单失败，等待订单状态更新: {symbol} 订单ID: {context.entry_order_id}")
                 # 注意：不更新context状态，让on_order事件自然处理
 
-    def _send_entry_order(self, symbol: str, direction: Direction, price: float, quantity: int):
+    def _send_entry_order(self, symbol: str, direction: Direction, price: float, quantity: int = None):
         """
         发送入场订单
         
@@ -1194,13 +1302,14 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             symbol: 股票代码
             direction: 交易方向
             price: 订单价格
-            quantity: 订单数量（暂时不使用，数量从context中获取）
+            quantity: 订单数量（已弃用，数量从context.position_size中获取）
         """
         context = self.get_hft_context(symbol)
         
         # 使用base strategy的入场订单执行方法
         # 注意：_execute_entry需要bar参数，但在on_tick中我们没有bar，所以传递None
         # _execute_entry会自动更新context.entry_order_id, context.entry_price等字段
+        # 订单数量从context.position_size中获取，quantity参数已弃用
         self._execute_entry(context, None, price, direction)
         
         # 检查订单是否成功发送

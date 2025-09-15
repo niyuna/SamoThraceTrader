@@ -42,7 +42,9 @@ def run_all_tests():
     'test_manage_exit_order',
     'test_on_order',
     'test_hft_bb_complete',
-    'test_x_condition'
+    'test_x_condition',
+    'test_parameter_update',           # 参数更新系统测试
+    'test_position_size_usage'         # position_size使用测试
 ]
     
     # 加载并添加每个测试模块
