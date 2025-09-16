@@ -348,7 +348,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 'end': time(15, 25),
                 'threshold': self.std_pct_threshold_afternoon,
                 'name': 'afternoon',
-                'allowed_directions': ['long']  # 下午窗口允许多空双向
+                'allowed_directions': ['long', 'short']  # 下午窗口允许多空双向
             }
         ]
         
@@ -1251,8 +1251,18 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             # 如果订单价格与当前应该下的价格不同，取消订单并准备下新订单
             elif context.entry_price != order_price and order_price > 0:
                 should_cancel = True
-                new_order_info = (order_direction, order_price, context.position_size)  # 使用context中的position_size
-                self.write_log(f"取消订单原因: 价格不同 当前:{context.entry_price:.2f} 应该:{order_price:.2f}")
+                # 重新检查can_trade限制
+                if order_direction == Direction.LONG and 'long' in context.can_trade:
+                    new_order_info = (order_direction, order_price, context.position_size)
+                    self.write_log(f"取消订单原因: 价格不同 当前:{context.entry_price:.2f} 应该:{order_price:.2f} 将重下多头订单")
+                elif order_direction == Direction.SHORT and 'short' in context.can_trade:
+                    new_order_info = (order_direction, order_price, context.position_size)
+                    self.write_log(f"取消订单原因: 价格不同 当前:{context.entry_price:.2f} 应该:{order_price:.2f} 将重下空头订单")
+                else:
+                    # 不允许的方向，只取消不重下
+                    new_order_info = None
+                    direction_str = 'long' if order_direction == Direction.LONG else 'short'
+                    self.write_log(f"取消订单原因: 价格不同 当前:{context.entry_price:.2f} 应该:{order_price:.2f} 但不重下订单(方向{direction_str}不在允许范围内)")
         
         # 执行订单操作
         if should_cancel:

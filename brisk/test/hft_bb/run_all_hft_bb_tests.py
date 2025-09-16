@@ -45,7 +45,8 @@ def run_all_tests():
     'test_x_condition',
     'test_parameter_update',           # 参数更新系统测试
     'test_position_size_usage',        # position_size使用测试
-    'test_time_window_directions'      # 时间窗口交易方向配置测试
+    'test_time_window_directions',     # 时间窗口交易方向配置测试
+    'test_can_trade_direction_control' # can_trade方向控制测试
 ]
     
     # 加载并添加每个测试模块

@@ -48,7 +48,7 @@ class TestTimeWindowDirections(unittest.TestCase):
         
         self.assertTrue(result['in_window'])
         self.assertEqual(result['time_period'], 'morning')
-        self.assertEqual(result['allowed_directions'], ['long', 'short'])
+        self.assertEqual(result['allowed_directions'], ['long'])
     
     def test_noon_window_allows_both_directions(self):
         """测试中午窗口允许多空双向交易"""
@@ -104,7 +104,7 @@ class TestTimeWindowDirections(unittest.TestCase):
             result = self.strategy.check_x_condition("9984", morning_time)
             
             # 应该返回时间窗口配置的允许方向
-            self.assertEqual(result, ['long', 'short'])
+            self.assertEqual(result, ['long'])
     
     def test_check_x_condition_std_pct_fail_returns_empty(self):
         """测试std_pct检查失败时返回空列表"""

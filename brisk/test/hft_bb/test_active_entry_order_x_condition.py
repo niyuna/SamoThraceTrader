@@ -49,7 +49,7 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         # 现在有entry订单时不再有优先级，需要满足所有条件
         self.assertTrue(result)
         self.strategy.write_log.assert_any_call(
-            "X条件检查通过: 9984 morning std_pct=0.000800 允许方向: ['long', 'short']"
+            "X条件检查通过: 9984 morning std_pct=0.000800 允许方向: ['long']"
         )
         
     def test_x_condition_with_active_entry_order_ignores_position(self):
@@ -127,7 +127,7 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         # 应该通过正常的X条件检查
         self.assertTrue(result)
         self.strategy.write_log.assert_any_call(
-            "X条件检查通过: 9984 morning std_pct=0.000800 允许方向: ['long', 'short']"
+            "X条件检查通过: 9984 morning std_pct=0.000800 允许方向: ['long']"
         )
         
     def test_x_condition_without_active_entry_order_with_position(self):
@@ -165,7 +165,7 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         # 应该通过正常的X条件检查
         self.assertTrue(result)
         self.strategy.write_log.assert_any_call(
-            "X条件检查通过: 9984 morning std_pct=0.000800 允许方向: ['long', 'short']"
+            "X条件检查通过: 9984 morning std_pct=0.000800 允许方向: ['long']"
         )
         
     def test_x_condition_priority_order(self):

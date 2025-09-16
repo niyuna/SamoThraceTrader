@@ -109,8 +109,8 @@ class TestStdPctXCondition(unittest.TestCase):
         self.assertEqual(result['std_pct'], 0.0008)  # 0.8/1000
         # 测试逻辑：如果std_pct大于阈值，应该通过
         self.assertEqual(result['std_pct_ok'], result['std_pct'] > result['threshold'])
-        # 检查允许的交易方向
-        self.assertEqual(result['allowed_directions'], ['long', 'short'])
+        # 检查允许的交易方向（早上窗口只允许多头）
+        self.assertEqual(result['allowed_directions'], ['long'])
         
     def test_time_window_noon_with_std_pct(self):
         """测试中午时间窗口std_pct检查"""
@@ -125,7 +125,7 @@ class TestStdPctXCondition(unittest.TestCase):
         self.assertEqual(result['std_pct'], 0.0008)  # 0.8/1000
         # 测试逻辑：如果std_pct大于阈值，应该通过
         self.assertEqual(result['std_pct_ok'], result['std_pct'] > result['threshold'])
-        # 检查允许的交易方向
+        # 检查允许的交易方向（中午窗口允许多空双向）
         self.assertEqual(result['allowed_directions'], ['long', 'short'])
         
     def test_time_window_afternoon_with_std_pct(self):
@@ -141,7 +141,7 @@ class TestStdPctXCondition(unittest.TestCase):
         self.assertEqual(result['std_pct'], 0.0008)  # 0.8/1000
         # 测试逻辑：如果std_pct大于阈值，应该通过
         self.assertEqual(result['std_pct_ok'], result['std_pct'] > result['threshold'])
-        # 检查允许的交易方向
+        # 检查允许的交易方向（下午窗口允许多空双向）
         self.assertEqual(result['allowed_directions'], ['long', 'short'])
         
     def test_time_window_afternoon_exclude_15_00(self):
@@ -269,7 +269,7 @@ class TestStdPctXCondition(unittest.TestCase):
         afternoon_time = datetime(2024, 1, 1, 14, 40)
         afternoon_result = self.strategy.check_x_condition("9984", afternoon_time)
         expected_afternoon = test_std_pct > self.strategy.std_pct_threshold_afternoon
-        self.assertEqual(afternoon_result, ['long', 'short'])
+        self.assertEqual(afternoon_result, ['long', 'short'] if expected_afternoon else [])
         
         # 测试中午时间段
         noon_time = datetime(2024, 1, 1, 11, 29, 30)

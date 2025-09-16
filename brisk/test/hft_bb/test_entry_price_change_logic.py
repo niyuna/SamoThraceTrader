@@ -95,7 +95,7 @@ class TestEntryPriceChangeLogic(unittest.TestCase):
         
         # 验证日志记录
         log_calls = [call[0][0] for call in self.strategy.write_log.call_args_list]
-        self.assertIn("取消订单原因: 价格不同 当前:98.50 应该:99.00", log_calls)
+        self.assertIn("取消订单原因: 价格不同 当前:98.50 应该:99.00 将重下多头订单", log_calls)
         self.assertIn("价格变化，立即下新订单: 9984 Long 99.00", log_calls)
     
     def test_price_change_cancel_failure_no_new_order(self):
@@ -264,7 +264,7 @@ class TestEntryPriceChangeLogic(unittest.TestCase):
         
         # 验证日志记录
         log_calls = [call[0][0] for call in self.strategy.write_log.call_args_list]
-        self.assertIn("取消订单原因: 价格不同 当前:99.50 应该:100.00", log_calls)
+        self.assertIn("取消订单原因: 价格不同 当前:99.50 应该:100.00 将重下空头订单", log_calls)
         self.assertIn("价格变化，立即下新订单: 9984 Short 100.00", log_calls)
 
 
