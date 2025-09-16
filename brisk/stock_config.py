@@ -65,9 +65,13 @@ class StockConfigManager:
         with open(self.config_file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
-        for symbol, config_data in data.items():
-            print(f"Loading config for {symbol}")
+        for symbol_key, config_data in data.items():
+            # 检查symbol_key是否包含逗号，如果包含则分割为多个symbol
+            symbols = [s.strip() for s in symbol_key.split(',')] if ',' in symbol_key else [symbol_key]
+            
+            print(f"Loading config for {symbols}")
             print(config_data)
+            
             # 解析时间窗口
             trading_windows = []
             for window_data in config_data.get('trading_windows', []):
@@ -80,13 +84,15 @@ class StockConfigManager:
             # 解析排除时间
             exclude_minutes = [self._parse_time(t) for t in config_data.get('exclude_minutes', [])]
             
-            self.stock_configs[symbol] = StockConfig(
-                symbol=symbol,
-                bb_entry_std_multiplier=config_data.get('bb_entry_std_multiplier'),
-                bb_exit_std_multiplier=config_data.get('bb_exit_std_multiplier'),
-                trading_windows=trading_windows,
-                exclude_minutes=exclude_minutes
-            )
+            # 为每个symbol创建配置
+            for symbol in symbols:
+                self.stock_configs[symbol] = StockConfig(
+                    symbol=symbol,
+                    bb_entry_std_multiplier=config_data.get('bb_entry_std_multiplier'),
+                    bb_exit_std_multiplier=config_data.get('bb_exit_std_multiplier'),
+                    trading_windows=trading_windows,
+                    exclude_minutes=exclude_minutes
+                )
     
     def _load_yaml_configs(self):
         """加载YAML配置文件"""
@@ -95,7 +101,10 @@ class StockConfigManager:
             with open(self.config_file_path, 'r', encoding='utf-8') as f:
                 data = yaml.safe_load(f)
             
-            for symbol, config_data in data.items():
+            for symbol_key, config_data in data.items():
+                # 检查symbol_key是否包含逗号，如果包含则分割为多个symbol
+                symbols = [s.strip() for s in symbol_key.split(',')] if ',' in symbol_key else [symbol_key]
+                
                 # 解析时间窗口
                 trading_windows = []
                 for window_data in config_data.get('trading_windows', []):
@@ -108,13 +117,15 @@ class StockConfigManager:
                 # 解析排除时间
                 exclude_minutes = [self._parse_time(t) for t in config_data.get('exclude_minutes', [])]
                 
-                self.stock_configs[symbol] = StockConfig(
-                    symbol=symbol,
-                    bb_entry_std_multiplier=config_data.get('bb_entry_std_multiplier'),
-                    bb_exit_std_multiplier=config_data.get('bb_exit_std_multiplier'),
-                    trading_windows=trading_windows,
-                    exclude_minutes=exclude_minutes
-                )
+                # 为每个symbol创建配置
+                for symbol in symbols:
+                    self.stock_configs[symbol] = StockConfig(
+                        symbol=symbol,
+                        bb_entry_std_multiplier=config_data.get('bb_entry_std_multiplier'),
+                        bb_exit_std_multiplier=config_data.get('bb_exit_std_multiplier'),
+                        trading_windows=trading_windows,
+                        exclude_minutes=exclude_minutes
+                    )
         except ImportError:
             raise ValueError("YAML support requires PyYAML package")
     
