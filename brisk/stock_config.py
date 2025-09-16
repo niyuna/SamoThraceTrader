@@ -18,6 +18,14 @@ class TradingWindow:
 
 
 @dataclass
+class StopLossConfig:
+    """止损配置"""
+    first_stage_threshold: float = 0.02   # 第一阶段止损阈值（百分比）
+    second_stage_threshold: float = 0.05  # 第二阶段止损阈值（百分比）
+    enabled: bool = True                  # 是否启用止损
+
+
+@dataclass
 class StockConfig:
     """个股配置"""
     symbol: str
@@ -25,6 +33,7 @@ class StockConfig:
     bb_exit_std_multiplier: Optional[float] = None   # 出场布林带标准差倍数
     trading_windows: List[TradingWindow] = field(default_factory=list)  # 交易时间窗口列表
     exclude_minutes: List[time] = field(default_factory=list)  # 排除的分钟列表，如 [time(12, 0), time(15, 0)]
+    stop_loss_config: Optional[StopLossConfig] = None  # 止损配置
 
 
 class StockConfigManager:
@@ -84,6 +93,16 @@ class StockConfigManager:
             # 解析排除时间
             exclude_minutes = [self._parse_time(t) for t in config_data.get('exclude_minutes', [])]
             
+            # 解析止损配置
+            stop_loss_config = None
+            if 'stop_loss_config' in config_data:
+                stop_loss_data = config_data['stop_loss_config']
+                stop_loss_config = StopLossConfig(
+                    first_stage_threshold=stop_loss_data.get('first_stage_threshold', 0.02),
+                    second_stage_threshold=stop_loss_data.get('second_stage_threshold', 0.05),
+                    enabled=stop_loss_data.get('enabled', True)
+                )
+            
             # 为每个symbol创建配置
             for symbol in symbols:
                 self.stock_configs[symbol] = StockConfig(
@@ -91,7 +110,8 @@ class StockConfigManager:
                     bb_entry_std_multiplier=config_data.get('bb_entry_std_multiplier'),
                     bb_exit_std_multiplier=config_data.get('bb_exit_std_multiplier'),
                     trading_windows=trading_windows,
-                    exclude_minutes=exclude_minutes
+                    exclude_minutes=exclude_minutes,
+                    stop_loss_config=stop_loss_config
                 )
     
     def _load_yaml_configs(self):
@@ -117,6 +137,16 @@ class StockConfigManager:
                 # 解析排除时间
                 exclude_minutes = [self._parse_time(t) for t in config_data.get('exclude_minutes', [])]
                 
+                # 解析止损配置
+                stop_loss_config = None
+                if 'stop_loss_config' in config_data:
+                    stop_loss_data = config_data['stop_loss_config']
+                    stop_loss_config = StopLossConfig(
+                        first_stage_threshold=stop_loss_data.get('first_stage_threshold', 0.02),
+                        second_stage_threshold=stop_loss_data.get('second_stage_threshold', 0.05),
+                        enabled=stop_loss_data.get('enabled', True)
+                    )
+                
                 # 为每个symbol创建配置
                 for symbol in symbols:
                     self.stock_configs[symbol] = StockConfig(
@@ -124,7 +154,8 @@ class StockConfigManager:
                         bb_entry_std_multiplier=config_data.get('bb_entry_std_multiplier'),
                         bb_exit_std_multiplier=config_data.get('bb_exit_std_multiplier'),
                         trading_windows=trading_windows,
-                        exclude_minutes=exclude_minutes
+                        exclude_minutes=exclude_minutes,
+                        stop_loss_config=stop_loss_config
                     )
         except ImportError:
             raise ValueError("YAML support requires PyYAML package")

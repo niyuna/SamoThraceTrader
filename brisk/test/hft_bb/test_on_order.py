@@ -112,7 +112,7 @@ class TestOnOrder(unittest.TestCase):
         self.strategy.update_context_state.assert_called_with("2330", StrategyState.HOLDING)
         
         # 验证发送出场订单
-        self.strategy._manage_exit_order.assert_called_once_with("2330", context.bb_levels)
+        self.strategy._manage_exit_order.assert_called_once_with("2330", context.bb_levels, None)
         
         # 验证日志记录
         log_calls = [call[0][0] for call in self.strategy.write_log.call_args_list]
@@ -162,7 +162,7 @@ class TestOnOrder(unittest.TestCase):
         self.strategy.update_context_state.assert_called_with("2330", StrategyState.HOLDING)
         
         # 验证发送出场订单
-        self.strategy._manage_exit_order.assert_called_once_with("2330", context.bb_levels)
+        self.strategy._manage_exit_order.assert_called_once_with("2330", context.bb_levels, None)
         
         # 验证日志记录
         log_calls = [call[0][0] for call in self.strategy.write_log.call_args_list]

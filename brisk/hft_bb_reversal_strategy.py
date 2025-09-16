@@ -31,6 +31,14 @@ class TriggerLevels:
 
 
 @dataclass
+class StopLossConfig:
+    """止损配置"""
+    first_stage_threshold: float = 0.02   # 第一阶段止损阈值（百分比）
+    second_stage_threshold: float = 0.05  # 第二阶段止损阈值（百分比）
+    enabled: bool = True                  # 是否启用止损
+
+
+@dataclass
 class HFTBBStockContext:
     """HFT BB策略扩展的股票Context"""
     # 基础字段（复用base strategy的StockContext）
@@ -93,6 +101,14 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         #     self.stock_config_manager = StockConfigManager("nonexistent.json")
         # else:
         self.stock_config_manager = StockConfigManager("configs/stock_configs.json")
+        
+        # 止损配置
+        self.default_stop_loss_config = StopLossConfig(0.02, 0.05, True)
+        self.stop_loss_by_time = {
+            "morning": StopLossConfig(0.005, 0.0055, True),  # 早上更保守
+            "noon": StopLossConfig(0.02, 0.05, True),        # 中午标准
+            "afternoon": StopLossConfig(0.025, 0.06, True),  # 下午稍微宽松
+        }
 
         self.indicator_size = 20  # 修改为20以匹配真实数据
         
@@ -574,7 +590,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 
                 # 3. 如果有持仓，维护出场订单
                 if context.position != 0:
-                    self._manage_exit_order(symbol, bb_levels)
+                    self._manage_exit_order(symbol, bb_levels, bar)
     
     def _calculate_bb_levels(self, symbol: str, indicators: dict) -> dict:
         """计算BB策略的各个价格水平"""
@@ -751,7 +767,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         
         # 立即发送出场订单
         if context.bb_levels:
-            self._manage_exit_order(symbol, context.bb_levels)
+            self._manage_exit_order(symbol, context.bb_levels, None)  # 没有bar时不执行止损
         else:
             self.write_log(f"警告: {symbol} 没有BB水平数据，无法发送出场订单")
     
@@ -1116,30 +1132,52 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             self.write_log(f"计算触发价格失败: {e}")
             return None
 
-    def _manage_exit_order(self, symbol: str, bb_levels: dict):
+    def _manage_exit_order(self, symbol: str, bb_levels: dict, bar: BarData = None):
         """
         管理出场订单
         
         Args:
             symbol: 股票代码
             bb_levels: 布林带水平
+            bar: K线数据，用于获取最新价格进行止损判断
         """
         context = self.get_hft_context(symbol)
         
         if context.position == 0:
             return  # 无持仓，不需要出场订单
         
-        # 确定出场价格和方向
-        if context.position > 0:
-            # 多头持仓，需要卖出平仓
-            exit_price = bb_levels.get('exit_long', 0)  # 使用exit_long作为出场价格
-            exit_direction = Direction.SHORT
-            self.write_log(f"管理出场订单: {symbol} 多头持仓{context.position}，出场价格: {exit_price:.2f}")
+        # 获取当前价格（优先使用bar的收盘价，如果没有bar则不执行止损）
+        if bar is not None:
+            current_price = bar.close_price
+            # 检查是否需要止损
+            stop_loss_price = self._check_stop_loss(symbol, context, current_price)
         else:
-            # 空头持仓，需要买入平仓
-            exit_price = bb_levels.get('exit_short', 0)  # 使用exit_short作为出场价格
+            current_price = bb_levels.get('middle', 0)
+            stop_loss_price = None  # 没有bar时不执行止损
+        
+        if stop_loss_price is not None:
+            # 使用止损价格
+            exit_price = stop_loss_price
+            is_second_stage = self._is_second_stage_stop_loss(symbol, context, current_price)
+            loss_pct = self._calculate_loss_percentage(context, current_price)
+            stage = "第二阶段" if is_second_stage else "第一阶段"
+            self.write_log(f"止损出场: {symbol} {stage} 损失{loss_pct:.2%} 价格{exit_price:.2f}")
+        else:
+            # 使用原有的BB逻辑
+            if context.position > 0:
+                # 多头持仓，需要卖出平仓
+                exit_price = bb_levels.get('exit_long', 0)  # 使用exit_long作为出场价格
+                self.write_log(f"管理出场订单: {symbol} 多头持仓{context.position}，出场价格: {exit_price:.2f}")
+            else:
+                # 空头持仓，需要买入平仓
+                exit_price = bb_levels.get('exit_short', 0)  # 使用exit_short作为出场价格
+                self.write_log(f"管理出场订单: {symbol} 空头持仓{abs(context.position)}，出场价格: {exit_price:.2f}")
+        
+        # 确定出场方向
+        if context.position > 0:
+            exit_direction = Direction.SHORT
+        else:
             exit_direction = Direction.LONG
-            self.write_log(f"管理出场订单: {symbol} 空头持仓{abs(context.position)}，出场价格: {exit_price:.2f}")
         
         # 检查是否有部分成交的入场订单需要取消
         if (context.entry_order_id and 
@@ -1173,12 +1211,93 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             self.write_log(f"调整already_traded为{context.already_traded} "
                           f"用于发送{abs(context.position)}股exit订单")
             
+            # 确定订单类型
+            if stop_loss_price is not None and self._is_second_stage_stop_loss(symbol, context, current_price):
+                # 第二阶段止损使用market order
+                order_type = OrderType.MARKET
+                self.write_log(f"使用市价单进行第二阶段止损: {symbol}")
+            else:
+                # 其他情况使用limit order
+                order_type = OrderType.LIMIT
+            
             # _execute_exit会自动更新context.exit_order_id, context.exit_price等字段
-            order_id = self._execute_exit(context, None, exit_price, exit_direction)
+            order_id = self._execute_exit(context, None, exit_price, exit_direction, order_type)
             if order_id:
-                self.write_log(f"发送出场订单成功: {symbol} {exit_direction.value} 价格{exit_price:.2f} 订单ID: {order_id}")
+                order_type_str = "市价单" if order_type == OrderType.MARKET else "限价单"
+                self.write_log(f"发送出场订单成功: {symbol} {exit_direction.value} 价格{exit_price:.2f} {order_type_str} 订单ID: {order_id}")
             else:
                 self.write_log(f"发送出场订单失败: {symbol} {exit_direction.value} 价格{exit_price:.2f}")
+    
+    def _check_stop_loss(self, symbol: str, context: HFTBBStockContext, current_price: float) -> Optional[float]:
+        """
+        检查是否需要止损
+        
+        Args:
+            symbol: 股票代码
+            context: 股票上下文
+            current_price: 当前价格
+            
+        Returns:
+            Optional[float]: 如果需要止损返回止损价格，否则返回None
+        """
+        # 1. 获取止损配置
+        stop_loss_config = self._get_stop_loss_config(symbol)
+        if not stop_loss_config or not stop_loss_config.enabled:
+            return None
+        
+        # 2. 计算损失百分比
+        loss_pct = self._calculate_loss_percentage(context, current_price)
+        
+        # 3. 检查止损条件
+        if loss_pct >= stop_loss_config.first_stage_threshold:
+            return current_price  # 使用当前价格作为止损价格
+        else:
+            return None
+    
+    def _is_second_stage_stop_loss(self, symbol: str, context: HFTBBStockContext, current_price: float) -> bool:
+        """检查是否为第二阶段止损（需要market order）"""
+        stop_loss_config = self._get_stop_loss_config(symbol)
+        if not stop_loss_config:
+            return False
+        
+        loss_pct = self._calculate_loss_percentage(context, current_price)
+        return loss_pct >= stop_loss_config.second_stage_threshold
+    
+    def _calculate_loss_percentage(self, context: HFTBBStockContext, current_price: float) -> float:
+        """计算损失百分比"""
+        if context.position == 0 or context.entry_price == 0:
+            return 0.0
+        
+        if context.position > 0:  # 多头持仓
+            loss_pct = (context.entry_price - current_price) / context.entry_price
+        else:  # 空头持仓
+            loss_pct = (current_price - context.entry_price) / context.entry_price
+        
+        return max(0.0, loss_pct)  # 只返回正数（损失）
+    
+    def _get_stop_loss_config(self, symbol: str) -> Optional[StopLossConfig]:
+        """获取止损配置"""
+        # 1. 检查个股配置
+        stock_config = self.stock_config_manager.get_stock_config(symbol)
+        if stock_config and hasattr(stock_config, 'stop_loss_config') and stock_config.stop_loss_config:
+            return stock_config.stop_loss_config
+        
+        # 2. 使用全局时间段配置
+        current_time = datetime.now().time()
+        time_period = self._get_time_period(current_time)
+        config = self.stop_loss_by_time.get(time_period, self.default_stop_loss_config)
+        return config
+    
+    def _get_time_period(self, current_time: time) -> str:
+        """根据时间确定时间段"""
+        if time(9, 15) <= current_time <= time(11, 30):
+            return "morning"
+        elif time(11, 30) <= current_time <= time(13, 0):
+            return "noon"
+        elif time(13, 0) <= current_time <= time(15, 25):
+            return "afternoon"
+        else:
+            return "default"
 
     def _check_entry_logic(self, symbol: str, tick, context: HFTBBStockContext):
         """

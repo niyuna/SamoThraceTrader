@@ -12,7 +12,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from hft_bb_reversal_strategy import HFTBBReversalStrategy, HFTBBStockContext, TriggerLevels
-from vnpy.trader.constant import Direction, Exchange, Interval
+from vnpy.trader.constant import Direction, OrderType, Exchange, Interval
 from vnpy.trader.object import BarData, TickData
 from intraday_strategy_base import StrategyState
 
@@ -66,7 +66,7 @@ class TestManageExitOrder(unittest.TestCase):
         
         # Mock _execute_exit方法
         with patch.object(self.strategy, '_execute_exit') as mock_execute_exit:
-            def mock_execute_exit_side_effect(ctx, bar, price, direction):
+            def mock_execute_exit_side_effect(ctx, bar, price, direction, order_type):
                 ctx.exit_order_id = "EXIT_2330_SHORT_10050"
                 ctx.exit_price = price  # 设置exit_price
                 return "EXIT_2330_SHORT_10050"
@@ -74,11 +74,11 @@ class TestManageExitOrder(unittest.TestCase):
             mock_execute_exit.side_effect = mock_execute_exit_side_effect
             
             # 调用方法
-            self.strategy._manage_exit_order("2330", bb_levels)
+            self.strategy._manage_exit_order("2330", bb_levels, None)
             
             # 验证调用参数
             mock_execute_exit.assert_called_once_with(
-                context, None, 100.5, Direction.SHORT
+                context, None, 100.5, Direction.SHORT, OrderType.LIMIT
             )
             
             # 验证context更新
@@ -102,7 +102,7 @@ class TestManageExitOrder(unittest.TestCase):
         
         # Mock _execute_exit方法
         with patch.object(self.strategy, '_execute_exit') as mock_execute_exit:
-            def mock_execute_exit_side_effect(ctx, bar, price, direction):
+            def mock_execute_exit_side_effect(ctx, bar, price, direction, order_type):
                 ctx.exit_order_id = "EXIT_2330_LONG_9950"
                 ctx.exit_price = price  # 设置exit_price
                 return "EXIT_2330_LONG_9950"
@@ -110,11 +110,11 @@ class TestManageExitOrder(unittest.TestCase):
             mock_execute_exit.side_effect = mock_execute_exit_side_effect
             
             # 调用方法
-            self.strategy._manage_exit_order("2330", bb_levels)
+            self.strategy._manage_exit_order("2330", bb_levels, None)
             
             # 验证调用参数
             mock_execute_exit.assert_called_once_with(
-                context, None, 99.5, Direction.LONG
+                context, None, 99.5, Direction.LONG, OrderType.LIMIT
             )
             
             # 验证context更新
@@ -143,7 +143,7 @@ class TestManageExitOrder(unittest.TestCase):
             
             mock_cancel.return_value = True
             
-            def mock_execute_exit_side_effect(ctx, bar, price, direction):
+            def mock_execute_exit_side_effect(ctx, bar, price, direction, order_type):
                 ctx.exit_order_id = "NEW_EXIT_ORDER"
                 ctx.exit_price = price  # 设置exit_price
                 return "NEW_EXIT_ORDER"
@@ -151,14 +151,14 @@ class TestManageExitOrder(unittest.TestCase):
             mock_execute_exit.side_effect = mock_execute_exit_side_effect
             
             # 调用方法
-            self.strategy._manage_exit_order("2330", bb_levels)
+            self.strategy._manage_exit_order("2330", bb_levels, None)
             
             # 验证取消旧订单
             mock_cancel.assert_called_once_with("OLD_EXIT_ORDER", "2330")
             
             # 验证发送新订单
             mock_execute_exit.assert_called_once_with(
-                context, None, 100.5, Direction.SHORT
+                context, None, 100.5, Direction.SHORT, OrderType.LIMIT
             )
             
             # 验证context更新
@@ -218,11 +218,11 @@ class TestManageExitOrder(unittest.TestCase):
             mock_execute_exit.return_value = None
             
             # 调用方法
-            self.strategy._manage_exit_order("2330", bb_levels)
+            self.strategy._manage_exit_order("2330", bb_levels, None)
             
             # 验证调用
             mock_execute_exit.assert_called_once_with(
-                context, None, 100.5, Direction.SHORT
+                context, None, 100.5, Direction.SHORT, OrderType.LIMIT
             )
             
             # 验证context没有更新
