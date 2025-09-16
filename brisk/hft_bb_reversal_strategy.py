@@ -604,7 +604,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             self.bar_generators[symbol].update_tick(tick)
         
         # 2. 再检查入场订单逻辑（使用最新的BB levels）
-        if context.can_trade and context.trigger_levels:
+        if context.trigger_levels:
             self._check_entry_logic(symbol, tick, context)
         
         # 3. 更新模拟持仓（复用base strategy方法）
