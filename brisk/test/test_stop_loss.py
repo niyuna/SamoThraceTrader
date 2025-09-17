@@ -107,12 +107,20 @@ class TestStopLoss(unittest.TestCase):
         self.assertEqual(morning_config.second_stage_threshold, 0.0055)
         self.assertTrue(morning_config.enabled)
     
+    def test_get_stop_loss_config_noon(self):
+        """测试获取中午时间段止损配置"""
+        # 直接测试中午配置
+        noon_config = self.strategy.stop_loss_by_time["noon"]
+        self.assertEqual(noon_config.first_stage_threshold, 0.006)  # 中午稍微宽松
+        self.assertEqual(noon_config.second_stage_threshold, 0.0065)
+        self.assertTrue(noon_config.enabled)
+    
     def test_get_stop_loss_config_afternoon(self):
         """测试获取下午时间段止损配置"""
         # 直接测试下午配置
         afternoon_config = self.strategy.stop_loss_by_time["afternoon"]
-        self.assertEqual(afternoon_config.first_stage_threshold, 0.025)  # 下午稍微宽松
-        self.assertEqual(afternoon_config.second_stage_threshold, 0.06)
+        self.assertEqual(afternoon_config.first_stage_threshold, 0.005)  # 下午跟早上一样保守
+        self.assertEqual(afternoon_config.second_stage_threshold, 0.0055)
         self.assertTrue(afternoon_config.enabled)
     
     def test_get_stop_loss_config_default(self):
@@ -128,6 +136,9 @@ class TestStopLoss(unittest.TestCase):
         # 模拟个股配置为None，但全局配置被禁用
         self.strategy.stock_config_manager.get_stock_config = Mock(return_value=None)
         self.strategy.default_stop_loss_config.enabled = False
+        # 同时禁用所有时间段配置
+        for config in self.strategy.stop_loss_by_time.values():
+            config.enabled = False
         
         stop_loss_price = self.strategy._check_stop_loss("9984", self.context, 95.0)
         self.assertIsNone(stop_loss_price)

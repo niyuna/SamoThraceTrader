@@ -57,8 +57,20 @@
     ],
     "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
   },
-  "3382,2432": {
+  "3382": {
     "bb_entry_std_multiplier": 3.0,
+    "bb_exit_std_multiplier": -0.5,
+    "trading_windows": [
+      {
+        "start_time": "09:30",
+        "end_time": "15:25",
+        "allowed_directions": ["long"]
+      }
+    ],
+    "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
+  },
+  "2432": {
+    "bb_entry_std_multiplier": 3.5,
     "bb_exit_std_multiplier": -0.5,
     "trading_windows": [
       {
