@@ -253,6 +253,11 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         if not time_window_result['in_window']:
             self.write_log(f"X条件检查失败: 当前时间不在交易窗口内")
             return []
+        
+        # 4. 检查价格限制
+        if not time_window_result['price_check_ok']:
+            self.write_log(f"X条件检查失败: {symbol} {time_window_result['price_check_reason']}")
+            return []
             
         if not time_window_result['std_pct_ok']:
             self.write_log(f"X条件检查失败: {symbol} std_pct={time_window_result['std_pct']:.6f} "
@@ -262,7 +267,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # 使用时间窗口配置的允许交易方向
         allowed_directions = time_window_result['allowed_directions']
         self.write_log(f"X条件检查通过: {symbol} {time_window_result['time_period']} "
-                      f"std_pct={time_window_result['std_pct']:.6f} 允许方向: {allowed_directions}")
+                      f"std_pct={time_window_result['std_pct']:.6f} {time_window_result['price_check_reason']} 允许方向: {allowed_directions}")
         return allowed_directions
     
     def _is_time_in_exclude_minute(self, current_time: time, exclude_minute: time) -> bool:
@@ -343,11 +348,37 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             
         current_time_only = current_time.time()
         
+        # 获取前一天收盘价并检查价格限制
+        try:
+            prev_close = self.get_stock_prev_close(symbol)
+            if prev_close is None:
+                return {
+                    'in_window': False,
+                    'time_period': None,
+                    'threshold': None,
+                    'std_pct': None,
+                    'std_pct_ok': False,
+                    'allowed_directions': [],
+                    'price_check_ok': False,
+                    'price_check_reason': '无法获取前一天收盘价'
+                }
+        except Exception as e:
+            return {
+                'in_window': False,
+                'time_period': None,
+                'threshold': None,
+                'std_pct': None,
+                'std_pct_ok': False,
+                'allowed_directions': [],
+                'price_check_ok': False,
+                'price_check_reason': f'获取前一天收盘价失败: {e}'
+            }
+        
         # 定义时间窗口和对应的阈值及允许的交易方向
         time_windows = [
             {
                 'start': time(9, 15),
-                'end': time(9, 41),
+                'end': time(9, 46),
                 'threshold': self.std_pct_threshold_morning,
                 'name': 'morning',
                 'allowed_directions': ['long']  # 早上窗口允许多空双向
@@ -376,7 +407,21 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 is_15_00_minute = current_time_only.hour == 15 and current_time_only.minute == 0
                 is_14_30_minute = current_time_only.hour == 14 and 30 <= current_time_only.minute <= 31
                 if window['start'] <= current_time_only <= window['end'] and not is_15_00_minute and not is_14_30_minute:
-                    # 在时间窗口内，检查std_pct
+                    # 在时间窗口内，检查价格限制
+                    price_check_result = self._check_price_limit(prev_close, window['name'])
+                    if not price_check_result['ok']:
+                        return {
+                            'in_window': True,
+                            'time_period': window['name'],
+                            'threshold': window['threshold'],
+                            'std_pct': None,
+                            'std_pct_ok': False,
+                            'allowed_directions': [],
+                            'price_check_ok': False,
+                            'price_check_reason': price_check_result['reason']
+                        }
+                    
+                    # 价格检查通过，检查std_pct
                     std_pct_result = self._calculate_and_check_std_pct(symbol, window['threshold'])
                     return {
                         'in_window': True,
@@ -384,11 +429,27 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                         'threshold': window['threshold'],
                         'std_pct': std_pct_result['std_pct'],
                         'std_pct_ok': std_pct_result['ok'],
-                        'allowed_directions': window['allowed_directions']
+                        'allowed_directions': window['allowed_directions'],
+                        'price_check_ok': True,
+                        'price_check_reason': price_check_result['reason']
                     }
             else:
                 if window['start'] <= current_time_only <= window['end']:
-                    # 在时间窗口内，检查std_pct
+                    # 在时间窗口内，检查价格限制
+                    price_check_result = self._check_price_limit(prev_close, window['name'])
+                    if not price_check_result['ok']:
+                        return {
+                            'in_window': True,
+                            'time_period': window['name'],
+                            'threshold': window['threshold'],
+                            'std_pct': None,
+                            'std_pct_ok': False,
+                            'allowed_directions': [],
+                            'price_check_ok': False,
+                            'price_check_reason': price_check_result['reason']
+                        }
+                    
+                    # 价格检查通过，检查std_pct
                     std_pct_result = self._calculate_and_check_std_pct(symbol, window['threshold'])
                     return {
                         'in_window': True,
@@ -396,7 +457,9 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                         'threshold': window['threshold'],
                         'std_pct': std_pct_result['std_pct'],
                         'std_pct_ok': std_pct_result['ok'],
-                        'allowed_directions': window['allowed_directions']
+                        'allowed_directions': window['allowed_directions'],
+                        'price_check_ok': True,
+                        'price_check_reason': price_check_result['reason']
                     }
         
         return {
@@ -405,8 +468,51 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             'threshold': None,
             'std_pct': None,
             'std_pct_ok': False,
-            'allowed_directions': []
+            'allowed_directions': [],
+            'price_check_ok': True,
+            'price_check_reason': '不在交易窗口内'
         }
+    
+    def _check_price_limit(self, prev_close: float, time_period: str) -> dict:
+        """
+        检查前一天收盘价是否满足时间段的限制
+        
+        Args:
+            prev_close: 前一天收盘价
+            time_period: 时间段 ('morning', 'noon', 'afternoon')
+            
+        Returns:
+            dict: 包含检查结果的字典
+        """
+        if time_period in ['morning', 'noon']:
+            # morning/noon的股价需要在4000以下
+            if prev_close >= 4000:
+                return {
+                    'ok': False,
+                    'reason': f'{time_period}时段股价{prev_close}超过4000限制'
+                }
+            else:
+                return {
+                    'ok': True,
+                    'reason': f'{time_period}时段股价{prev_close}符合4000以下限制'
+                }
+        elif time_period == 'afternoon':
+            # afternoon的股价需要在2500以下
+            if prev_close >= 3000:
+                return {
+                    'ok': False,
+                    'reason': f'{time_period}时段股价{prev_close}超过2500限制'
+                }
+            else:
+                return {
+                    'ok': True,
+                    'reason': f'{time_period}时段股价{prev_close}符合2500以下限制'
+                }
+        else:
+            return {
+                'ok': False,
+                'reason': f'未知时间段: {time_period}'
+            }
     
     def _calculate_and_check_std_pct(self, symbol: str, threshold: float) -> dict:
         """
@@ -1499,7 +1605,7 @@ def main():
                 # 4000~5000 contains 66 stock
                 # 5000~10000 contains 76 stocks
                 # >10000 only 29 stocks
-                if 2500 >= prev_close > 600:
+                if 3500 >= prev_close > 600:
                     symbols.append(symbol)
                 # after noon use 1500 >= prev_close > 1000
         

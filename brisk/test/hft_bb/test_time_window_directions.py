@@ -170,7 +170,9 @@ class TestTimeWindowDirections(unittest.TestCase):
                         'threshold': window['threshold'],
                         'std_pct': std_pct_result['std_pct'],
                         'std_pct_ok': std_pct_result['ok'],
-                        'allowed_directions': window['allowed_directions']
+                        'allowed_directions': window['allowed_directions'],
+                        'price_check_ok': True,
+                        'price_check_reason': f'{window["name"]}时段股价100符合限制'
                     }
             
             return {
@@ -179,7 +181,9 @@ class TestTimeWindowDirections(unittest.TestCase):
                 'threshold': None,
                 'std_pct': None,
                 'std_pct_ok': False,
-                'allowed_directions': []
+                'allowed_directions': [],
+                'price_check_ok': True,
+                'price_check_reason': '不在交易窗口内'
             }
         
         # 临时替换方法
@@ -188,8 +192,10 @@ class TestTimeWindowDirections(unittest.TestCase):
         try:
             # 测试早上时间只允许多头
             morning_time = datetime(2024, 1, 1, 9, 20)
-            with patch.object(self.strategy, '_calculate_and_check_std_pct') as mock_std_pct:
+            with patch.object(self.strategy, '_calculate_and_check_std_pct') as mock_std_pct, \
+                 patch.object(self.strategy, 'get_stock_prev_close') as mock_prev_close:
                 mock_std_pct.return_value = {'std_pct': 0.001, 'ok': True}
+                mock_prev_close.return_value = 100.0  # 模拟前一天收盘价
                 
                 result = self.strategy.check_x_condition("9984", morning_time)
                 self.assertEqual(result, ['long'])
