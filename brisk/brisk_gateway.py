@@ -209,6 +209,20 @@ class BriskGateway(BaseGateway):
         """查询持仓"""
         # 日股交易功能暂未实现
         self.write_log("日股交易功能暂未实现")
+    
+    def get_positions(self) -> List[dict]:
+        """获取实际持仓数据
+        
+        Returns:
+            List[dict]: 持仓数据列表，每个元素包含 Symbol, LeavesQty, HoldQty, Side 等
+        """
+        try:
+            # 调用 kabus_api.get_positions() 获取持仓数据
+            positions = kabus_api.get_positions()
+            return positions
+        except Exception as e:
+            self.write_log(f"获取持仓数据失败: {e}")
+            return []
 
     def query_history(self, req: HistoryRequest) -> List[BarData]:
         """查询历史数据"""

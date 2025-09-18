@@ -24,6 +24,7 @@ class TestMarketCloseLiquidation(unittest.TestCase):
         self.strategy = HFTBBReversalStrategy()
         self.strategy.write_log = Mock()
         self.strategy.event_engine = Mock()
+        self.strategy.gateway = Mock()  # 添加 gateway mock
         self.strategy._cancel_order_safely = Mock(return_value=True)
         self.strategy._execute_exit = Mock(return_value="test_exit_order_123")
         self.strategy.get_order = Mock()
@@ -196,6 +197,9 @@ class TestMarketCloseLiquidation(unittest.TestCase):
         self.context.position = 100
         self.context.entry_order_id = "test_entry_123"
         
+        # Mock gateway.get_positions 返回空列表（没有未覆盖的持仓）
+        self.strategy.gateway.get_positions = Mock(return_value=[])
+        
         self.strategy._execute_market_close_liquidation()
         
         # 验证liquidation_executed被设置为True
@@ -210,6 +214,9 @@ class TestMarketCloseLiquidation(unittest.TestCase):
         self.context.position = 100
         self.strategy._cancel_order_safely.return_value = False  # 模拟取消失败
         self.strategy._execute_exit.return_value = None  # 模拟发送失败
+        
+        # Mock gateway.get_positions 返回空列表（没有未覆盖的持仓）
+        self.strategy.gateway.get_positions = Mock(return_value=[])
         
         self.strategy._execute_market_close_liquidation()
         

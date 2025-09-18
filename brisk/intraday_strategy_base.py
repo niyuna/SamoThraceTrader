@@ -342,15 +342,21 @@ class IntradayStrategyBase:
     
     # call flow: _check_and_execute_trigger -> _execute_triggered_entry -> _execute_entry/_execute_exit -> _execute_trade -> _execute_order
 
-    def _execute_order(self, context, bar, price: float, direction: Direction, offset: Offset, order_type: OrderType = OrderType.LIMIT, reference_prefix: str = "order"):
+    def _execute_order(self, context, bar, price: float, direction: Direction, offset: Offset, order_type: OrderType = OrderType.LIMIT, reference_prefix: str = "order", quantity: int = None):
         """统一的订单执行方法"""
+        # 确定订单数量
+        if quantity is not None:
+            order_volume = quantity
+        else:
+            order_volume = context.position_size - context.already_traded
+            
         # 创建OrderRequest
         order_req = OrderRequest(
             symbol=context.symbol,
             exchange=bar.exchange if bar else Exchange.TSE,
             direction=direction,
             type=order_type,
-            volume=context.position_size - context.already_traded,
+            volume=order_volume,
             price=price,
             offset=offset,
             reference=f"{reference_prefix}_{context.symbol}_{datetime.now().strftime('%H%M%S')}"
