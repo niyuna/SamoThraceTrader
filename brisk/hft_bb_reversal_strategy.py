@@ -1030,7 +1030,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                     failed_count += 1
                     self.write_log(f"取消entry订单失败: {symbol} {context.entry_order_id}")
                 
-                time_module.sleep(0.5)
+                time_module.sleep(0.3)
                 
             # 2. 处理exit订单
             if context.exit_order_id:
@@ -1041,7 +1041,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                     failed_count += 1
                     self.write_log(f"取消exit订单失败: {symbol} {context.exit_order_id}")
                 
-                time_module.sleep(0.5)
+                time_module.sleep(0.3)
                 
             # 3. 发送market订单（如果有持仓）
             if context.position != 0:
@@ -1063,7 +1063,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                     failed_count += 1
                     self.write_log(f"发送market平仓订单失败: {symbol}")
                 
-                time_module.sleep(0.5)
+                time_module.sleep(0.3)
         
         # 保险平仓机制
         self.write_log("开始执行保险平仓检查...")
