@@ -383,7 +383,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         time_windows = [
             {
                 'start': time(9, 5),
-                'end': time(9, 40),
+                'end': time(9, 41),
                 'threshold': self.std_pct_threshold_morning,
                 'name': 'morning',
                 'allowed_directions': ['long', 'short']  # 早上窗口允许多空双向
