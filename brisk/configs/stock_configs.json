@@ -45,19 +45,7 @@
     ],
     "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
   },
-  "7272,8750,4503,8601,8113,7182,3407,6178,6952,2331,7267,3003,4612,8604,7186,1860,1893": {
-    "bb_entry_std_multiplier": 3.0,
-    "bb_exit_std_multiplier": -0.5,
-    "trading_windows": [
-      {
-        "start_time": "09:30",
-        "end_time": "15:25",
-        "allowed_directions": ["long"]
-      }
-    ],
-    "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
-  },
-  "2801,3382,7267": {
+  "7272,4612,7267,3407": {
     "bb_entry_std_multiplier": 3.0,
     "bb_exit_std_multiplier": -0.5,
     "trading_windows": [
@@ -69,20 +57,32 @@
     ],
     "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
   },
-  "7261,5019": {
+  "3382": {
     "bb_entry_std_multiplier": 3.0,
     "bb_exit_std_multiplier": -0.5,
     "trading_windows": [
       {
         "start_time": "09:30",
         "end_time": "15:25",
-        "allowed_directions": ["long"]
+        "allowed_directions": ["long", "short"]
+      }
+    ],
+    "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
+  },
+  "5019,7272,7261,7453,8601,8604": {
+    "bb_entry_std_multiplier": 3.0,
+    "bb_exit_std_multiplier": -1.0,
+    "trading_windows": [
+      {
+        "start_time": "09:30",
+        "end_time": "15:25",
+        "allowed_directions": ["long", "short"]
       }
     ],
     "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
   },
   "2432": {
-    "bb_entry_std_multiplier": 4.5,
+    "bb_entry_std_multiplier": 5.0,
     "bb_exit_std_multiplier": -0.5,
     "trading_windows": [
       {
