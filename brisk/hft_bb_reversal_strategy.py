@@ -82,7 +82,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.trigger_tick_count = 3  # trigger价格调整的tick数量
         
         # X条件std_pct阈值参数
-        self.std_pct_threshold_morning = 0.00073    # 早上9:15-9:35阈值
+        self.std_pct_threshold_morning = 0.0007    # 早上9:05-9:35阈值
         self.std_pct_threshold_noon = 0.000001      # 中午11:29-11:30阈值（极小的值，几乎总是通过）
         self.std_pct_threshold_afternoon = 0.00030  # 下午14:35-15:20阈值
         
@@ -382,11 +382,11 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # 定义时间窗口和对应的阈值及允许的交易方向
         time_windows = [
             {
-                'start': time(9, 15),
-                'end': time(9, 46),
+                'start': time(9, 5),
+                'end': time(9, 40),
                 'threshold': self.std_pct_threshold_morning,
                 'name': 'morning',
-                'allowed_directions': ['long']  # 早上窗口允许多空双向
+                'allowed_directions': ['long', 'short']  # 早上窗口允许多空双向
             },
             {
                 'start': time(11, 25),
@@ -1470,7 +1470,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
     
     def _get_time_period(self, current_time: time) -> str:
         """根据时间确定时间段"""
-        if time(9, 15) <= current_time <= time(11, 30):
+        if time(9, 0) <= current_time <= time(11, 30):
             return "morning"
         elif time(11, 30) <= current_time <= time(13, 0):
             return "noon"
