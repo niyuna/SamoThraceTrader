@@ -94,7 +94,9 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         
         # 模拟持仓管理
         self.simulated_positions = {}  # symbol -> {'long': bool, 'short': bool}
-
+        
+        # 单只股票最大持仓金额（日元）
+        self.single_stock_max_position = 250_000
         # 个股配置管理器
         # 在测试模式下使用空的配置文件，避免影响测试
         # if use_mock_gateway:
@@ -167,8 +169,11 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         if symbol in self.hft_contexts:
             self.write_log(f"Warning: HFT context for symbol {symbol} already exists, returning existing one.")
         else:
+            # 使用基类的 calculate_position_size 方法计算基于价格的持仓数量
+            position_size = self.calculate_position_size(symbol)
             self.hft_contexts[symbol] = HFTBBStockContext(symbol=symbol)
-            self.write_log(f"Created HFT context for symbol {symbol}")
+            self.hft_contexts[symbol].position_size = position_size
+            self.write_log(f"Created HFT context for symbol {symbol} with position_size={position_size}")
         return self.hft_contexts[symbol]
     
     def check_x_condition(self, symbol: str, current_time: datetime = None) -> List[str]:
@@ -1220,7 +1225,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         old_params = {
             'bb_entry_std_multiplier': self.bb_entry_std_multiplier,
             'bb_exit_std_multiplier': self.bb_exit_std_multiplier,
-            'trigger_tick_count': self.trigger_tick_count
+            'trigger_tick_count': self.trigger_tick_count,
+            'single_stock_max_position': self.single_stock_max_position
         }
         
         # 更新策略参数
@@ -1230,6 +1236,16 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             self.bb_exit_std_multiplier = new_params['bb_exit_std_multiplier']
         if 'trigger_tick_count' in new_params:
             self.trigger_tick_count = new_params['trigger_tick_count']
+        if 'single_stock_max_position' in new_params:
+            old_value = self.single_stock_max_position
+            self.single_stock_max_position = new_params['single_stock_max_position']
+            self.write_log(f"参数 single_stock_max_position 更新: {old_value} -> {self.single_stock_max_position}")
+            
+            # 重新计算所有现有 context 的 position_size
+            for symbol, context in self.hft_contexts.items():
+                new_position_size = self.calculate_position_size(symbol)
+                context.position_size = new_position_size
+                self.write_log(f"更新 {symbol} 的持仓数量: {new_position_size}")
         
         # 更新所有技术指标管理器的参数
         self._update_indicator_managers_parameters()
