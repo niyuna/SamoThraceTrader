@@ -1543,6 +1543,13 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                     self.write_log(f"跳过取消订单: {symbol} 订单在同一分钟内发送，避免频繁撤单")
                     return  # 直接返回，不执行任何订单操作
             
+            # 检查是否在中午休市时间（11:30-11:31），如果是则不取消订单
+            current_hour = current_time.hour
+            current_minute = current_time.minute
+            if current_hour == 11 and current_minute >= 30 and current_minute <= 31:
+                self.write_log(f"跳过取消订单: {symbol} 当前时间在中午休市期间({current_time.strftime('%H:%M')})，broker不接受新订单")
+                return  # 直接返回，不执行任何订单操作
+            
             # 如果当前价格在两个触发价格之间，取消订单（不立即下新订单）
             if (trigger_levels.lower_trigger < current_price < trigger_levels.upper_trigger):
                 should_cancel = True
