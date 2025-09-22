@@ -134,7 +134,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
 
         # 参数更新配置
         self.parameter_update_schedule = {
-            time(10, 00): {
+            time(09, 47): {
                 'bb_entry_std_multiplier': 3.0,
                 'bb_exit_std_multiplier': -0.5,
                 'trigger_tick_count': 3
