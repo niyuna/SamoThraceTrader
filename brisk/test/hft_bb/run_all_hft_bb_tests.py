@@ -50,7 +50,8 @@ def run_all_tests():
     'test_stop_loss',                  # 止损功能测试
     'test_lunch_break_cancel_protection', # 中午休市期间取消订单保护测试
     'test_15_24_cancel_protection',    # 15:24分钟取消订单保护测试
-    'test_simulated_positions_timing'  # 模拟持仓时间记录测试
+    'test_simulated_positions_timing', # 模拟持仓时间记录测试
+    'test_simulated_position_x_condition'  # 模拟持仓智能X条件检查测试
 ]
     
     # 加载并添加每个测试模块

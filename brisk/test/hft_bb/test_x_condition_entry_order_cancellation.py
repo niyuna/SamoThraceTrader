@@ -197,15 +197,29 @@ class TestXConditionEntryOrderCancellation(unittest.TestCase):
         context = self.strategy.get_hft_context(self.symbol)
         context.entry_order_id = "test_entry_123"
         
-        # 设置模拟持仓（_check_no_position检查的是simulated_positions）
-        self.strategy.simulated_positions[self.symbol] = {'long': True, 'short': False}
+        # 设置模拟持仓（entry时间在窗口内且方向匹配，应该允许交易）
+        self.strategy.simulated_positions[self.symbol] = {
+            'long': True, 
+            'short': False,
+            'long_entry_time': datetime(2024, 1, 1, 9, 15, 0),  # 在morning窗口内
+            'short_entry_time': None,
+            'long_exit_time': None,
+            'short_exit_time': None
+        }
         
-        result = self.strategy.check_x_condition(self.symbol)
-        self.assertFalse(result)  # 应该返回False，因为有持仓
+        # 设置早上时间（满足时间窗口）
+        morning_time = datetime(2024, 1, 1, 9, 20)
+        
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = morning_time
+            result = self.strategy.check_x_condition(self.symbol)
+        
+        # 由于entry时间在窗口内且方向匹配，应该允许交易
+        self.assertTrue(result)
         
         # 验证日志记录
         log_calls = [call[0][0] for call in self.strategy.write_log.call_args_list]
-        self.assertIn("X条件检查失败: 9984 已有持仓", log_calls)
+        self.assertIn("X条件检查通过: 9984 模拟持仓方向匹配，允许long交易", log_calls)
     
     def test_check_entry_logic_handles_x_condition_failure(self):
         """测试_check_entry_logic处理X条件不满足的情况"""

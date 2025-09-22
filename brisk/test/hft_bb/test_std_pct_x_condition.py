@@ -34,6 +34,12 @@ class TestStdPctXCondition(unittest.TestCase):
             'exit_short': 999.0
         }
         
+        # 添加到eligible_stocks
+        self.strategy.eligible_stocks.add("9984")
+        
+        # 模拟get_stock_prev_close返回合理价格
+        self.strategy.get_stock_prev_close = Mock(return_value=2000.0)
+        
     def test_std_pct_parameters_initialization(self):
         """测试std_pct阈值参数初始化"""
         # 测试参数存在且为浮点数
@@ -299,6 +305,99 @@ class TestStdPctXCondition(unittest.TestCase):
         
         self.assertFalse(result)
         # 由于middle为0，std_pct计算会返回0.0，导致不满足阈值
+    
+    def test_simulated_position_entry_time_in_window_allows_trading(self):
+        """测试模拟持仓entry时间在窗口内时允许交易"""
+        # 设置模拟持仓 - long方向，entry时间在morning窗口内
+        entry_time = datetime(2024, 1, 1, 9, 20, 0)  # morning窗口内
+        self.strategy.simulated_positions["9984"] = {
+            'long': True,
+            'short': False,
+            'long_entry_time': entry_time,
+            'short_entry_time': None,
+            'long_exit_time': None,
+            'short_exit_time': None
+        }
+        
+        # 测试morning时间窗口
+        morning_time = datetime(2024, 1, 1, 9, 30, 0)
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = morning_time
+            result = self.strategy.check_x_condition("9984")
+        
+        # 应该允许交易（因为方向匹配）
+        self.assertEqual(result, ['long', 'short'])
+    
+    def test_simulated_position_entry_time_outside_window_blocks_trading(self):
+        """测试模拟持仓entry时间不在窗口内时阻止交易"""
+        # 设置模拟持仓 - long方向，entry时间在窗口外
+        entry_time = datetime(2024, 1, 1, 8, 0, 0)  # 窗口外
+        self.strategy.simulated_positions["9984"] = {
+            'long': True,
+            'short': False,
+            'long_entry_time': entry_time,
+            'short_entry_time': None,
+            'long_exit_time': None,
+            'short_exit_time': None
+        }
+        
+        # 测试morning时间窗口
+        morning_time = datetime(2024, 1, 1, 9, 30, 0)
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = morning_time
+            result = self.strategy.check_x_condition("9984")
+        
+        # 应该不允许交易（entry时间不在窗口内）
+        self.assertEqual(result, [])
+    
+    def test_simulated_position_direction_mismatch_blocks_trading(self):
+        """测试模拟持仓方向不匹配时阻止交易"""
+        # 设置模拟持仓 - long方向，entry时间在morning窗口内
+        entry_time = datetime(2024, 1, 1, 9, 20, 0)  # morning窗口内
+        self.strategy.simulated_positions["9984"] = {
+            'long': True,
+            'short': False,
+            'long_entry_time': entry_time,
+            'short_entry_time': None,
+            'long_exit_time': None,
+            'short_exit_time': None
+        }
+        
+        # 修改时间窗口配置，只允许short方向
+        with patch.object(self.strategy, '_check_time_window_with_std_pct') as mock_check:
+            mock_check.return_value = {
+                'in_window': True,
+                'time_period': 'morning',
+                'threshold': 0.0007,
+                'std_pct': 0.001,
+                'std_pct_ok': True,
+                'allowed_directions': ['short'],  # 只允许short
+                'price_check_ok': True,
+                'price_check_reason': 'morning时段股价2000.0符合4000以下限制'
+            }
+            
+            morning_time = datetime(2024, 1, 1, 9, 30, 0)
+            with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+                mock_datetime.now.return_value = morning_time
+                result = self.strategy.check_x_condition("9984")
+            
+            # 应该不允许交易（方向不匹配）
+            self.assertEqual(result, [])
+    
+    def test_no_simulated_position_uses_original_logic(self):
+        """测试无模拟持仓时使用原有逻辑"""
+        # 确保没有模拟持仓
+        if "9984" in self.strategy.simulated_positions:
+            del self.strategy.simulated_positions["9984"]
+        
+        # 测试morning时间窗口
+        morning_time = datetime(2024, 1, 1, 9, 30, 0)
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = morning_time
+            result = self.strategy.check_x_condition("9984")
+        
+        # 应该允许交易（使用原有逻辑）
+        self.assertEqual(result, ['long', 'short'])
 
 
 if __name__ == '__main__':

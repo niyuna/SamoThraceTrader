@@ -242,16 +242,63 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             return []
     
     def _check_default_x_condition(self, symbol: str, current_time: datetime = None) -> List[str]:
-        """检查默认X条件（原有逻辑）"""
+        """检查默认X条件（原有逻辑 + 模拟持仓智能检查）"""
         # 1. 检查股票是否在eligible_stocks中
         if symbol not in self.eligible_stocks:
             self.write_log(f"X条件检查失败: {symbol} 不在eligible_stocks中")
             return []
             
-        # 2. 检查模拟持仓 - 目前没有持仓
-        if not self._check_no_position(symbol):
-            self.write_log(f"X条件检查失败: {symbol} 已有持仓")
-            return []
+        # 2. 检查模拟持仓 - 智能检查逻辑
+        if symbol in self.simulated_positions:
+            positions = self.simulated_positions[symbol]
+            if positions['long'] or positions['short']:
+                # 获取模拟持仓的entry时间
+                entry_time = positions['long_entry_time'] if positions['long'] else positions['short_entry_time']
+                
+                if entry_time is None:
+                    self.write_log(f"X条件检查失败: {symbol} 模拟持仓entry时间为None")
+                    return []
+                
+                # 检查entry时间是否在任意窗口内
+                if not self._is_entry_time_in_any_window(entry_time):
+                    self.write_log(f"X条件检查失败: {symbol} 模拟持仓entry时间不在任何交易窗口内")
+                    return []
+                
+                # 获取模拟持仓方向
+                simulated_direction = self._get_simulated_position_direction(symbol)
+                if simulated_direction is None:
+                    self.write_log(f"X条件检查失败: {symbol} 无法确定模拟持仓方向")
+                    return []
+                
+                # 先获取时间窗口结果以确定允许的交易方向
+                time_window_result = self._check_time_window_with_std_pct(symbol, current_time)
+                if not time_window_result['in_window']:
+                    self.write_log(f"X条件检查失败: 当前时间不在交易窗口内")
+                    return []
+                
+                # 检查价格限制
+                if not time_window_result['price_check_ok']:
+                    self.write_log(f"X条件检查失败: {symbol} {time_window_result['price_check_reason']}")
+                    return []
+                    
+                if not time_window_result['std_pct_ok']:
+                    self.write_log(f"X条件检查失败: {symbol} std_pct={time_window_result['std_pct']:.6f} "
+                                  f"低于{time_window_result['time_period']}阈值{time_window_result['threshold']:.6f}")
+                    return []
+                
+                # 检查方向是否匹配
+                allowed_directions = time_window_result['allowed_directions']
+                if simulated_direction in allowed_directions:
+                    self.write_log(f"X条件检查通过: {symbol} 模拟持仓方向匹配，允许{simulated_direction}交易")
+                    return allowed_directions
+                else:
+                    self.write_log(f"X条件检查失败: {symbol} 模拟持仓方向{simulated_direction}与允许方向{allowed_directions}不匹配")
+                    return []
+        
+        # 3. 没有模拟持仓或有模拟持仓记录但没有持仓，使用原有逻辑
+        # if not self._check_no_position(symbol):
+        #     self.write_log(f"X条件检查失败: {symbol} 已有持仓")
+        #     return []
             
         # 3. 检查时间窗口和std_pct阈值
         time_window_result = self._check_time_window_with_std_pct(symbol, current_time)
@@ -275,6 +322,45 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                       f"std_pct={time_window_result['std_pct']:.6f} {time_window_result['price_check_reason']} 允许方向: {allowed_directions}")
         return allowed_directions
     
+    def _is_entry_time_in_any_window(self, entry_time: datetime) -> bool:
+        """
+        检查entry时间是否在任意一个交易窗口内
+        
+        Args:
+            entry_time: 模拟持仓的entry时间
+            
+        Returns:
+            bool: 是否在任意窗口内
+        """
+        entry_time_only = entry_time.time()
+        
+        # 遍历所有交易窗口，检查entry_time是否在其中任何一个
+        for window_start, window_end in self.x_condition_time_windows:
+            if window_start <= entry_time_only <= window_end:
+                return True
+        return False
+    
+    def _get_simulated_position_direction(self, symbol: str) -> Optional[str]:
+        """
+        获取模拟持仓的方向
+        
+        Args:
+            symbol: 股票代码
+            
+        Returns:
+            str: 'long' 或 'short' 或 None
+        """
+        if symbol not in self.simulated_positions:
+            return None
+        
+        positions = self.simulated_positions[symbol]
+        if positions['long']:
+            return 'long'
+        elif positions['short']:
+            return 'short'
+        else:
+            return None
+
     def _is_time_in_exclude_minute(self, current_time: time, exclude_minute: time) -> bool:
         """检查当前时间是否在排除的分钟内"""
         return (current_time.hour == exclude_minute.hour and 

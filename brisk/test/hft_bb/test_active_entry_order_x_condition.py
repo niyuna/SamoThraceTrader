@@ -57,8 +57,15 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         # 设置活跃的entry订单
         self.context.entry_order_id = "test_order_123"
         
-        # 设置模拟持仓（通常会导致X条件失败）
-        self.strategy.simulated_positions["9984"] = {'long': True, 'short': False}
+        # 设置模拟持仓（entry时间在窗口内且方向匹配，应该允许交易）
+        self.strategy.simulated_positions["9984"] = {
+            'long': True, 
+            'short': False,
+            'long_entry_time': datetime(2024, 1, 1, 9, 15, 0),  # 在morning窗口内
+            'short_entry_time': None,
+            'long_exit_time': None,
+            'short_exit_time': None
+        }
         
         # 设置早上时间（满足时间窗口）
         morning_time = datetime(2024, 1, 1, 9, 20)
@@ -67,10 +74,10 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
             mock_datetime.now.return_value = morning_time
             result = self.strategy.check_x_condition("9984")
         
-        # 现在有entry订单时不再有优先级，有持仓时应该失败
-        self.assertFalse(result)
+        # 由于entry时间在窗口内且方向匹配，应该允许交易
+        self.assertTrue(result)
         self.strategy.write_log.assert_any_call(
-            "X条件检查失败: 9984 已有持仓"
+            "X条件检查通过: 9984 模拟持仓方向匹配，允许long交易"
         )
         
     def test_x_condition_with_active_entry_order_ignores_time_window(self):
@@ -135,8 +142,15 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         # 确保没有活跃的entry订单
         self.context.entry_order_id = ""
         
-        # 设置模拟持仓
-        self.strategy.simulated_positions["9984"] = {'long': True, 'short': False}
+        # 设置模拟持仓（entry时间在窗口内且方向匹配，应该允许交易）
+        self.strategy.simulated_positions["9984"] = {
+            'long': True, 
+            'short': False,
+            'long_entry_time': datetime(2024, 1, 1, 9, 15, 0),  # 在morning窗口内
+            'short_entry_time': None,
+            'long_exit_time': None,
+            'short_exit_time': None
+        }
         
         # 设置早上时间（满足时间窗口和std_pct）
         morning_time = datetime(2024, 1, 1, 9, 20)
@@ -145,9 +159,10 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
             mock_datetime.now.return_value = morning_time
             result = self.strategy.check_x_condition("9984")
         
-        self.assertFalse(result)
+        # 由于entry时间在窗口内且方向匹配，应该允许交易
+        self.assertTrue(result)
         self.strategy.write_log.assert_any_call(
-            "X条件检查失败: 9984 已有持仓"
+            "X条件检查通过: 9984 模拟持仓方向匹配，允许long交易"
         )
         
     def test_x_condition_empty_entry_order_id(self):
@@ -178,7 +193,14 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         self.strategy.eligible_stocks.discard("9984")
         
         # 2. 有持仓
-        self.strategy.simulated_positions["9984"] = {'long': True, 'short': False}
+        self.strategy.simulated_positions["9984"] = {
+            'long': True, 
+            'short': False,
+            'long_entry_time': datetime(2024, 1, 1, 9, 15, 0),
+            'short_entry_time': None,
+            'long_exit_time': None,
+            'short_exit_time': None
+        }
         
         # 3. 非交易时间
         outside_time = datetime(2024, 1, 1, 10, 0)

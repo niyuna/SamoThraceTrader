@@ -6,7 +6,7 @@ import unittest
 import sys
 import os
 from datetime import datetime, time
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 # 添加路径以导入模块
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -89,23 +89,50 @@ class TestXCondition(unittest.TestCase):
             'exit_short': 999.0
         }
         
-        # 测试满足X条件的情况
+        # 模拟get_stock_prev_close返回合理价格
+        self.strategy.get_stock_prev_close = Mock(return_value=2000.0)
+        
+        # 测试满足X条件的情况（无模拟持仓）
         morning_time = datetime(2025, 1, 1, 9, 20, 0)
         with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
             mock_datetime.now.return_value = morning_time
-            self.assertTrue(self.strategy.check_x_condition(symbol))
+            result = self.strategy.check_x_condition(symbol)
+            self.assertEqual(result, ['long', 'short'])
         
         # 测试不满足时间窗口的情况
         off_time = datetime(2025, 1, 1, 10, 0, 0)
         with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
             mock_datetime.now.return_value = off_time
-            self.assertFalse(self.strategy.check_x_condition(symbol))
+            result = self.strategy.check_x_condition(symbol)
+            self.assertEqual(result, [])
         
-        # 测试不满足持仓条件的情况
-        self.strategy.simulated_positions[symbol] = {'long': True, 'short': False}
+        # 测试模拟持仓entry时间在窗口内且方向匹配的情况
+        self.strategy.simulated_positions[symbol] = {
+            'long': True, 
+            'short': False,
+            'long_entry_time': datetime(2025, 1, 1, 9, 15, 0),  # 在morning窗口内
+            'short_entry_time': None,
+            'long_exit_time': None,
+            'short_exit_time': None
+        }
         with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
             mock_datetime.now.return_value = morning_time
-            self.assertFalse(self.strategy.check_x_condition(symbol))
+            result = self.strategy.check_x_condition(symbol)
+            self.assertEqual(result, ['long', 'short'])  # 方向匹配，允许交易
+        
+        # 测试模拟持仓entry时间不在窗口内的情况
+        self.strategy.simulated_positions[symbol] = {
+            'long': True, 
+            'short': False,
+            'long_entry_time': datetime(2025, 1, 1, 8, 0, 0),  # 不在任何窗口内
+            'short_entry_time': None,
+            'long_exit_time': None,
+            'short_exit_time': None
+        }
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+            mock_datetime.now.return_value = morning_time
+            result = self.strategy.check_x_condition(symbol)
+            self.assertEqual(result, [])  # entry时间不在窗口内，不允许交易
         
         print("✓ 完整X条件检查测试通过")
         
