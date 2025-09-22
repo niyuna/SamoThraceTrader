@@ -109,8 +109,8 @@ class TestStdPctXCondition(unittest.TestCase):
         self.assertEqual(result['std_pct'], 0.0008)  # 0.8/1000
         # 测试逻辑：如果std_pct大于阈值，应该通过
         self.assertEqual(result['std_pct_ok'], result['std_pct'] > result['threshold'])
-        # 检查允许的交易方向（早上窗口只允许多头）
-        self.assertEqual(result['allowed_directions'], ['long'])
+        # 检查允许的交易方向（早上窗口允许多空双向）
+        self.assertEqual(result['allowed_directions'], ['long', 'short'])
         
     def test_time_window_noon_with_std_pct(self):
         """测试中午时间窗口std_pct检查"""

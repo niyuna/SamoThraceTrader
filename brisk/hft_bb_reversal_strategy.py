@@ -134,7 +134,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
 
         # 参数更新配置
         self.parameter_update_schedule = {
-            time(09, 47): {
+            time(9, 47): {
                 'bb_entry_std_multiplier': 3.0,
                 'bb_exit_std_multiplier': -0.5,
                 'trigger_tick_count': 3
@@ -410,7 +410,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             if window['name'] == 'afternoon':
                 # 排除15:00分钟（15:00:00 到 15:00:59）
                 is_15_00_minute = current_time_only.hour == 15 and current_time_only.minute == 0
-                is_14_30_minute = current_time_only.hour == 14 and 30 <= current_time_only.minute <= 31
+                is_14_30_minute = current_time_only.hour == 14 and current_time_only.minute == 30
                 if window['start'] <= current_time_only <= window['end'] and not is_15_00_minute and not is_14_30_minute:
                     # 在时间窗口内，检查价格限制
                     price_check_result = self._check_price_limit(prev_close, window['name'])
@@ -1548,6 +1548,11 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             current_minute = current_time.minute
             if current_hour == 11 and current_minute >= 30 and current_minute <= 31:
                 self.write_log(f"跳过取消订单: {symbol} 当前时间在中午休市期间({current_time.strftime('%H:%M')})，broker不接受新订单")
+                return  # 直接返回，不执行任何订单操作
+            
+            # 检查是否在15:24分钟，如果是则不取消订单（避免收盘前频繁撤单损耗API配额）
+            if current_hour == 15 and current_minute == 24:
+                self.write_log(f"跳过取消订单: {symbol} 当前时间在15:24分钟({current_time.strftime('%H:%M')})，避免收盘前频繁撤单损耗API配额")
                 return  # 直接返回，不执行任何订单操作
             
             # 如果当前价格在两个触发价格之间，取消订单（不立即下新订单）

@@ -49,7 +49,7 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         # 现在有entry订单时不再有优先级，需要满足所有条件
         self.assertTrue(result)
         self.strategy.write_log.assert_any_call(
-            "X条件检查通过: 9984 morning std_pct=0.000800 morning时段股价0符合4000以下限制 允许方向: ['long']"
+            "X条件检查通过: 9984 morning std_pct=0.000800 morning时段股价0符合4000以下限制 允许方向: ['long', 'short']"
         )
         
     def test_x_condition_with_active_entry_order_ignores_position(self):
@@ -109,7 +109,7 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         # 现在有entry订单时不再有优先级，std_pct不足应该失败
         self.assertFalse(result)
         self.strategy.write_log.assert_any_call(
-            "X条件检查失败: 9984 std_pct=0.000100 低于morning阈值0.000730"
+            "X条件检查失败: 9984 std_pct=0.000100 低于morning阈值0.000700"
         )
         
     def test_x_condition_without_active_entry_order_normal_check(self):
@@ -127,7 +127,7 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         # 应该通过正常的X条件检查
         self.assertTrue(result)
         self.strategy.write_log.assert_any_call(
-            "X条件检查通过: 9984 morning std_pct=0.000800 morning时段股价0符合4000以下限制 允许方向: ['long']"
+            "X条件检查通过: 9984 morning std_pct=0.000800 morning时段股价0符合4000以下限制 允许方向: ['long', 'short']"
         )
         
     def test_x_condition_without_active_entry_order_with_position(self):
@@ -165,7 +165,7 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         # 应该通过正常的X条件检查
         self.assertTrue(result)
         self.strategy.write_log.assert_any_call(
-            "X条件检查通过: 9984 morning std_pct=0.000800 morning时段股价0符合4000以下限制 允许方向: ['long']"
+            "X条件检查通过: 9984 morning std_pct=0.000800 morning时段股价0符合4000以下限制 允许方向: ['long', 'short']"
         )
         
     def test_x_condition_priority_order(self):

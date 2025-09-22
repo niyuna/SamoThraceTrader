@@ -48,7 +48,8 @@ def run_all_tests():
     'test_time_window_directions',     # 时间窗口交易方向配置测试
     'test_can_trade_direction_control', # can_trade方向控制测试
     'test_stop_loss',                  # 止损功能测试
-    'test_lunch_break_cancel_protection' # 中午休市期间取消订单保护测试
+    'test_lunch_break_cancel_protection', # 中午休市期间取消订单保护测试
+    'test_15_24_cancel_protection'     # 15:24分钟取消订单保护测试
 ]
     
     # 加载并添加每个测试模块
