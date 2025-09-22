@@ -93,7 +93,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.liquidation_executed = False            # 是否已执行平仓
         
         # 模拟持仓管理
-        self.simulated_positions = {}  # symbol -> {'long': bool, 'short': bool}
+        self.simulated_positions = {}  # symbol -> {'long': bool, 'short': bool, 'long_entry_time': datetime, 'short_entry_time': datetime, 'long_exit_time': datetime, 'short_exit_time': datetime}
         
         # 单只股票最大持仓金额（日元）
         self.single_stock_max_position = 250_000
@@ -749,34 +749,48 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         
         # 初始化模拟持仓
         if symbol not in self.simulated_positions:
-            self.simulated_positions[symbol] = {'long': False, 'short': False}
+            self.simulated_positions[symbol] = {
+                'long': False, 
+                'short': False,
+                'long_entry_time': None,
+                'short_entry_time': None,
+                'long_exit_time': None,
+                'short_exit_time': None
+            }
         
         positions = self.simulated_positions[symbol]
+        current_time = datetime.now()
         
         # 检查entry信号（当前没有仓位时）
         if not positions['long'] and not positions['short']:
             # 检查long entry
             if current_price <= bb_levels['lower']:
                 positions['long'] = True
-                self.write_log(f"模拟Long Entry触发: {symbol} 价格: {current_price:.2f} <= {bb_levels['lower']:.2f}")
+                positions['long_entry_time'] = current_time
+                self.write_log(f"模拟Long Entry触发: {symbol} 价格: {current_price:.2f} <= {bb_levels['lower']:.2f} 时间: {current_time.strftime('%H:%M:%S')}")
             
             # 检查short entry
             elif current_price >= bb_levels['upper']:
                 positions['short'] = True
-                self.write_log(f"模拟Short Entry触发: {symbol} 价格: {current_price:.2f} >= {bb_levels['upper']:.2f}")
+                positions['short_entry_time'] = current_time
+                self.write_log(f"模拟Short Entry触发: {symbol} 价格: {current_price:.2f} >= {bb_levels['upper']:.2f} 时间: {current_time.strftime('%H:%M:%S')}")
         
         # 检查exit信号（当前有仓位时）
         elif positions['long']:
             # Long仓位平仓
             if current_price >= bb_levels['exit_long']:
                 positions['long'] = False
-                self.write_log(f"模拟Long Exit触发: {symbol} 价格: {current_price:.2f} >= {bb_levels['exit_long']:.2f}")
+                positions['long_exit_time'] = current_time
+                entry_time_str = positions['long_entry_time'].strftime('%H:%M:%S') if positions['long_entry_time'] else '未知'
+                self.write_log(f"模拟Long Exit触发: {symbol} 价格: {current_price:.2f} >= {bb_levels['exit_long']:.2f} 时间: {current_time.strftime('%H:%M:%S')} (持仓时长: {current_time - positions['long_entry_time'] if positions['long_entry_time'] else '未知'})")
         
         elif positions['short']:
             # Short仓位平仓
             if current_price <= bb_levels['exit_short']:
                 positions['short'] = False
-                self.write_log(f"模拟Short Exit触发: {symbol} 价格: {current_price:.2f} <= {bb_levels['exit_short']:.2f}")
+                positions['short_exit_time'] = current_time
+                entry_time_str = positions['short_entry_time'].strftime('%H:%M:%S') if positions['short_entry_time'] else '未知'
+                self.write_log(f"模拟Short Exit触发: {symbol} 价格: {current_price:.2f} <= {bb_levels['exit_short']:.2f} 时间: {current_time.strftime('%H:%M:%S')} (持仓时长: {current_time - positions['short_entry_time'] if positions['short_entry_time'] else '未知'})")
     
     def _find_hft_context_by_order_id(self, order_id: str) -> Optional[HFTBBStockContext]:
         """
