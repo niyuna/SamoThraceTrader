@@ -69,9 +69,10 @@ class StockContext:
 class IntradayStrategyBase:
     """日内策略基础框架 - 集成技术指标和K线生成"""
     
-    def __init__(self, use_mock_gateway=False):
+    def __init__(self, use_mock_gateway=False, log_suffix=None):
         """初始化日内策略基础框架"""
         self.use_mock_gateway = use_mock_gateway
+        self.log_suffix = log_suffix
         self.event_engine = None
         self.main_engine = None
         self.gateway = None
@@ -122,13 +123,20 @@ class IntradayStrategyBase:
         SETTINGS["log.active"] = True
         SETTINGS["log.level"] = 20
         SETTINGS["log.console"] = True
-        SETTINGS["log.file_name"] = f"{self.__class__.__name__}"
+        SETTINGS["log.file_name"] = self._get_log_filename()
         # SETTINGS["log.format"] = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{extra[gateway_name]}</cyan> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
         setup_logger()
         # log file will be ".vntrader/log/vt_{today_date}.log", set in logger.py
         
         # 初始化动态参数系统
         self._init_dynamic_param_system()
+    
+    def _get_log_filename(self):
+        """生成日志文件名"""
+        base_name = self.__class__.__name__
+        if self.log_suffix:
+            return f"{base_name}_{self.log_suffix}"
+        return base_name
         
     # ==================== context management and base methods ====================
 

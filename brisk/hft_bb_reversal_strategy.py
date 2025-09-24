@@ -72,8 +72,8 @@ class HFTBBStockContext:
 class HFTBBReversalStrategy(IntradayStrategyBase):
     """HFT BB Reversal策略 - 基于布林带反转的日内高频交易策略"""
     
-    def __init__(self, use_mock_gateway=False, use_real_data=False, data_dir="data/brisk_agged_ohlc"):
-        super().__init__(use_mock_gateway)
+    def __init__(self, use_mock_gateway=False, use_real_data=False, data_dir="data/brisk_agged_ohlc", log_suffix=None):
+        super().__init__(use_mock_gateway, log_suffix)
         
         # BB策略特定参数
         self.bb_period = 20
@@ -97,11 +97,6 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         
         # 单只股票最大持仓金额（日元）
         self.single_stock_max_position = 250_000
-        # 个股配置管理器
-        # 在测试模式下使用空的配置文件，避免影响测试
-        # if use_mock_gateway:
-        #     self.stock_config_manager = StockConfigManager("nonexistent.json")
-        # else:
         self.stock_config_manager = StockConfigManager("configs/stock_configs.json")
         
         # 止损配置
@@ -1757,8 +1752,19 @@ def main():
     using_mock_data = False
     debug = True
 
+    profile = {
+        'log_suffix': '600_2000',
+        'low_price': 600,
+        'high_price': 2000,
+    }
+    # profile = {
+    #     'log_suffix': '2000_4000',
+    #     'low_price': 2000,
+    #     'high_price': 4000,
+    # }
+
     # 创建策略实例
-    strategy = HFTBBReversalStrategy(use_mock_gateway=using_mock_data, use_real_data=True, data_dir="data/brisk_agged_ohlc")
+    strategy = HFTBBReversalStrategy(use_mock_gateway=using_mock_data, use_real_data=True, data_dir="data/brisk_agged_ohlc", log_suffix=profile['log_suffix'])
     
     try:
         # 连接Gateway
@@ -1776,7 +1782,6 @@ def main():
         
         # 订阅股票
         # we will be using a static symbols list for this strategy, it should be a subset of TOPIX500
-        # symbols = ["9984", "6098"]  # 软银、乐天
         symbols = []
         if using_mock_data:
             symbols = ["9501"]
@@ -1791,7 +1796,7 @@ def main():
                 # 4000~5000 contains 66 stock
                 # 5000~10000 contains 76 stocks
                 # >10000 only 29 stocks
-                if 3500 >= prev_close > 600:
+                if profile['high_price'] >= prev_close > profile['low_price']:
                     symbols.append(symbol)
                 # after noon use 1500 >= prev_close > 1000
         
