@@ -27,6 +27,7 @@ def setup_logger():
     else:
         format: str = (
             "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> "
+            "| <blue>{extra[log_time]}</blue> "
             "| <level>{level}</level> "
             "| <cyan>{extra[gateway_name]}</cyan> "
             "| <level>{message}</level>"
