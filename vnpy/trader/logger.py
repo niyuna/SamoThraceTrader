@@ -35,7 +35,7 @@ def setup_logger():
 
 
     # Add default gateway
-    logger.configure(extra={"gateway_name": "Logger"})
+    logger.configure(extra={"gateway_name": "Logger", "log_time": datetime.now()})
 
 
     # Log level
