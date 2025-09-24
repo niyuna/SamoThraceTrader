@@ -1747,21 +1747,48 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
 
 def main():
     """主函数"""
-    print("启动HFT BB Reversal策略...")
+    import argparse
     
-    using_mock_data = False
-    debug = True
+    # 设置命令行参数解析
+    parser = argparse.ArgumentParser(description='HFT BB Reversal策略')
+    parser.add_argument('--profile', type=str, default='600_2000', 
+                       choices=['600_2000', '2000_4000'],
+                       help='选择运行profile (默认: 600_2000)')
+    parser.add_argument('--mock', action='store_true', default=False,
+                       help='使用模拟数据')
+    parser.add_argument('--debug', action='store_true', default=True,
+                       help='启用调试模式')
+    
+    args = parser.parse_args()
+    
+    print("启动HFT BB Reversal策略...")
+    print(f"使用Profile: {args.profile}")
+    
+    using_mock_data = args.mock
+    debug = args.debug
 
-    profile = {
-        'log_suffix': '600_2000',
-        'low_price': 600,
-        'high_price': 2000,
+    # 定义所有可用的profiles
+    profiles = {
+        '600_2000': {
+            'log_suffix': '600_2000',
+            'low_price': 600,
+            'high_price': 2000,
+        },
+        '2000_4000': {
+            'log_suffix': '2000_4000',
+            'low_price': 2000,
+            'high_price': 4000,
+        }
     }
-    # profile = {
-    #     'log_suffix': '2000_4000',
-    #     'low_price': 2000,
-    #     'high_price': 4000,
-    # }
+    
+    # 根据命令行参数选择profile
+    if args.profile not in profiles:
+        print(f"错误: 不支持的profile '{args.profile}'")
+        print(f"支持的profiles: {list(profiles.keys())}")
+        return
+    
+    profile = profiles[args.profile]
+    print(f"Profile配置: {profile}")
 
     # 创建策略实例
     strategy = HFTBBReversalStrategy(use_mock_gateway=using_mock_data, use_real_data=True, data_dir="data/brisk_agged_ohlc", log_suffix=profile['log_suffix'])
