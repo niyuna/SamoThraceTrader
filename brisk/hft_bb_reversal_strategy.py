@@ -126,11 +126,37 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         
         # X条件相关参数
         self.x_condition_enabled = True  # 是否启用X条件
-        self.x_condition_time_windows = [
-            (time(9, 15), time(9, 36)),    # 早上 9:15~9:35. need to +1 to end_time minutes because we are using time <= time(h, m) to test
-            (time(11, 29), time(11, 31)),  # 中午 11:29~11:30
-            (time(14, 35), time(15, 21))   # 下午 14:35~15:20
+        
+        # 统一的时间窗口配置
+        self.time_windows = [
+            {
+                'start': time(9, 5),
+                'end': time(9, 41),
+                'threshold': self.std_pct_threshold_morning,
+                'name': 'morning',
+                'allowed_directions': ['long', 'short'],  # 早上窗口允许多空双向
+                'exclude_minutes': []  # 排除的分钟（如15:00）
+            },
+            {
+                'start': time(11, 25),
+                'end': time(11, 31),
+                'threshold': self.std_pct_threshold_noon,
+                'name': 'noon',
+                'allowed_directions': ['long', 'short'],  # 中午窗口允许多空双向
+                'exclude_minutes': []  # 排除的分钟
+            },
+            {
+                'start': time(14, 10),
+                'end': time(15, 25),
+                'threshold': self.std_pct_threshold_afternoon,
+                'name': 'afternoon',
+                'allowed_directions': ['long', 'short'],  # 下午窗口允许多空双向
+                'exclude_minutes': [(14, 30), (15, 0)]  # 排除14:30和15:00分钟
+            }
         ]
+        
+        # 为了向后兼容，保留简单的元组格式
+        self.x_condition_time_windows = [(w['start'], w['end']) for w in self.time_windows]
 
         # 参数更新配置
         self.parameter_update_schedule = {
@@ -465,67 +491,21 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 'price_check_reason': f'获取前一天收盘价失败: {e}'
             }
         
-        # 定义时间窗口和对应的阈值及允许的交易方向
-        time_windows = [
-            {
-                'start': time(9, 5),
-                'end': time(9, 41),
-                'threshold': self.std_pct_threshold_morning,
-                'name': 'morning',
-                'allowed_directions': ['long', 'short']  # 早上窗口允许多空双向
-            },
-            {
-                'start': time(11, 25),
-                'end': time(11, 31),
-                'threshold': self.std_pct_threshold_noon,
-                'name': 'noon',
-                'allowed_directions': ['long', 'short']  # 中午窗口允许多空双向
-            },
-            {
-                'start': time(14, 10),
-                'end': time(15, 25),
-                'threshold': self.std_pct_threshold_afternoon,
-                'name': 'afternoon',
-                'allowed_directions': ['long', 'short']  # 下午窗口允许多空双向
-            }
-        ]
+        # 使用统一的时间窗口配置
+        time_windows = self.time_windows
         
         # 检查是否在时间窗口内
         for window in time_windows:
-            # 检查下午窗口时排除15:00分钟
-            if window['name'] == 'afternoon':
-                # 排除15:00分钟（15:00:00 到 15:00:59）
-                is_15_00_minute = current_time_only.hour == 15 and current_time_only.minute == 0
-                is_14_30_minute = current_time_only.hour == 14 and current_time_only.minute == 30
-                if window['start'] <= current_time_only <= window['end'] and not is_15_00_minute and not is_14_30_minute:
-                    # 在时间窗口内，检查价格限制
-                    price_check_result = self._check_price_limit(prev_close, window['name'])
-                    if not price_check_result['ok']:
-                        return {
-                            'in_window': True,
-                            'time_period': window['name'],
-                            'threshold': window['threshold'],
-                            'std_pct': None,
-                            'std_pct_ok': False,
-                            'allowed_directions': [],
-                            'price_check_ok': False,
-                            'price_check_reason': price_check_result['reason']
-                        }
-                    
-                    # 价格检查通过，检查std_pct
-                    std_pct_result = self._calculate_and_check_std_pct(symbol, window['threshold'])
-                    return {
-                        'in_window': True,
-                        'time_period': window['name'],
-                        'threshold': window['threshold'],
-                        'std_pct': std_pct_result['std_pct'],
-                        'std_pct_ok': std_pct_result['ok'],
-                        'allowed_directions': window['allowed_directions'],
-                        'price_check_ok': True,
-                        'price_check_reason': price_check_result['reason']
-                    }
-            else:
-                if window['start'] <= current_time_only <= window['end']:
+            # 检查是否在时间窗口内
+            if window['start'] <= current_time_only <= window['end']:
+                # 检查是否在排除的分钟内
+                is_excluded = False
+                for exclude_hour, exclude_minute in window['exclude_minutes']:
+                    if current_time_only.hour == exclude_hour and current_time_only.minute == exclude_minute:
+                        is_excluded = True
+                        break
+                
+                if not is_excluded:
                     # 在时间窗口内，检查价格限制
                     price_check_result = self._check_price_limit(prev_close, window['name'])
                     if not price_check_result['ok']:
@@ -570,7 +550,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         
         Args:
             prev_close: 前一天收盘价
-            time_period: 时间段 ('morning', 'noon', 'afternoon')
+            time_period: 时间段 ('morning', 'noon', 'afternoon' 或自定义名称)
             
         Returns:
             dict: 包含检查结果的字典
@@ -582,10 +562,13 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             'afternoon': self.price_limit_afternoon
         }
         
+        # 如果时间段不在预定义列表中，使用默认的价格限制（最宽松的限制）
         if time_period not in price_limit_map:
+            # 对于自定义时间段，使用最宽松的价格限制
+            price_limit = max(self.price_limit_morning, self.price_limit_noon, self.price_limit_afternoon)
             return {
-                'ok': False,
-                'reason': f'未知时间段: {time_period}'
+                'ok': True,
+                'reason': f'{time_period}时段股价{prev_close}符合自定义时间段限制（使用默认限制{price_limit}）'
             }
         
         price_limit = price_limit_map[time_period]
