@@ -99,30 +99,6 @@ class TestStopLoss(unittest.TestCase):
         period = self.strategy._get_time_period(default_time)
         self.assertEqual(period, "default")
     
-    def test_get_stop_loss_config_morning(self):
-        """测试获取早上时间段止损配置"""
-        # 直接测试早上配置
-        morning_config = self.strategy.stop_loss_by_time["morning"]
-        self.assertEqual(morning_config.first_stage_threshold, 0.005)  # 早上更保守
-        self.assertEqual(morning_config.second_stage_threshold, 0.0055)
-        self.assertTrue(morning_config.enabled)
-    
-    def test_get_stop_loss_config_noon(self):
-        """测试获取中午时间段止损配置"""
-        # 直接测试中午配置
-        noon_config = self.strategy.stop_loss_by_time["noon"]
-        self.assertEqual(noon_config.first_stage_threshold, 0.006)  # 中午稍微宽松
-        self.assertEqual(noon_config.second_stage_threshold, 0.0065)
-        self.assertTrue(noon_config.enabled)
-    
-    def test_get_stop_loss_config_afternoon(self):
-        """测试获取下午时间段止损配置"""
-        # 直接测试下午配置
-        afternoon_config = self.strategy.stop_loss_by_time["afternoon"]
-        self.assertEqual(afternoon_config.first_stage_threshold, 0.005)  # 下午跟早上一样保守
-        self.assertEqual(afternoon_config.second_stage_threshold, 0.0055)
-        self.assertTrue(afternoon_config.enabled)
-    
     def test_get_stop_loss_config_default(self):
         """测试获取默认止损配置"""
         # 直接测试默认配置

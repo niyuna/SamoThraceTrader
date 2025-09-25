@@ -86,6 +86,11 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.std_pct_threshold_noon = 0.000001      # 中午11:29-11:30阈值（极小的值，几乎总是通过）
         self.std_pct_threshold_afternoon = 0.00030  # 下午14:35-15:20阈值
         
+        # 价格限制配置（前一天收盘价上限）
+        self.price_limit_morning = 4000    # 早上时段价格上限
+        self.price_limit_noon = 4000       # 中午时段价格上限
+        self.price_limit_afternoon = 3000  # 下午时段价格上限
+        
         # 收盘前平仓参数
         self.market_close_liquidation_enabled = True  # 是否启用收盘前平仓
         self.market_close_time = time(15, 24)        # 普通交易结束时间
@@ -570,34 +575,30 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         Returns:
             dict: 包含检查结果的字典
         """
-        if time_period in ['morning', 'noon']:
-            # morning/noon的股价需要在4000以下
-            if prev_close >= 4000:
-                return {
-                    'ok': False,
-                    'reason': f'{time_period}时段股价{prev_close}超过4000限制'
-                }
-            else:
-                return {
-                    'ok': True,
-                    'reason': f'{time_period}时段股价{prev_close}符合4000以下限制'
-                }
-        elif time_period == 'afternoon':
-            # afternoon的股价需要在2500以下
-            if prev_close >= 3000:
-                return {
-                    'ok': False,
-                    'reason': f'{time_period}时段股价{prev_close}超过2500限制'
-                }
-            else:
-                return {
-                    'ok': True,
-                    'reason': f'{time_period}时段股价{prev_close}符合2500以下限制'
-                }
-        else:
+        # 获取对应时间段的价格限制
+        price_limit_map = {
+            'morning': self.price_limit_morning,
+            'noon': self.price_limit_noon,
+            'afternoon': self.price_limit_afternoon
+        }
+        
+        if time_period not in price_limit_map:
             return {
                 'ok': False,
                 'reason': f'未知时间段: {time_period}'
+            }
+        
+        price_limit = price_limit_map[time_period]
+        
+        if prev_close >= price_limit:
+            return {
+                'ok': False,
+                'reason': f'{time_period}时段股价{prev_close}超过{price_limit}限制'
+            }
+        else:
+            return {
+                'ok': True,
+                'reason': f'{time_period}时段股价{prev_close}符合{price_limit}以下限制'
             }
     
     def _calculate_and_check_std_pct(self, symbol: str, threshold: float) -> dict:
