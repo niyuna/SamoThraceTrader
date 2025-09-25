@@ -127,10 +127,10 @@ class BriskGateway(BaseGateway):
         # 启动订单状态轮询线程
         self._start_polling_thread()
 
-        # 对于本地连接，禁用心跳检测
-        # self._heartbeat_thread = threading.Thread(target=self._run_heartbeat)
-        # self._heartbeat_thread.daemon = True
-        # self._heartbeat_thread.start()
+        # 启动心跳检测
+        self._heartbeat_thread = threading.Thread(target=self._run_heartbeat)
+        self._heartbeat_thread.daemon = True
+        self._heartbeat_thread.start()
 
         self.write_log("Brisk Gateway启动成功")
 
@@ -261,6 +261,8 @@ class BriskGateway(BaseGateway):
             self._ws = await websockets.connect(self._ws_url)
             self._connected = True
             self._reconnect_attempts = 0
+            # 设置心跳时间为过去的时间，确保立即发送第一个ping，但不会触发超时
+            self._last_heartbeat = time.time() - self._heartbeat_interval + 1
             self.write_log("WebSocket连接成功")
 
             # 发送订阅消息
@@ -315,6 +317,11 @@ class BriskGateway(BaseGateway):
             # 处理tick数据
             if "frames" in data:
                 await self._process_tick_data(data["frames"])
+            
+            # 处理心跳pong响应
+            elif data.get("type") == "pong":
+                self._last_heartbeat = time.time()
+                self.write_log("收到心跳pong响应")
                 
         except json.JSONDecodeError as e:
             self.write_log(f"JSON解析失败: {e}")
@@ -426,12 +433,42 @@ class BriskGateway(BaseGateway):
         """运行心跳检测"""
         while self._active:
             try:
-                if self._connected:
+                if self._connected and self._ws:
                     current_time = time.time()
-                    if current_time - self._last_heartbeat > self._heartbeat_interval * 2:
+                    time_since_last_heartbeat = current_time - self._last_heartbeat
+                    
+                    # 添加调试日志
+                    self.write_log(f"心跳检测: 连接状态={self._connected}, 距离上次心跳={time_since_last_heartbeat:.1f}秒, 心跳间隔={self._heartbeat_interval}秒")
+                    
+                    # 先检查心跳超时（超过2倍间隔没有收到pong）
+                    if time_since_last_heartbeat > self._heartbeat_interval * 3:
                         self.write_log("心跳超时，准备重连")
                         self._connected = False
+                        # 强制关闭连接以触发重连
+                        try:
+                            asyncio.run(self._ws.close())
+                        except:
+                            self.write_log(f"关闭连接失败: {e}")
                         break
+                    
+                    # 再检查是否超过心跳间隔，需要发送ping
+                    elif time_since_last_heartbeat > self._heartbeat_interval:
+                        # 发送ping消息
+                        try:
+                            ping_msg = {"type": "ping"}
+                            asyncio.run(self._ws.send(json.dumps(ping_msg)))
+                            self.write_log("发送心跳ping")
+                            # 更新心跳时间，避免重复发送
+                            self._last_heartbeat = current_time
+                            self.write_log(f"更新心跳时间后: _last_heartbeat={self._last_heartbeat}")
+                        except Exception as e:
+                            self.write_log(f"发送心跳ping失败: {e}")
+                            self._connected = False
+                            break
+                else:
+                    # 添加调试日志：为什么心跳检测被跳过
+                    self.write_log(f"心跳检测跳过: _connected={self._connected}, _ws={self._ws is not None}")
+                
                 time.sleep(self._heartbeat_interval)
             except Exception as e:
                 self.write_log(f"心跳检测异常: {e}")
