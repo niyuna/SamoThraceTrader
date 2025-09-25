@@ -16,7 +16,7 @@ class DynamicParamManager:
         self.config_provider = config_provider
         self.last_check_time: Optional[datetime] = None
         self.last_config: Optional[StrategyConfig] = None
-        self.check_interval: int = 60  # 默认60秒检查一次
+        self.check_interval: int = 30  # 默认60秒检查一次
         
     def should_check_config(self) -> bool:
         """判断是否应该检查配置"""
