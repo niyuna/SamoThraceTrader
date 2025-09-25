@@ -1727,6 +1727,36 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             self.write_log(f"发送入场订单成功: {symbol} {direction.value} 价格{price:.2f} 订单ID: {context.entry_order_id}")
         else:
             self.write_log(f"发送入场订单失败: {symbol} {direction.value} 价格{price:.2f}")
+    
+    def _update_strategy_specific_params(self, params: Dict[str, Any]):
+        """更新HFT BB Reversal策略特定参数"""
+        # 更新价格限制参数
+        price_limit_params = [
+            'price_limit_morning',
+            'price_limit_noon', 
+            'price_limit_afternoon'
+        ]
+        
+        for param in price_limit_params:
+            if param in params:
+                old_value = getattr(self, param, None)
+                new_value = params[param]
+                setattr(self, param, new_value)
+                self.write_log(f"价格限制参数 {param} 更新: {old_value} -> {new_value}")
+        
+        # 更新其他策略特定参数（如果需要的话）
+        other_params = [
+            'bb_entry_std_multiplier',
+            'bb_exit_std_multiplier',
+            'trigger_tick_count'
+        ]
+        
+        for param in other_params:
+            if param in params:
+                old_value = getattr(self, param, None)
+                new_value = params[param]
+                setattr(self, param, new_value)
+                self.write_log(f"策略参数 {param} 更新: {old_value} -> {new_value}")
 
 
 def main():
@@ -1826,6 +1856,9 @@ def main():
         # 注册收盘前平仓定时器
         strategy._register_market_close_timer()
         
+        # 设置动态参数配置提供者
+        from util.yaml_config_provider import YAMLConfigurationProvider
+        strategy.set_configuration_provider(YAMLConfigurationProvider("config/strategies", "production"))
         
         # 等待一段时间接收数据
         print("等待接收数据...")

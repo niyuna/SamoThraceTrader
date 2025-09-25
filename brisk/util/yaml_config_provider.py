@@ -49,7 +49,13 @@ class YAMLConfigurationProvider(ConfigurationProvider):
     def _strategy_class_to_filename(self, strategy_class_name: str) -> str:
         """将策略类名转换为文件名"""
         # VWAPFailureStrategy -> vwap_failure_strategy.yaml
+        # HFTBBReversalStrategy -> hft_bb_reversal_strategy.yaml
         import re
+        
+        # 特殊处理HFT开头的策略
+        if strategy_class_name == 'HFTBBReversalStrategy':
+            return 'hft_bb_reversal_strategy.yaml'
+        
         # 智能驼峰转换：处理连续大写字母的情况
         # 先找到所有大写字母序列的边界
         filename = re.sub(r'([a-z])([A-Z])', r'\1_\2', strategy_class_name)

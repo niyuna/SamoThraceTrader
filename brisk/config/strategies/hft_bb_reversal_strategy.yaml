@@ -1,0 +1,68 @@
+# HFT BB Reversal Strategy Configuration
+# 动态参数配置文件
+
+strategy_name: "HFTBBReversalStrategy"
+version: "1.0.0"
+environment: "production"
+is_valid: true
+# last_updated: "2024-01-15T10:00:00"
+
+metadata:
+  description: "HFT BB Reversal策略动态参数配置"
+  author: "Strategy Team"
+  # created_at: "2024-01-15T10:00:00"
+  # updated_at: "2024-01-15T10:00:00"
+
+# 策略参数配置
+params:
+  # 价格限制参数（动态可调整）
+  price_limit_morning: 4000    # 早上时段价格上限
+  price_limit_noon: 4000       # 中午时段价格上限  
+  price_limit_afternoon: 3000  # 下午时段价格上限
+  
+  # 其他策略参数（可选动态调整）
+  # bb_entry_std_multiplier: 3.0    # BB入场标准差倍数
+  # bb_exit_std_multiplier: -1.0    # BB出场标准差倍数
+  # trigger_tick_count: 3           # 触发价格调整的tick数量
+
+# 参数说明
+parameter_descriptions:
+  price_limit_morning: "早上交易时段（9:05-9:41）的股价上限，超过此价格的股票不允许交易"
+  price_limit_noon: "中午交易时段（11:25-11:31）的股价上限，超过此价格的股票不允许交易"
+  price_limit_afternoon: "下午交易时段（14:10-15:25）的股价上限，超过此价格的股票不允许交易"
+  bb_entry_std_multiplier: "布林带入场标准差倍数，用于计算入场价格"
+  bb_exit_std_multiplier: "布林带出场标准差倍数，用于计算出场价格"
+  trigger_tick_count: "触发价格调整所需的tick数量"
+
+# 参数验证规则
+validation_rules:
+  price_limit_morning:
+    type: "number"
+    min: 100
+    max: 10000
+    description: "早上价格限制必须在100-10000之间"
+  price_limit_noon:
+    type: "number"
+    min: 100
+    max: 10000
+    description: "中午价格限制必须在100-10000之间"
+  price_limit_afternoon:
+    type: "number"
+    min: 100
+    max: 10000
+    description: "下午价格限制必须在100-10000之间"
+  bb_entry_std_multiplier:
+    type: "number"
+    min: 1.0
+    max: 10.0
+    description: "BB入场标准差倍数必须在1.0-10.0之间"
+  bb_exit_std_multiplier:
+    type: "number"
+    min: -10.0
+    max: 0.0
+    description: "BB出场标准差倍数必须在-10.0-0.0之间"
+  trigger_tick_count:
+    type: "integer"
+    min: 1
+    max: 10
+    description: "触发tick数量必须在1-10之间"
