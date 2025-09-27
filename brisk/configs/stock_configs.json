@@ -45,7 +45,7 @@
     ],
     "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
   },
-  "7272,4612,7267,3407": {
+  "7272,4612,7267,3407,3697,5301,8750,9468,8697,7186": {
     "bb_entry_std_multiplier": 3.0,
     "bb_exit_std_multiplier": -0.5,
     "trading_windows": [
@@ -69,9 +69,9 @@
     ],
     "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
   },
-  "5019,7272,7261,7453,8601,8604": {
+  "5019,7272,7261,7453,8601,8604,2801": {
     "bb_entry_std_multiplier": 3.0,
-    "bb_exit_std_multiplier": -1.0,
+    "bb_exit_std_multiplier": -0.5,
     "trading_windows": [
       {
         "start_time": "09:30",
@@ -81,7 +81,7 @@
     ],
     "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
   },
-  "9501,9503,4666,4587": {
+  "9501,4666,4587,6323,8233": {
     "bb_entry_std_multiplier": 10.0,
     "bb_exit_std_multiplier": -0.5,
     "trading_windows": [
