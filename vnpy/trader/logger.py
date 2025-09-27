@@ -35,8 +35,21 @@ def setup_logger():
 
 
     # Add default gateway
-    logger.configure(extra={"gateway_name": "Logger", "log_time": datetime.now()})
+    logger.configure(extra={"gateway_name": "Logger", "log_time": datetime.now(), "log_lag": -1.0})
 
+    def add_lag(record):
+        try:
+            # t1: loguru 的记录时间（是 timezone-aware 的 datetime）
+            t1 = record["time"]                     # datetime
+            # t2: 你通过 bind 进去的业务时间，建议是 datetime 或 "HH:MM:SS(.fff/ffffff)"
+            t2 = record["extra"].get("log_time")
+            lag = (t1 - t2).total_seconds()
+            record["extra"]["log_lag"] = lag
+        except Exception:
+            # 出错就保持默认值（或你可以写成 "-"）
+            pass
+
+    # logger.configure(patcher=add_lag)
 
     # Log level
     level: int = SETTINGS["log.level"]
