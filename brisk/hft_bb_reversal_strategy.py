@@ -1766,7 +1766,7 @@ def main():
     # 设置命令行参数解析
     parser = argparse.ArgumentParser(description='HFT BB Reversal策略')
     parser.add_argument('--profile', type=str, default='600_2000', 
-                       choices=['600_2000', '2000_4000'],
+                       choices=['600_2000', '2000_4000', '600_4000'],
                        help='选择运行profile (默认: 600_2000)')
     parser.add_argument('--mock', action='store_true', default=False,
                        help='使用模拟数据')
@@ -1791,6 +1791,11 @@ def main():
         '2000_4000': {
             'log_suffix': '2000_4000',
             'low_price': 2000,
+            'high_price': 4000,
+        },
+        '600_4000': {
+            'log_suffix': '600_4000',
+            'low_price': 600,
             'high_price': 4000,
         }
     }
