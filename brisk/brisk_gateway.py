@@ -100,7 +100,7 @@ class BriskGateway(BaseGateway):
         self.polling_interval: int = 1  # 轮询间隔（秒）
         self._polling_active: bool = False
 
-        token = kabus_api.init_trading_api()
+        token = kabus_api.init_trading_api(init_rate_limiter=True)
         if token is None:
             self.write_log("Kabus API token is None")
             return
