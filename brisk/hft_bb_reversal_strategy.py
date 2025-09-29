@@ -1857,7 +1857,7 @@ def main():
             from common.date_utils import prev_working_day
             preload_yyyymmdd = prev_working_day(datetime.now().strftime("%Y%m%d"))
 
-        # strategy.preload_historical_data(symbols, preload_yyyymmdd)
+        strategy.preload_historical_data(symbols, preload_yyyymmdd)
         strategy.subscribe(symbols)
         
         # 注册收盘前平仓定时器
