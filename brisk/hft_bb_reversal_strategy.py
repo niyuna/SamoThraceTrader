@@ -1105,7 +1105,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             # 1. 取消entry订单
             if context.entry_order_id:
                 self.write_log(f"取消entry订单: {symbol} {context.entry_order_id}")
-                success = self._cancel_order_safely(context.entry_order_id, symbol)
+                success = self._cancel_order_with_verification(context.entry_order_id, symbol)
                 if success:
                     context.entry_order_id = ""
                     context.entry_order_time = None
@@ -1120,7 +1120,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             if context.exit_order_id:
                 # 取消原limit订单
                 self.write_log(f"取消原exit订单: {symbol} {context.exit_order_id}")
-                success = self._cancel_order_safely(context.exit_order_id, symbol)
+                success = self._cancel_order_with_verification(context.exit_order_id, symbol)
                 if not success:
                     failed_count += 1
                     self.write_log(f"取消exit订单失败: {symbol} {context.exit_order_id}")
@@ -1444,7 +1444,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             context.already_traded < context.position_size):
             # 取消部分成交的入场订单
             self.write_log(f"取消部分成交的入场订单: {symbol} 已成交{context.already_traded}")
-            if self._cancel_order_safely(context.entry_order_id, symbol):
+            if self._cancel_order_with_verification(context.entry_order_id, symbol):
                 context.entry_order_id = ""
                 context.entry_order_time = None
         
@@ -1453,9 +1453,11 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             # 已有出场订单，检查价格是否需要更新
             if abs(context.exit_price - exit_price) > 0.1:  # 价格差异超过0.01
                 # 取消旧订单
-                if self._cancel_order_safely(context.exit_order_id, symbol):
+                if self._cancel_order_with_verification(context.exit_order_id, symbol):
                     context.exit_order_id = ""
                     self.write_log(f"取消旧出场订单: {symbol} 价格差异过大")
+                else:
+                    self.write_log(f"取消旧出场订单失败: {symbol} 价格差异过大")
             else:
                 # 价格相同，无需更新
                 self.write_log(f"价格相同，无需更新出场订单: {symbol} 价格{exit_price:.2f}")
@@ -1855,7 +1857,7 @@ def main():
             from common.date_utils import prev_working_day
             preload_yyyymmdd = prev_working_day(datetime.now().strftime("%Y%m%d"))
 
-        strategy.preload_historical_data(symbols, preload_yyyymmdd)
+        # strategy.preload_historical_data(symbols, preload_yyyymmdd)
         strategy.subscribe(symbols)
         
         # 注册收盘前平仓定时器
