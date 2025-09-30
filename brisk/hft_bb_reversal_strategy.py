@@ -87,7 +87,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.std_pct_threshold_afternoon = 0.00030  # 下午14:35-15:20阈值
         
         # 价格限制配置（前一天收盘价上限）
-        self.price_limit_morning = 4000    # 早上时段价格上限
+        self.price_limit_morning = 2000    # 早上时段价格上限
         self.price_limit_noon = 4000       # 中午时段价格上限
         self.price_limit_afternoon = 3000  # 下午时段价格上限
         
@@ -1842,7 +1842,7 @@ def main():
     # 设置命令行参数解析
     parser = argparse.ArgumentParser(description='HFT BB Reversal策略')
     parser.add_argument('--profile', type=str, default='600_2000', 
-                       choices=['600_2000', '2000_4000', '600_4000'],
+                       choices=['600_2000', '2000_4000', '600_4000', '2000_5000'],
                        help='选择运行profile (默认: 600_2000)')
     parser.add_argument('--mock', action='store_true', default=False,
                        help='使用模拟数据')
