@@ -1682,7 +1682,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             if context.entry_order_time:
                 # 检查是否在同一分钟内
                 time_diff = current_time - context.entry_order_time
-                if time_diff.total_seconds() < 60:  # 同一分钟内
+                if time_diff.total_seconds() < 40:  # 同一分钟内
                     self.write_log(f"跳过取消订单: {symbol} 订单在同一分钟内发送，避免频繁撤单")
                     return  # 直接返回，不执行任何订单操作
             
