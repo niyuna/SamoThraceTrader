@@ -16,6 +16,7 @@ from enhanced_bargenerator import EnhancedBarGenerator
 
 from brisk_gateway import BriskGateway
 from mock_brisk_gateway import MockBriskGateway
+from brisk_eshiten_gateway import BriskEshitenGateway
 
 from vnpy.trader.event import EVENT_TICK, EVENT_LOG, EVENT_ORDER, EVENT_TRADE
 from vnpy.event import Event
@@ -38,6 +39,13 @@ class StrategyState(Enum):
     HOLDING = "holding"              # 持仓中，等待 exit 信号
     WAITING_EXIT = "waiting_exit"    # 等待 exit 订单成交
     WAITING_TIMEOUT_EXIT = "waiting_timeout_exit"  # 等待timeout exit limit order
+
+
+class GatewayType(Enum):
+    """Gateway类型枚举"""
+    MOCK = "mock"
+    BRISK = "brisk"
+    BRISK_ESHITEN = "brisk_eshiten"
 
 
 @dataclass
@@ -69,9 +77,25 @@ class StockContext:
 class IntradayStrategyBase:
     """日内策略基础框架 - 集成技术指标和K线生成"""
     
-    def __init__(self, use_mock_gateway=False, log_suffix=None):
-        """初始化日内策略基础框架"""
+    def __init__(self, use_mock_gateway=False, gateway_type: str = "brisk", log_suffix=None):
+        """
+        初始化日内策略基础框架
+        
+        Args:
+            use_mock_gateway: 是否使用mock gateway（向后兼容参数）
+            gateway_type: Gateway类型 ("mock", "brisk", "brisk_eshiten")
+            log_suffix: 日志后缀
+        """
+        # 保持向后兼容性
         self.use_mock_gateway = use_mock_gateway
+        self.gateway_type = gateway_type
+        
+        # 如果同时提供了两个参数，gateway_type优先级更高
+        if gateway_type != "brisk":  # 如果明确指定了gateway_type
+            self.use_mock_gateway = (gateway_type == "mock")
+        elif use_mock_gateway:  # 如果只使用了旧的参数
+            self.gateway_type = "mock"
+            
         self.log_suffix = log_suffix
         self.event_engine = None
         self.main_engine = None
@@ -960,11 +984,15 @@ class IntradayStrategyBase:
               f"收:{bar.close_price:.2f} 量:{bar.volume}")
     
     def connect(self, setting: dict = None):
-        """连接Gateway，支持mock和真实gateway"""
-        if self.use_mock_gateway:
+        """连接Gateway，支持多种gateway类型"""
+        # 根据gateway_type选择对应的gateway类
+        if self.gateway_type == "mock":
             gateway_cls = MockBriskGateway
             gateway_name = "MOCK_BRISK"
-        else:
+        elif self.gateway_type == "brisk_eshiten":
+            gateway_cls = BriskEshitenGateway
+            gateway_name = "BRISK_ESHITEN"
+        else:  # 默认使用brisk
             gateway_cls = BriskGateway
             gateway_name = "BRISK"
 
@@ -985,12 +1013,21 @@ class IntradayStrategyBase:
         self.event_engine.register(EVENT_LOG, log_engine.process_log_event)
 
         if setting is None:
-            if self.use_mock_gateway:
+            if self.gateway_type == "mock":
                 setting = {
                     "tick_mode": "mock",
                     "mock_account_balance": 10000000,
                 }
-            else:
+            elif self.gateway_type == "brisk_eshiten":
+                setting = {
+                    "tick_server_url": "ws://127.0.0.1:8001/ws",
+                    "tick_server_http_url": "http://127.0.0.1:8001",
+                    "reconnect_interval": 5,
+                    "heartbeat_interval": 30,
+                    "max_reconnect_attempts": 20,
+                    "polling_interval": 1,
+                }
+            else:  # brisk
                 setting = {
                     "tick_server_url": "ws://127.0.0.1:8001/ws",
                     "tick_server_http_url": "http://127.0.0.1:8001",
