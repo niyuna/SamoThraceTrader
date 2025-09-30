@@ -20,6 +20,9 @@ params:
   price_limit_noon: 5000       # 中午时段价格上限  
   price_limit_afternoon: 3000  # 下午时段价格上限
   
+  # 订单取消保护参数
+  cancel_protection_seconds: 20  # 订单发送后多少秒内不允许取消
+  
   # 其他策略参数（可选动态调整）
   # bb_entry_std_multiplier: 3.0    # BB入场标准差倍数
   # bb_exit_std_multiplier: -1.0    # BB出场标准差倍数
@@ -30,6 +33,7 @@ parameter_descriptions:
   price_limit_morning: "早上交易时段（9:05-9:41）的股价上限，超过此价格的股票不允许交易"
   price_limit_noon: "中午交易时段（11:25-11:31）的股价上限，超过此价格的股票不允许交易"
   price_limit_afternoon: "下午交易时段（14:10-15:25）的股价上限，超过此价格的股票不允许交易"
+  cancel_protection_seconds: "订单发送后多少秒内不允许取消，用于避免频繁撤单"
   bb_entry_std_multiplier: "布林带入场标准差倍数，用于计算入场价格"
   bb_exit_std_multiplier: "布林带出场标准差倍数，用于计算出场价格"
   trigger_tick_count: "触发价格调整所需的tick数量"
@@ -66,3 +70,8 @@ validation_rules:
     min: 1
     max: 10
     description: "触发tick数量必须在1-10之间"
+  cancel_protection_seconds:
+    type: "integer"
+    min: 10
+    max: 300
+    description: "取消保护时间必须在10-300秒之间"

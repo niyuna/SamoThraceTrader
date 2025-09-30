@@ -94,6 +94,9 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # 股价变动限制配置
         self.max_price_change_pct = 8.0    # 最大允许的股价变动百分比
         
+        # 订单取消保护配置
+        self.cancel_protection_seconds = 20  # 订单发送后多少秒内不允许取消
+        
         # 收盘前平仓参数
         self.market_close_liquidation_enabled = True  # 是否启用收盘前平仓
         self.market_close_time = time(15, 24)        # 普通交易结束时间
@@ -1679,16 +1682,24 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         if context.entry_order_id:
             # 检查是否在同一分钟内发送的订单，如果是则不取消
             current_time = datetime.now()
+            current_hour = current_time.hour
+            current_minute = current_time.minute
+            
             if context.entry_order_time:
-                # 检查是否在同一分钟内
+                # 检查是否在取消保护时间内
                 time_diff = current_time - context.entry_order_time
-                if time_diff.total_seconds() < 40:  # 同一分钟内
-                    self.write_log(f"跳过取消订单: {symbol} 订单在同一分钟内发送，避免频繁撤单")
+                if time_diff.total_seconds() < self.cancel_protection_seconds:
+                    self.write_log(f"跳过取消订单: {symbol} 订单在{self.cancel_protection_seconds}秒内发送，避免频繁撤单")
+                    return  # 直接返回，不执行任何订单操作
+                
+                # 检查是否在同一分钟内（小时和分钟数相同）
+                entry_hour = context.entry_order_time.hour
+                entry_minute = context.entry_order_time.minute
+                if entry_hour == current_hour and entry_minute == current_minute:
+                    self.write_log(f"跳过取消订单: {symbol} 订单在同一分钟内发送({current_time.strftime('%H:%M')})，避免频繁撤单")
                     return  # 直接返回，不执行任何订单操作
             
             # 检查是否在中午休市时间（11:30-11:31），如果是则不取消订单
-            current_hour = current_time.hour
-            current_minute = current_time.minute
             if current_hour == 11 and current_minute >= 30 and current_minute <= 31:
                 self.write_log(f"跳过取消订单: {symbol} 当前时间在中午休市期间({current_time.strftime('%H:%M')})，broker不接受新订单")
                 return  # 直接返回，不执行任何订单操作
@@ -1812,7 +1823,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         other_params = [
             'bb_entry_std_multiplier',
             'bb_exit_std_multiplier',
-            'trigger_tick_count'
+            'trigger_tick_count',
+            'cancel_protection_seconds'
         ]
         
         for param in other_params:
@@ -1861,7 +1873,7 @@ def main():
             'log_suffix': '600_4000',
             'low_price': 600,
             'high_price': 4000,
-        }，
+        },
         '2000_5000': {
             'log_suffix': '2000_5000',
             'low_price': 2000,
