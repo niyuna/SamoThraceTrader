@@ -73,7 +73,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
     """HFT BB Reversal策略 - 基于布林带反转的日内高频交易策略"""
     
     def __init__(self, use_mock_gateway=False, use_real_data=False, data_dir="data/brisk_agged_ohlc", log_suffix=None):
-        super().__init__(use_mock_gateway, log_suffix)
+        super().__init__(use_mock_gateway=use_mock_gateway, gateway_type="brisk", log_suffix=log_suffix)
         
         # BB策略特定参数
         self.bb_period = 20
