@@ -91,6 +91,9 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.price_limit_noon = 4000       # 中午时段价格上限
         self.price_limit_afternoon = 3000  # 下午时段价格上限
         
+        # 股价变动限制配置
+        self.max_price_change_pct = 8.0    # 最大允许的股价变动百分比
+        
         # 收盘前平仓参数
         self.market_close_liquidation_enabled = True  # 是否启用收盘前平仓
         self.market_close_time = time(15, 24)        # 普通交易结束时间
@@ -312,6 +315,12 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                                   f"低于{time_window_result['time_period']}阈值{time_window_result['threshold']:.6f}")
                     return []
                 
+                # 检查股价变动限制
+                price_change_result = self._check_price_change_limit(symbol)
+                if not price_change_result['ok']:
+                    self.write_log(f"X条件检查失败: {symbol} {price_change_result['reason']}")
+                    return []
+                
                 # 检查方向是否匹配
                 allowed_directions = time_window_result['allowed_directions']
                 if simulated_direction in allowed_directions:
@@ -325,14 +334,20 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # if not self._check_no_position(symbol):
         #     self.write_log(f"X条件检查失败: {symbol} 已有持仓")
         #     return []
+        
+        # 3. 检查股价变动限制
+        price_change_result = self._check_price_change_limit(symbol)
+        if not price_change_result['ok']:
+            self.write_log(f"X条件检查失败: {symbol} {price_change_result['reason']}")
+            return []
             
-        # 3. 检查时间窗口和std_pct阈值
+        # 4. 检查时间窗口和std_pct阈值
         time_window_result = self._check_time_window_with_std_pct(symbol, current_time)
         if not time_window_result['in_window']:
             self.write_log(f"X条件检查失败: 当前时间不在交易窗口内")
             return []
         
-        # 4. 检查价格限制
+        # 5. 检查价格限制
         if not time_window_result['price_check_ok']:
             self.write_log(f"X条件检查失败: {symbol} {time_window_result['price_check_reason']}")
             return []
@@ -365,6 +380,53 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             if window_start <= entry_time_only <= window_end:
                 return True
         return False
+    
+    def _check_price_change_limit(self, symbol: str) -> dict:
+        """
+        检查当前bar收盘价相比前一天收盘价的变动是否超过限制
+        
+        Args:
+            symbol: 股票代码
+            
+        Returns:
+            dict: 包含检查结果的字典
+        """
+        try:
+            # 获取前一天收盘价
+            prev_close = self.get_stock_prev_close(symbol)
+            if prev_close is None:
+                return {
+                    'ok': True,  # 如果无法获取前一天价格，允许通过
+                    'reason': '无法获取前一天收盘价，跳过变动检查'
+                }
+            
+            # 获取当前bar数据
+            current_bar = self._get_current_bar(symbol)
+            if current_bar is None:
+                return {
+                    'ok': True,  # 如果无法获取当前bar，允许通过
+                    'reason': '无法获取当前bar，跳过变动检查'
+                }
+            
+            # 计算变动百分比
+            change_pct = abs((current_bar.close_price - prev_close) / prev_close * 100)
+            
+            if change_pct > self.max_price_change_pct:
+                return {
+                    'ok': False,
+                    'reason': f'股价变动{change_pct:.2f}%超过{self.max_price_change_pct}%限制'
+                }
+            else:
+                return {
+                    'ok': True,
+                    'reason': f'股价变动{change_pct:.2f}%在{self.max_price_change_pct}%限制内'
+                }
+                
+        except Exception as e:
+            return {
+                'ok': True,  # 异常情况下允许通过
+                'reason': f'股价变动检查异常: {e}'
+            }
     
     def _get_simulated_position_direction(self, symbol: str) -> Optional[str]:
         """
