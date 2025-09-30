@@ -238,27 +238,41 @@ class BriskGateway(BaseGateway):
 
     def _run_websocket(self) -> None:
         """运行WebSocket连接"""
+        self.write_log("WebSocket线程启动")
         while self._active:
             try:
+                self.write_log(f"开始连接WebSocket，_active={self._active}")
                 asyncio.run(self._connect_websocket())
-            except Exception as e:
-                self.write_log(f"WebSocket连接异常: {e}")
+                self.write_log("WebSocket连接正常结束")
+            # except asyncio.CancelledError:
+            #     self.write_log("asyncio.CancelledError 被捕获（任务被取消）")
+            # except BaseException as e:  # 暂时扩大抓取范围来观察真实类型
+            #     self.write_log(f"[BaseException捕获] 实际类型：{type(e)}，repr：{e!r}")
+            except* Exception as eg:  # 仅 3.11+
+                for i, e in enumerate(eg.exceptions, 1):
+                    self.write_log(f"[子异常#{i}] {type(e).__name__}: {e!r}")
+                    print(f"fallback logging WebSocket连接异常: {type(e).__name__}: {e}")
+                    self.write_log(f"WebSocket连接异常: {type(e).__name__}: {e}")
+                    self.write_log(f"异常详情: {e}", exc_info=True)
+                    self.write_log(f"异常来源: {e.__class__.__module__}.{e.__class__.__name__}")
                 
                 # 检查重连次数限制
                 if self._max_reconnect_attempts > 0 and self._reconnect_attempts >= self._max_reconnect_attempts:
                     self.write_log(f"达到最大重连次数限制 ({self._max_reconnect_attempts})，停止重连")
-                    break
+                    self._active = False
                 
                 # 指数退避重连间隔
                 self._reconnect_attempts += 1
                 wait_time = min(self._reconnect_interval * (2 ** (self._reconnect_attempts - 1)), 60)  # 最大60秒
                 self.write_log(f"第 {self._reconnect_attempts} 次重连尝试，等待 {wait_time} 秒...")
                 time.sleep(wait_time)
+        
+        self.write_log("WebSocket线程结束")
 
     async def _connect_websocket(self) -> None:
         """连接WebSocket"""
         try:
-            self._ws = await websockets.connect(self._ws_url)
+            self._ws = await websockets.connect(self._ws_url, ping_timeout=None)
             self._connected = True
             self._reconnect_attempts = 0
             # 设置心跳时间为过去的时间，确保立即发送第一个ping，但不会触发超时
@@ -276,12 +290,15 @@ class BriskGateway(BaseGateway):
 
         except ConnectionClosed as e:
             self.write_log(f"WebSocket连接已关闭: {e}")
+            self.write_log(f"ConnectionClosed异常即将重新抛出")
             raise  # 重新抛出异常以触发重连
         except WebSocketException as e:
             self.write_log(f"WebSocket异常: {e}")
+            self.write_log(f"WebSocketException异常即将重新抛出")
             raise  # 重新抛出异常以触发重连
         except Exception as e:
             self.write_log(f"WebSocket连接失败: {e}")
+            self.write_log(f"Exception异常即将重新抛出")
             raise  # 重新抛出异常以触发重连
         finally:
             self._connected = False
@@ -447,8 +464,9 @@ class BriskGateway(BaseGateway):
                         # 强制关闭连接以触发重连
                         try:
                             asyncio.run(self._ws.close())
-                        except:
-                            self.write_log(f"关闭连接失败: {e}")
+                            self.write_log("心跳检测：已关闭WebSocket连接")
+                        except Exception as e:
+                            self.write_log(f"心跳检测：关闭连接失败: {e}")
                         break
                     
                     # 再检查是否超过心跳间隔，需要发送ping
