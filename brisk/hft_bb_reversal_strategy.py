@@ -1861,7 +1861,12 @@ def main():
             'log_suffix': '600_4000',
             'low_price': 600,
             'high_price': 4000,
-        }
+        }，
+        '2000_5000': {
+            'log_suffix': '2000_5000',
+            'low_price': 2000,
+            'high_price': 5000,
+        },
     }
     
     # 根据命令行参数选择profile
