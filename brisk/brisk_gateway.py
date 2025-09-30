@@ -61,7 +61,7 @@ class BriskGateway(BaseGateway):
         self._http_url: str = ""
         self._connected: bool = False
         self._reconnect_interval: int = 5
-        self._heartbeat_interval: int = 30
+        self._heartbeat_interval: int = 20
         self._max_reconnect_attempts: int = 10
         self._reconnect_attempts: int = 0
         self._last_heartbeat: float = 0
@@ -272,7 +272,7 @@ class BriskGateway(BaseGateway):
     async def _connect_websocket(self) -> None:
         """连接WebSocket"""
         try:
-            self._ws = await websockets.connect(self._ws_url, ping_timeout=None)
+            self._ws = await websockets.connect(self._ws_url, ping_timeout=30)
             self._connected = True
             self._reconnect_attempts = 0
             # 设置心跳时间为过去的时间，确保立即发送第一个ping，但不会触发超时
@@ -458,7 +458,7 @@ class BriskGateway(BaseGateway):
                     self.write_log(f"心跳检测: 连接状态={self._connected}, 距离上次心跳={time_since_last_heartbeat:.1f}秒, 心跳间隔={self._heartbeat_interval}秒")
                     
                     # 先检查心跳超时（超过2倍间隔没有收到pong）
-                    if time_since_last_heartbeat > self._heartbeat_interval * 3:
+                    if time_since_last_heartbeat >= self._heartbeat_interval * 3:
                         self.write_log("心跳超时，准备重连")
                         self._connected = False
                         # 强制关闭连接以触发重连
@@ -467,22 +467,22 @@ class BriskGateway(BaseGateway):
                             self.write_log("心跳检测：已关闭WebSocket连接")
                         except Exception as e:
                             self.write_log(f"心跳检测：关闭连接失败: {e}")
-                        break
+                        # break
                     
                     # 再检查是否超过心跳间隔，需要发送ping
                     elif time_since_last_heartbeat > self._heartbeat_interval:
                         # 发送ping消息
                         try:
                             ping_msg = {"type": "ping"}
-                            asyncio.run(self._ws.send(json.dumps(ping_msg)))
                             self.write_log("发送心跳ping")
+                            asyncio.run(self._ws.send(json.dumps(ping_msg)))
                             # 更新心跳时间，避免重复发送
                             self._last_heartbeat = current_time
                             self.write_log(f"更新心跳时间后: _last_heartbeat={self._last_heartbeat}")
                         except Exception as e:
                             self.write_log(f"发送心跳ping失败: {e}")
-                            self._connected = False
-                            break
+                            # self._connected = False
+                            # break
                 else:
                     # 添加调试日志：为什么心跳检测被跳过
                     self.write_log(f"心跳检测跳过: _connected={self._connected}, _ws={self._ws is not None}")
