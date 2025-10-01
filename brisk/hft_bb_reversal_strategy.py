@@ -88,7 +88,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         
         # 价格限制配置（前一天收盘价上限）
         self.price_limit_morning = 2000    # 早上时段价格上限
-        self.price_limit_noon = 4000       # 中午时段价格上限
+        self.price_limit_noon = 5000       # 中午时段价格上限
         self.price_limit_afternoon = 3000  # 下午时段价格上限
         
         # 股价变动限制配置
