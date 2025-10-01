@@ -20,6 +20,12 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         self.strategy = HFTBBReversalStrategy()
         self.strategy.write_log = Mock()
         
+        # 覆盖策略参数，使测试独立于默认参数
+        self.strategy.price_limit_morning = 5000    # 提高morning时段价格限制
+        self.strategy.price_limit_noon = 5000       # 提高noon时段价格限制  
+        self.strategy.price_limit_afternoon = 5000  # 提高afternoon时段价格限制
+        self.strategy.max_price_change_pct = 20.0   # 提高价格变动限制
+        
         # 添加测试股票
         self.strategy.add_symbol("9984")
         self.context = self.strategy.get_hft_context("9984")
@@ -33,6 +39,12 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
             'exit_long': 1001.0,
             'exit_short': 999.0
         }
+        
+        # 添加到eligible_stocks
+        self.strategy.eligible_stocks.add("9984")
+        
+        # 模拟get_stock_prev_close返回合理价格
+        self.strategy.get_stock_prev_close = Mock(return_value=2000.0)
         
     def test_x_condition_with_active_entry_order(self):
         """测试有活跃entry订单时仍然进行正常X条件检查"""
@@ -49,7 +61,7 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         # 现在有entry订单时不再有优先级，需要满足所有条件
         self.assertTrue(result)
         self.strategy.write_log.assert_any_call(
-            "X条件检查通过: 9984 morning std_pct=0.000800 morning时段股价0符合4000以下限制 允许方向: ['long', 'short']"
+            "X条件检查通过: 9984 morning std_pct=0.000800 morning时段股价2000.0符合5000以下限制 允许方向: ['long', 'short']"
         )
         
     def test_x_condition_with_active_entry_order_ignores_position(self):
@@ -134,7 +146,7 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         # 应该通过正常的X条件检查
         self.assertTrue(result)
         self.strategy.write_log.assert_any_call(
-            "X条件检查通过: 9984 morning std_pct=0.000800 morning时段股价0符合4000以下限制 允许方向: ['long', 'short']"
+            "X条件检查通过: 9984 morning std_pct=0.000800 morning时段股价2000.0符合5000以下限制 允许方向: ['long', 'short']"
         )
         
     def test_x_condition_without_active_entry_order_with_position(self):
@@ -180,7 +192,7 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         # 应该通过正常的X条件检查
         self.assertTrue(result)
         self.strategy.write_log.assert_any_call(
-            "X条件检查通过: 9984 morning std_pct=0.000800 morning时段股价0符合4000以下限制 允许方向: ['long', 'short']"
+            "X条件检查通过: 9984 morning std_pct=0.000800 morning时段股价2000.0符合5000以下限制 允许方向: ['long', 'short']"
         )
         
     def test_x_condition_priority_order(self):
