@@ -199,6 +199,7 @@ class HistoricalReplayEngine:
                 return False
                 
             # 加载和排序数据
+            self.gateway.write_log(f"加载回放数据文件: {len(files)} 个")
             self.replay_data = self._load_and_sort_data(files)
             self.gateway.write_log(f"加载回放数据成功，共{len(self.replay_data)}条记录")
             return True
@@ -251,9 +252,13 @@ class HistoricalReplayEngine:
                     filename = os.path.basename(file_path)
                     timestamp_str = filename.split('_')[-1].replace('.json', '')
                     timestamp = int(timestamp_str)
+                    # if timestamp < 1759298333614:
+                    #     continue
                     
                     # 处理每个股票的数据（加载所有股票的数据）
                     for symbol, frames in data.items():
+                        # if symbol != "8136":
+                        #     continue
                         for frame in frames:
                             replay_data.append({
                                 'timestamp': frame.get("timestamp", 0),
