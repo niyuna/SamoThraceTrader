@@ -1,0 +1,63 @@
+# Closing Auction Bet Strategy Configuration
+# 收盘竞价策略动态参数配置文件
+
+strategy_name: "ClosingAuctionBetStrategy"
+version: "1.0.0"
+environment: "production"
+is_valid: true
+
+metadata:
+  description: "收盘竞价策略配置 - 在收盘竞价前建仓，竞价内平仓"
+  author: "Strategy Team"
+
+# 策略参数配置
+params:
+  # 价格倍数参数
+  long_multiplier: 0.995      # 做多目标价格倍数（base_price * 0.995）
+  short_multiplier: 1.0055    # 做空目标价格倍数（base_price * 1.0055）
+  
+  # 触发价格参数
+  trigger_tick_count: 3       # 触发价格距离目标价格的tick数量
+  
+  # 交易参数
+  position_size: 100          # 每只股票的持仓数量
+  
+  # 时间参数
+  entry_start_time: "15:22"   # 建仓开始时间
+  entry_end_time: "15:25"     # 建仓结束时间
+  exit_start_time: "15:25"    # 平仓开始时间
+  strategy_init_time: "14:50" # 策略初始化时间
+
+# 参数说明
+parameter_descriptions:
+  long_multiplier: "做多目标价格倍数，基于base_price计算目标价格"
+  short_multiplier: "做空目标价格倍数，基于base_price计算目标价格"
+  trigger_tick_count: "触发价格距离目标价格的tick数量，用于设置触发价格"
+  position_size: "每只股票的持仓数量"
+  entry_start_time: "建仓开始时间，格式HH:MM"
+  entry_end_time: "建仓结束时间，格式HH:MM"
+  exit_start_time: "平仓开始时间，格式HH:MM"
+  strategy_init_time: "策略初始化时间，格式HH:MM"
+
+# 参数验证规则
+validation_rules:
+  long_multiplier:
+    type: "number"
+    min: 0.9
+    max: 1.0
+    description: "做多倍数必须在0.9-1.0之间"
+  short_multiplier:
+    type: "number"
+    min: 1.0
+    max: 1.1
+    description: "做空倍数必须在1.0-1.1之间"
+  trigger_tick_count:
+    type: "integer"
+    min: 1
+    max: 10
+    description: "触发tick数量必须在1-10之间"
+  position_size:
+    type: "integer"
+    min: 1
+    max: 10000
+    description: "持仓数量必须在1-10000之间"
