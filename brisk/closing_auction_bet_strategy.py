@@ -33,6 +33,7 @@ class ClosingAuctionContext:
     position: int = 0  # 持仓数量（正数为多头，负数为空头）
     position_size: int = 100
     already_traded: int = 0  # 已交易数量（base strategy使用）
+    entry_order_time: Optional[datetime] = None  # 入场订单发送时间
     
     # 价格相关字段
     base_price: float = 0.0              # 15:00的1分钟K线close price
@@ -71,6 +72,7 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         self.trigger_tick_count = 3
         self.single_stock_max_position = 1_000_000  # 单只股票最大持仓金额（日元）
         self.min_position_size = 100  # 最小持仓数量（fallback）
+        self.cancel_protection_seconds = 20  # 订单发送后多少秒内不允许取消
         self.entry_start_time = time(15, 22)
         self.entry_end_time = time(15, 25)
         self.exit_start_time = time(15, 25)
@@ -133,7 +135,8 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         other_params = [
             'trigger_tick_count',
             'single_stock_max_position',
-            'min_position_size'
+            'min_position_size',
+            'cancel_protection_seconds'
         ]
         
         for param in other_params:
@@ -272,17 +275,41 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
             return
         
         current_price = tick.last_price
+        current_time = datetime.now()
         
-        # 检查做多触发
+        # 1. 检查是否需要取消现有订单
+        if context.entry_order_id and context.state == StrategyState.WAITING_ENTRY:
+            # 检查取消保护时间
+            if context.entry_order_time:
+                time_diff = current_time - context.entry_order_time
+                if time_diff.total_seconds() < self.cancel_protection_seconds:
+                    self.write_log(f"跳过取消订单: {symbol} 订单在{self.cancel_protection_seconds}秒内发送，避免频繁撤单")
+                    return
+            
+            # 检查价格是否退出触发区间
+            # 当价格在long_trigger_price和short_trigger_price之间时，取消订单
+            should_cancel = False
+            if context.long_trigger_price < current_price < context.short_trigger_price:
+                should_cancel = True
+                self.write_log(f"价格退出触发区间: {symbol} {current_price:.2f} 在 {context.long_trigger_price:.2f} 和 {context.short_trigger_price:.2f} 之间")
+            
+            if should_cancel:
+                if self._cancel_order_safely(context.entry_order_id, symbol):
+                    context.entry_order_id = ""
+                    context.entry_order_time = None
+                    self.update_context_state(symbol, StrategyState.IDLE)
+                    self.write_log(f"取消订单成功: {symbol} 价格退出触发区间")
+                else:
+                    self.write_log(f"取消订单失败: {symbol}")
+                return
+        
+        # 2. 检查是否需要下新订单（保持原有逻辑）
         if current_price <= context.long_trigger_price and not context.entry_order_id:
             self.write_log(f"做多触发: {symbol} {context.long_trigger_price:.2f} {current_price:.2f}")
             self._send_entry_order(context, Direction.LONG, context.long_target_price)
-        
-        # 检查做空触发
         elif current_price >= context.short_trigger_price and not context.entry_order_id:
             self.write_log(f"做空触发: {symbol} {context.short_trigger_price:.2f} {current_price:.2f}")
             self._send_entry_order(context, Direction.SHORT, context.short_target_price)
-
         else:
             self.write_log(f"未触发: {symbol} {tick.datetime} {current_price:.2f} trigger: {context.long_trigger_price:.2f} {context.short_trigger_price:.2f}")
     
@@ -307,6 +334,8 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
             context, None, price, direction
         )
         if order_id:
+            # 记录订单发送时间
+            context.entry_order_time = datetime.now()
             # Base strategy已经在_execute_trade中更新了context.entry_order_id和context.state
             self.write_log(f"发送建仓订单: {context.symbol} {direction.value} {price:.2f} 数量:{calculated_size} {order_id}")
     
@@ -415,6 +444,7 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         
         # 清除入场订单信息
         context.entry_order_id = ""
+        context.entry_order_time = None  # 清除订单发送时间
         context.entry_price = order.price
         context.entry_time = order.datetime
         

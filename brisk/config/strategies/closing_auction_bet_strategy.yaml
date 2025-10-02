@@ -22,6 +22,7 @@ params:
   # 交易参数
   single_stock_max_position: 500000  # 单只股票最大持仓金额（日元）
   min_position_size: 100              # 最小持仓数量（fallback）
+  cancel_protection_seconds: 20       # 订单取消保护时间（秒）
   
   # 时间参数
   entry_start_time: "15:22"   # 建仓开始时间
@@ -36,6 +37,7 @@ parameter_descriptions:
   trigger_tick_count: "触发价格距离目标价格的tick数量，用于设置触发价格"
   single_stock_max_position: "单只股票最大持仓金额（日元）"
   min_position_size: "最小持仓数量（fallback）"
+  cancel_protection_seconds: "订单取消保护时间（秒）"
   entry_start_time: "建仓开始时间，格式HH:MM"
   entry_end_time: "建仓结束时间，格式HH:MM"
   exit_start_time: "平仓开始时间，格式HH:MM"
@@ -68,3 +70,8 @@ validation_rules:
     min: 1
     max: 10000
     description: "最小持仓数量必须在1-10000之间"
+  cancel_protection_seconds:
+    type: "integer"
+    min: 5
+    max: 300
+    description: "订单取消保护时间必须在5-300秒之间"

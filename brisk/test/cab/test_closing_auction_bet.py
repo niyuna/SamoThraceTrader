@@ -26,6 +26,7 @@ def test_strategy_initialization():
     assert strategy.trigger_tick_count == 3
     assert strategy.single_stock_max_position == 1_000_000
     assert strategy.min_position_size == 100
+    assert strategy.cancel_protection_seconds == 20
     
     print("[PASS] 策略初始化测试通过")
     return strategy
@@ -112,7 +113,7 @@ def test_config_loading():
     strategy = ClosingAuctionBetStrategy(use_mock_gateway=True, gateway_type="mock")
     
     # 验证默认配置是否正确
-    print(f"实际参数: long_mult={strategy.long_multiplier}, short_mult={strategy.short_multiplier}, trigger_ticks={strategy.trigger_tick_count}, max_position={strategy.single_stock_max_position}, min_position={strategy.min_position_size}")
+    print(f"实际参数: long_mult={strategy.long_multiplier}, short_mult={strategy.short_multiplier}, trigger_ticks={strategy.trigger_tick_count}, max_position={strategy.single_stock_max_position}, min_position={strategy.min_position_size}, cancel_protection={strategy.cancel_protection_seconds}")
     
     # 测试默认值
     assert abs(strategy.long_multiplier - 0.995) < 0.001, f"long_multiplier期望0.995，实际{strategy.long_multiplier}"
@@ -120,6 +121,7 @@ def test_config_loading():
     assert strategy.trigger_tick_count == 3, f"trigger_tick_count期望3，实际{strategy.trigger_tick_count}"
     assert strategy.single_stock_max_position == 1_000_000, f"single_stock_max_position期望1000000，实际{strategy.single_stock_max_position}"
     assert strategy.min_position_size == 100, f"min_position_size期望100，实际{strategy.min_position_size}"
+    assert strategy.cancel_protection_seconds == 20, f"cancel_protection_seconds期望20，实际{strategy.cancel_protection_seconds}"
     
     print("[PASS] 配置加载测试通过")
 
@@ -320,6 +322,145 @@ def test_dynamic_position_calculation():
     print("[PASS] 动态仓位计算测试通过")
 
 
+def test_cancel_protection_logic():
+    """测试价格退出触发区间的取消逻辑"""
+    print("=== 测试取消保护逻辑 ===")
+    
+    # 创建策略实例
+    strategy = ClosingAuctionBetStrategy(use_mock_gateway=True)
+    strategy.cancel_protection_seconds = 5  # 设置较短的保护时间便于测试
+    
+    # 创建context并设置价格
+    context = strategy.create_context("9984")
+    context.base_price = 1000.0
+    context.base_price_set = True
+    strategy._calculate_target_and_trigger_prices(context)
+    
+    # 模拟tick数据
+    from vnpy.trader.constant import Exchange
+    from vnpy.trader.object import TickData
+    from datetime import datetime, timedelta
+    
+    # 测试1: 价格进入做多触发区间，应该下单
+    print("  测试1: 价格进入做多触发区间")
+    tick1 = TickData(
+        symbol="9984",
+        exchange=Exchange.TSE,
+        datetime=datetime.now(),
+        last_price=context.long_trigger_price - 1.0,  # 低于触发价格
+        volume=100,
+        turnover=100000,
+        gateway_name="test"
+    )
+    
+    # 模拟下单成功
+    context.entry_order_id = "test_order_1"
+    context.state = StrategyState.WAITING_ENTRY
+    context.entry_order_time = datetime.now()
+    
+    # 检查状态
+    assert context.entry_order_id == "test_order_1"
+    assert context.state == StrategyState.WAITING_ENTRY
+    assert context.entry_order_time is not None
+    
+    # 测试2: 价格在触发区间之间，应该取消订单（在保护时间外）
+    print("  测试2: 价格在触发区间之间（保护时间外）")
+    import time
+    time.sleep(0.1)  # 确保时间差大于保护时间
+    
+    # 设置订单时间为更早的时间，确保超过保护时间
+    context.entry_order_time = datetime.now() - timedelta(seconds=10)
+    
+    # 计算触发区间中间的价格
+    middle_price = (context.long_trigger_price + context.short_trigger_price) / 2
+    
+    tick2 = TickData(
+        symbol="9984",
+        exchange=Exchange.TSE,
+        datetime=datetime.now(),
+        last_price=middle_price,  # 在触发区间之间
+        volume=100,
+        turnover=100000,
+        gateway_name="test"
+    )
+    
+    # 模拟取消订单成功
+    original_cancel_method = strategy._cancel_order_safely
+    strategy._cancel_order_safely = lambda order_id, symbol: True
+    
+    strategy._handle_entry_logic("9984", context, tick2)
+    
+    # 验证订单被取消
+    assert context.entry_order_id == ""
+    assert context.entry_order_time is None
+    assert context.state == StrategyState.IDLE
+    
+    # 恢复原始方法
+    strategy._cancel_order_safely = original_cancel_method
+    
+    # 测试3: 价格在触发区间之间（做空订单）
+    print("  测试3: 价格在触发区间之间（做空订单）")
+    context.entry_order_id = "test_order_2"
+    context.state = StrategyState.WAITING_ENTRY
+    context.entry_order_time = datetime.now() - timedelta(seconds=10)  # 10秒前
+    
+    tick3 = TickData(
+        symbol="9984",
+        exchange=Exchange.TSE,
+        datetime=datetime.now(),
+        last_price=middle_price,  # 在触发区间之间
+        volume=100,
+        turnover=100000,
+        gateway_name="test"
+    )
+    
+    strategy._cancel_order_safely = lambda order_id, symbol: True
+    strategy._handle_entry_logic("9984", context, tick3)
+    
+    # 验证订单被取消
+    assert context.entry_order_id == ""
+    assert context.entry_order_time is None
+    assert context.state == StrategyState.IDLE
+    
+    # 测试4: 保护时间内不取消订单
+    print("  测试4: 保护时间内不取消订单")
+    context.entry_order_id = "test_order_3"
+    context.state = StrategyState.WAITING_ENTRY
+    context.entry_order_time = datetime.now()  # 刚刚发送
+    
+    tick4 = TickData(
+        symbol="9984",
+        exchange=Exchange.TSE,
+        datetime=datetime.now(),
+        last_price=middle_price,  # 在触发区间之间
+        volume=100,
+        turnover=100000,
+        gateway_name="test"
+    )
+    
+    strategy._handle_entry_logic("9984", context, tick4)
+    
+    # 验证订单没有被取消
+    assert context.entry_order_id == "test_order_3"
+    assert context.entry_order_time is not None
+    assert context.state == StrategyState.WAITING_ENTRY
+    
+    # 测试5: 没有订单时不执行取消逻辑
+    print("  测试5: 没有订单时不执行取消逻辑")
+    context.entry_order_id = ""
+    context.state = StrategyState.IDLE
+    context.entry_order_time = None
+    
+    strategy._handle_entry_logic("9984", context, tick4)
+    
+    # 验证状态没有改变
+    assert context.entry_order_id == ""
+    assert context.entry_order_time is None
+    assert context.state == StrategyState.IDLE
+    
+    print("[PASS] 取消保护逻辑测试通过")
+
+
 def run_all_tests():
     """运行所有测试"""
     print("开始运行收盘竞价策略测试...")
@@ -336,6 +477,7 @@ def run_all_tests():
         test_market_close_liquidation()
         test_on_order_logic()
         test_dynamic_position_calculation()
+        test_cancel_protection_logic()
         
         print("=" * 50)
         print("[SUCCESS] 所有测试通过！")
