@@ -23,7 +23,8 @@ def demo_strategy_parameters():
     print(f"做多倍数: {strategy.long_multiplier}")
     print(f"做空倍数: {strategy.short_multiplier}")
     print(f"触发tick数量: {strategy.trigger_tick_count}")
-    print(f"持仓数量: {strategy.position_size}")
+    print(f"单只股票最大持仓金额: {strategy.single_stock_max_position:,} 日元")
+    print(f"最小持仓数量: {strategy.min_position_size}")
     print(f"建仓窗口: {strategy.entry_start_time} - {strategy.entry_end_time}")
     print(f"平仓窗口: {strategy.exit_start_time} 开始")
     print(f"策略初始化时间: {strategy.strategy_init_time}")
@@ -41,6 +42,24 @@ def demo_strategy_parameters():
     print(f"做多触发价格: {context.long_trigger_price:.2f}")
     print(f"做空触发价格: {context.short_trigger_price:.2f}")
     
+    # 演示动态仓位计算
+    print("\n=== 动态仓位计算示例 ===")
+    calculated_size = strategy.calculate_position_size("9984")
+    print(f"股票代码: 9984")
+    print(f"Base Price: {context.base_price:.2f}")
+    print(f"计算出的持仓数量: {calculated_size}")
+    print(f"计算逻辑: round({strategy.single_stock_max_position:,} / {context.base_price:.2f} / 100) * 100 = {calculated_size}")
+    
+    # 演示不同价格的股票
+    print("\n不同价格股票的仓位计算:")
+    test_prices = [100, 500, 1000, 5000, 10000]
+    for price in test_prices:
+        test_context = strategy.create_context(f"TEST{price}")
+        test_context.base_price = price
+        test_context.base_price_set = True
+        size = strategy.calculate_position_size(f"TEST{price}")
+        print(f"  价格 {price:>5} 日元 -> 持仓数量 {size:>4} 股")
+    
     print("\n=== 交易逻辑说明 ===")
     print("1. 14:50前: 策略不初始化，节省资源")
     print("2. 15:00: 记录1分钟K线close price作为base price")
@@ -49,6 +68,9 @@ def demo_strategy_parameters():
     print("5. 触发条件:")
     print("   - 做多: 当前价格 >= 做多触发价格")
     print("   - 做空: 当前价格 <= 做空触发价格")
+    print("6. 仓位管理:")
+    print("   - 基于base price动态计算持仓数量")
+    print("   - 确保每只股票的投资金额相对固定")
 
 
 def demo_time_windows():

@@ -26,14 +26,16 @@ def test_dynamic_params_update():
     print(f"  long_multiplier: {strategy.long_multiplier}")
     print(f"  short_multiplier: {strategy.short_multiplier}")
     print(f"  trigger_tick_count: {strategy.trigger_tick_count}")
-    print(f"  position_size: {strategy.position_size}")
+    print(f"  single_stock_max_position: {strategy.single_stock_max_position}")
+    print(f"  min_position_size: {strategy.min_position_size}")
     
     # 模拟参数更新
     test_params = {
         'long_multiplier': 0.990,
         'short_multiplier': 1.010,
         'trigger_tick_count': 5,
-        'position_size': 200,
+        'single_stock_max_position': 2000000,
+        'min_position_size': 200,
         'entry_start_time': '15:20',
         'entry_end_time': '15:24'
     }
@@ -50,7 +52,8 @@ def test_dynamic_params_update():
     print(f"  long_multiplier: {strategy.long_multiplier}")
     print(f"  short_multiplier: {strategy.short_multiplier}")
     print(f"  trigger_tick_count: {strategy.trigger_tick_count}")
-    print(f"  position_size: {strategy.position_size}")
+    print(f"  single_stock_max_position: {strategy.single_stock_max_position}")
+    print(f"  min_position_size: {strategy.min_position_size}")
     print(f"  entry_start_time: {strategy.entry_start_time}")
     print(f"  entry_end_time: {strategy.entry_end_time}")
     
@@ -58,7 +61,8 @@ def test_dynamic_params_update():
     assert strategy.long_multiplier == 0.990
     assert strategy.short_multiplier == 1.010
     assert strategy.trigger_tick_count == 5
-    assert strategy.position_size == 200
+    assert strategy.single_stock_max_position == 2000000
+    assert strategy.min_position_size == 200
     assert strategy.entry_start_time.hour == 15
     assert strategy.entry_start_time.minute == 20
     assert strategy.entry_end_time.hour == 15

@@ -24,7 +24,8 @@ def test_strategy_initialization():
     assert strategy.long_multiplier == 0.995
     assert strategy.short_multiplier == 1.0055
     assert strategy.trigger_tick_count == 3
-    assert strategy.position_size == 100
+    assert strategy.single_stock_max_position == 1_000_000
+    assert strategy.min_position_size == 100
     
     print("[PASS] 策略初始化测试通过")
     return strategy
@@ -41,7 +42,7 @@ def test_context_creation():
     
     assert context.symbol == "9984"
     assert context.state.value == "idle"
-    assert context.position_size == 100
+    assert context.position_size == 0  # 现在初始为0，将在下单时动态计算
     assert context.base_price == 0.0
     assert not context.base_price_set
     
@@ -111,13 +112,14 @@ def test_config_loading():
     strategy = ClosingAuctionBetStrategy(use_mock_gateway=True, gateway_type="mock")
     
     # 验证默认配置是否正确
-    print(f"实际参数: long_mult={strategy.long_multiplier}, short_mult={strategy.short_multiplier}, trigger_ticks={strategy.trigger_tick_count}, position_size={strategy.position_size}")
+    print(f"实际参数: long_mult={strategy.long_multiplier}, short_mult={strategy.short_multiplier}, trigger_ticks={strategy.trigger_tick_count}, max_position={strategy.single_stock_max_position}, min_position={strategy.min_position_size}")
     
     # 测试默认值
     assert abs(strategy.long_multiplier - 0.995) < 0.001, f"long_multiplier期望0.995，实际{strategy.long_multiplier}"
     assert abs(strategy.short_multiplier - 1.0055) < 0.001, f"short_multiplier期望1.0055，实际{strategy.short_multiplier}"
     assert strategy.trigger_tick_count == 3, f"trigger_tick_count期望3，实际{strategy.trigger_tick_count}"
-    assert strategy.position_size == 100, f"position_size期望100，实际{strategy.position_size}"
+    assert strategy.single_stock_max_position == 1_000_000, f"single_stock_max_position期望1000000，实际{strategy.single_stock_max_position}"
+    assert strategy.min_position_size == 100, f"min_position_size期望100，实际{strategy.min_position_size}"
     
     print("[PASS] 配置加载测试通过")
 
@@ -246,6 +248,78 @@ def test_on_order_logic():
     print("[PASS] on_order逻辑测试通过")
 
 
+def test_dynamic_position_calculation():
+    """测试动态仓位计算功能"""
+    print("=== 测试动态仓位计算 ===")
+    
+    # 创建策略实例
+    strategy = ClosingAuctionBetStrategy(use_mock_gateway=True)
+    
+    # 设置参数
+    strategy.single_stock_max_position = 1_000_000  # 100万日元
+    strategy.min_position_size = 100  # 最小100股
+    
+    # 测试不同价格的股票
+    test_cases = [
+        {"symbol": "9984", "base_price": 1000.0, "expected_min": 900, "expected_max": 1100},  # 1000日元
+        {"symbol": "7203", "base_price": 5000.0, "expected_min": 180, "expected_max": 220},   # 5000日元
+        {"symbol": "6758", "base_price": 100.0, "expected_min": 9900, "expected_max": 10100}, # 100日元
+        {"symbol": "6861", "base_price": 0, "expected": 100},  # 无base price，应该返回最小值
+    ]
+    
+    for case in test_cases:
+        symbol = case["symbol"]
+        base_price = case["base_price"]
+        
+        # 创建context并设置base price
+        context = strategy.create_context(symbol)
+        if base_price > 0:
+            context.base_price = base_price
+            context.base_price_set = True
+        
+        # 计算仓位
+        calculated_size = strategy.calculate_position_size(symbol)
+        
+        if base_price > 0:
+            # 验证计算逻辑
+            expected_size = round(strategy.single_stock_max_position / base_price / 100) * 100
+            expected_size = max(expected_size, strategy.min_position_size)
+            
+            assert calculated_size == expected_size, f"仓位计算错误: {symbol} 期望{expected_size} 实际{calculated_size}"
+            
+            # 验证在合理范围内
+            assert case["expected_min"] <= calculated_size <= case["expected_max"], \
+                f"仓位超出预期范围: {symbol} {calculated_size} 不在[{case['expected_min']}, {case['expected_max']}]"
+            
+            print(f"  {symbol}: base_price={base_price:.1f} -> position_size={calculated_size}")
+        else:
+            # 无base price的情况
+            assert calculated_size == case["expected"], \
+                f"无base price时应该返回最小值: {symbol} 期望{case['expected']} 实际{calculated_size}"
+            print(f"  {symbol}: 无base_price -> position_size={calculated_size} (fallback)")
+    
+    # 测试参数更新
+    print("  测试参数更新...")
+    old_max_position = strategy.single_stock_max_position
+    strategy.single_stock_max_position = 2_000_000  # 更新为200万日元
+    
+    context = strategy.create_context("9984")
+    context.base_price = 1000.0
+    context.base_price_set = True
+    
+    new_calculated_size = strategy.calculate_position_size("9984")
+    expected_new_size = round(2_000_000 / 1000.0 / 100) * 100
+    expected_new_size = max(expected_new_size, strategy.min_position_size)
+    
+    assert new_calculated_size == expected_new_size, \
+        f"参数更新后仓位计算错误: 期望{expected_new_size} 实际{new_calculated_size}"
+    
+    print(f"  参数更新: max_position {old_max_position} -> {strategy.single_stock_max_position}")
+    print(f"  仓位变化: {calculated_size} -> {new_calculated_size}")
+    
+    print("[PASS] 动态仓位计算测试通过")
+
+
 def run_all_tests():
     """运行所有测试"""
     print("开始运行收盘竞价策略测试...")
@@ -261,6 +335,7 @@ def run_all_tests():
         test_strategy_status()
         test_market_close_liquidation()
         test_on_order_logic()
+        test_dynamic_position_calculation()
         
         print("=" * 50)
         print("[SUCCESS] 所有测试通过！")
