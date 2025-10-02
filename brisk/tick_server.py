@@ -219,6 +219,73 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
+@app.post("/debug/disconnect_all")
+async def disconnect_all_websockets():
+    """调试用：断开所有WebSocket连接"""
+    with manager.lock:
+        connections_to_close = list(manager.active_connections)
+        logger.info(f"手动断开 {len(connections_to_close)} 个WebSocket连接")
+        
+        for connection in connections_to_close:
+            try:
+                await connection.close(code=1011, reason="Manual disconnect for debugging")
+                logger.info(f"已断开连接: {connection}")
+            except Exception as e:
+                logger.error(f"断开连接失败: {e}")
+        
+        # 清空连接列表
+        manager.active_connections.clear()
+        manager.subscribed_symbols.clear()
+    
+    return {"message": f"已断开 {len(connections_to_close)} 个连接"}
+
+@app.post("/debug/simulate_timeout")
+async def simulate_timeout():
+    """调试用：模拟ping超时"""
+    with manager.lock:
+        connections_to_close = list(manager.active_connections)
+        logger.info(f"模拟ping超时，断开 {len(connections_to_close)} 个WebSocket连接")
+        
+        for connection in connections_to_close:
+            try:
+                # 发送1011错误码，模拟keepalive ping timeout
+                await connection.close(code=1011, reason="keepalive ping timeout; no close frame received")
+                logger.info(f"已模拟超时断开连接: {connection}")
+            except Exception as e:
+                logger.error(f"模拟超时断开连接失败: {e}")
+        
+        # 清空连接列表
+        manager.active_connections.clear()
+        manager.subscribed_symbols.clear()
+    
+    return {"message": f"已模拟超时断开 {len(connections_to_close)} 个连接"}
+
+@app.post("/debug/disconnect_after_delay")
+async def disconnect_after_delay(delay_seconds: int = 10):
+    """调试用：延迟断开连接"""
+    import asyncio
+    
+    async def delayed_disconnect():
+        await asyncio.sleep(delay_seconds)
+        with manager.lock:
+            connections_to_close = list(manager.active_connections)
+            logger.info(f"延迟 {delay_seconds} 秒后断开 {len(connections_to_close)} 个WebSocket连接")
+            
+            for connection in connections_to_close:
+                try:
+                    await connection.close(code=1011, reason="Delayed disconnect for debugging")
+                    logger.info(f"已延迟断开连接: {connection}")
+                except Exception as e:
+                    logger.error(f"延迟断开连接失败: {e}")
+            
+            # 清空连接列表
+            manager.active_connections.clear()
+            manager.subscribed_symbols.clear()
+    
+    # 在后台任务中执行
+    asyncio.create_task(delayed_disconnect())
+    return {"message": f"将在 {delay_seconds} 秒后断开所有连接"}
+
 @app.on_event("startup")
 async def startup():
     """应用启动时的初始化"""
