@@ -233,38 +233,47 @@ class BriskEshitenGateway(BaseGateway):
             self.write_log(f"查询历史数据失败: {e}")
             return []
 
+    async def _cleanup_pending_tasks(self):
+        # 取消并回收当前 loop 上除自己外的所有挂起任务
+        this = asyncio.current_task()
+        pending = [t for t in asyncio.all_tasks() if t is not this and not t.done()]
+        if not pending:
+            return
+        for t in pending:
+            t.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
+
     def _run_websocket(self) -> None:
-        """运行WebSocket连接"""
         self.write_log("WebSocket线程启动")
-        while self._active:
-            try:
-                self.write_log(f"开始连接WebSocket，_active={self._active}")
-                asyncio.run(self._connect_websocket())
-                self.write_log("WebSocket连接正常结束")
-            # except asyncio.CancelledError:
-            #     self.write_log("asyncio.CancelledError 被捕获（任务被取消）")
-            # except BaseException as e:  # 暂时扩大抓取范围来观察真实类型
-            #     self.write_log(f"[BaseException捕获] 实际类型：{type(e)}，repr：{e!r}")
-            except* Exception as eg:  # 仅 3.11+
-                for i, e in enumerate(eg.exceptions, 1):
-                    self.write_log(f"[子异常#{i}] {type(e).__name__}: {e!r}")
-                    print(f"fallback logging WebSocket连接异常: {type(e).__name__}: {e}")
-                    self.write_log(f"WebSocket连接异常: {type(e).__name__}: {e}")
-                    self.write_log(f"异常详情: {e}", exc_info=True)
-                    self.write_log(f"异常来源: {e.__class__.__module__}.{e.__class__.__name__}")
-                
-                # 检查重连次数限制
-                if self._max_reconnect_attempts > 0 and self._reconnect_attempts >= self._max_reconnect_attempts:
-                    self.write_log(f"达到最大重连次数限制 ({self._max_reconnect_attempts})，停止重连")
-                    self._active = False
-                
-                # 指数退避重连间隔
-                self._reconnect_attempts += 1
-                wait_time = min(self._reconnect_interval * (2 ** (self._reconnect_attempts - 1)), 60)  # 最大60秒
-                self.write_log(f"第 {self._reconnect_attempts} 次重连尝试，等待 {wait_time} 秒...")
-                time.sleep(wait_time)
-        
-        self.write_log("WebSocket线程结束")
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        # 可选：便于抓未处理任务的异常
+        loop.set_exception_handler(
+            lambda l, ctx: self.write_log(f"[loop异常] {ctx.get('message')}: {ctx.get('exception')!r}")
+        )
+
+        try:
+            while self._active:
+                try:
+                    self.write_log(f"开始连接WebSocket，_active={self._active}")
+                    loop.run_until_complete(self._connect_websocket())
+                    self.write_log("WebSocket连接协程自然返回（将重连）")
+                except Exception as e:
+                    # 这里保留你的退避重连逻辑（也可加 except*）
+                    self._reconnect_attempts += 1
+                    wait = min(self._reconnect_interval * (2 ** (self._reconnect_attempts - 1)), 60)
+                    self.write_log(f"第 {self._reconnect_attempts} 次重连尝试，等待 {wait} 秒...")
+                    time.sleep(wait)
+                finally:
+                    # 关键：每轮结束后，把残留任务清空，避免越积越多
+                    loop.run_until_complete(self._cleanup_pending_tasks())
+        finally:
+            # 只在真正退出线程时做一次全量收尾
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            loop.run_until_complete(loop.shutdown_default_executor())
+            loop.close()
+            self.write_log("WebSocket线程结束")
 
     async def _connect_websocket(self) -> None:
         """连接WebSocket"""
