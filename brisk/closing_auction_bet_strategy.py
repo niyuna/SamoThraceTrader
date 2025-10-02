@@ -106,7 +106,7 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
             
         # 检查是否到了平仓时间
         if current_time < self.exit_start_time:
-            self.write_log(f"当前时间 {current_time} 早于平仓时间 {self.exit_start_time}，等待中...")
+            # self.write_log(f"当前时间 {current_time} 早于平仓时间 {self.exit_start_time}，等待中...")
             return
             
         self.write_log(f"当前时间 {current_time} 已达到平仓时间 {self.exit_start_time}，开始执行收盘前平仓流程...")
