@@ -16,7 +16,7 @@ metadata:
 # 策略参数配置
 params:
   # 价格限制参数（动态可调整）
-  price_limit_morning: 2000    # 早上时段价格上限
+  price_limit_morning: 1500    # 早上时段价格上限
   price_limit_noon: 5000       # 中午时段价格上限  
   price_limit_afternoon: 3000  # 下午时段价格上限
   
