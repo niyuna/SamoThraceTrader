@@ -111,7 +111,11 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         if current_time < self.exit_start_time:
             # self.write_log(f"当前时间 {current_time} 早于平仓时间 {self.exit_start_time}，等待中...")
             return
-            
+
+        if self.entry_window_active == True:
+            self.write_log(f"退出建仓窗口: {current_time}")
+            self.entry_window_active = False
+        
         self.write_log(f"当前时间 {current_time} 已达到平仓时间 {self.exit_start_time}，开始执行收盘前平仓流程...")
         self._execute_market_close_liquidation()
         self.liquidation_executed = True
@@ -310,8 +314,8 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         elif current_price >= context.short_trigger_price and not context.entry_order_id:
             self.write_log(f"做空触发: {symbol} {context.short_trigger_price:.2f} {current_price:.2f}")
             self._send_entry_order(context, Direction.SHORT, context.short_target_price)
-        else:
-            self.write_log(f"未触发: {symbol} {tick.datetime} {current_price:.2f} trigger: {context.long_trigger_price:.2f} {context.short_trigger_price:.2f}")
+        # else:
+        #     self.write_log(f"未触发: {symbol} {tick.datetime} {current_price:.2f} trigger: {context.long_trigger_price:.2f} {context.short_trigger_price:.2f}")
     
     def calculate_position_size(self, symbol: str) -> int:
         """计算持仓数量，基于单只股票最大持仓量和base price"""
@@ -344,6 +348,7 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         liquidation_count = 0
         canceled_orders = 0
         
+        self.write_log(f"执行收盘前平仓")
         for symbol, context in self.contexts.items():
             # 1. 取消未成交的entry订单 - 使用state判断更安全
             if context.state == StrategyState.WAITING_ENTRY:
