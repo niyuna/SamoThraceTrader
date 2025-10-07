@@ -153,7 +153,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             },
             {
                 'start': time(14, 10),
-                'end': time(15, 25),
+                'end': time(15, 22),
                 'threshold': self.std_pct_threshold_afternoon,
                 'name': 'afternoon',
                 'allowed_directions': ['long', 'short'],  # 下午窗口允许多空双向
