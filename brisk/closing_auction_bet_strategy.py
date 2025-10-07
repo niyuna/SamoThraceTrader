@@ -503,6 +503,9 @@ if __name__ == "__main__":
                        help='使用模拟数据')
     parser.add_argument('--debug', action='store_true', default=True,
                        help='启用调试模式')
+    parser.add_argument('--gateway', type=str, default='brisk_eshiten',
+                       choices=['brisk_eshiten', 'brisk'],
+                       help='选择网关类型: brisk_eshiten 或 brisk')
     
     args = parser.parse_args()
     
@@ -510,6 +513,7 @@ if __name__ == "__main__":
     
     using_mock_data = args.mock
     debug = args.debug
+    gateway_type = args.gateway
     
     # 检查当前时间，14:50前不初始化策略
     init_time = dt_time(14, 50)
@@ -524,7 +528,12 @@ if __name__ == "__main__":
             time_module.sleep(60)  # 每分钟检查一次
     
     # 创建策略实例
-    strategy = ClosingAuctionBetStrategy(use_mock_gateway=using_mock_data, gateway_type="brisk_eshiten" if not using_mock_data else "mock")
+    actual_gateway_type = "mock" if using_mock_data else gateway_type
+    strategy = ClosingAuctionBetStrategy(use_mock_gateway=using_mock_data, gateway_type=actual_gateway_type)
+    
+    print(f"使用网关类型: {actual_gateway_type}")
+    if using_mock_data:
+        print("注意: 使用模拟数据时，网关类型自动设置为 'mock'")
     
     try:
         # 连接Gateway

@@ -322,6 +322,68 @@ def test_dynamic_position_calculation():
     print("[PASS] 动态仓位计算测试通过")
 
 
+def test_gateway_parameter():
+    """测试gateway命令行参数功能"""
+    print("=== 测试gateway命令行参数 ===")
+    
+    import subprocess
+    import sys
+    import os
+    
+    # 测试帮助信息
+    print("  测试1: 检查帮助信息中的gateway参数")
+    try:
+        result = subprocess.run([
+            sys.executable, "closing_auction_bet_strategy.py", "--help"
+        ], capture_output=True, text=True, cwd=os.path.dirname(os.path.abspath(__file__)) + "/../..")
+        
+        if "--gateway" in result.stdout:
+            print("  [PASS] gateway参数在帮助信息中正确显示")
+        else:
+            print("  [FAIL] gateway参数未在帮助信息中找到")
+            return False
+            
+    except Exception as e:
+        print(f"  [FAIL] 运行帮助命令失败: {e}")
+        return False
+    
+    # 测试默认gateway参数
+    print("  测试2: 检查默认gateway参数")
+    try:
+        result = subprocess.run([
+            sys.executable, "closing_auction_bet_strategy.py", "--help"
+        ], capture_output=True, text=True, cwd=os.path.dirname(os.path.abspath(__file__)) + "/../..")
+        
+        if "default: brisk_eshiten" in result.stdout or "brisk_eshiten" in result.stdout:
+            print("  [PASS] 默认gateway参数为brisk_eshiten")
+        else:
+            print("  [FAIL] 默认gateway参数设置不正确")
+            return False
+            
+    except Exception as e:
+        print(f"  [FAIL] 检查默认参数失败: {e}")
+        return False
+    
+    # 测试无效gateway参数
+    print("  测试3: 检查无效gateway参数处理")
+    try:
+        result = subprocess.run([
+            sys.executable, "closing_auction_bet_strategy.py", "--gateway", "invalid_gateway"
+        ], capture_output=True, text=True, cwd=os.path.dirname(os.path.abspath(__file__)) + "/../..")
+        
+        if result.returncode != 0 and "invalid choice" in result.stderr.lower():
+            print("  [PASS] 无效gateway参数被正确拒绝")
+        else:
+            print("  [FAIL] 无效gateway参数未被正确拒绝")
+            return False
+            
+    except Exception as e:
+        print(f"  [FAIL] 测试无效参数失败: {e}")
+        return False
+    
+    print("  [PASS] gateway命令行参数测试通过")
+    return True
+
 def test_cancel_protection_logic():
     """测试价格退出触发区间的取消逻辑"""
     print("=== 测试取消保护逻辑 ===")
@@ -478,6 +540,7 @@ def run_all_tests():
         test_on_order_logic()
         test_dynamic_position_calculation()
         test_cancel_protection_logic()
+        test_gateway_parameter()
         
         print("=" * 50)
         print("[SUCCESS] 所有测试通过！")
