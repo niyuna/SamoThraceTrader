@@ -84,7 +84,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # X条件std_pct阈值参数
         self.std_pct_threshold_morning = 0.0007    # 早上9:05-9:35阈值
         self.std_pct_threshold_noon = 0.000001      # 中午11:29-11:30阈值（极小的值，几乎总是通过）
-        self.std_pct_threshold_afternoon = 0.00030  # 下午14:35-15:20阈值
+        self.std_pct_threshold_afternoon = 0.00050  # 下午14:35-15:20阈值
         
         # 价格限制配置（前一天收盘价上限）
         self.price_limit_morning = 2000    # 早上时段价格上限
@@ -107,7 +107,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.simulated_positions = {}  # symbol -> {'long': bool, 'short': bool, 'long_entry_time': datetime, 'short_entry_time': datetime, 'long_exit_time': datetime, 'short_exit_time': datetime}
         
         # 单只股票最大持仓金额（日元）
-        self.single_stock_max_position = 350_000
+        self.single_stock_max_position = 250_000
         self.stock_config_manager = StockConfigManager("configs/stock_configs.json")
         
         # 止损配置
