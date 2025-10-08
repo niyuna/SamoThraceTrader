@@ -25,9 +25,9 @@ params:
   cancel_protection_seconds: 20       # 订单取消保护时间（秒）
   
   # 时间参数
-  entry_start_time: "15:22"   # 建仓开始时间
-  entry_end_time: "15:25"     # 建仓结束时间
-  exit_start_time: "15:25"    # 平仓开始时间
+  # entry_start_time: "15:22"   # 建仓开始时间
+  # entry_end_time: "15:25"     # 建仓结束时间
+  # exit_start_time: "15:25"    # 平仓开始时间
   strategy_init_time: "14:50" # 策略初始化时间
 
 # 参数说明
@@ -75,3 +75,8 @@ validation_rules:
     min: 5
     max: 300
     description: "订单取消保护时间必须在5-300秒之间"
+  entry_start_time:
+    type: "string"
+    pattern: "^1[5-6]:[0-5][0-9]$"
+    allowed_values: ["15:22", "15:23", "15:24"]
+    description: "建仓开始时间必须是15:22、15:23或15:24"

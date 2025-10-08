@@ -63,7 +63,8 @@ class ClosingAuctionContext:
 class ClosingAuctionBetStrategy(IntradayStrategyBase):
     """收盘竞价策略 - 基于收盘竞价的时间驱动策略"""
     
-    def __init__(self, use_mock_gateway=False, gateway_type: str = "brisk_eshiten", log_suffix=None):
+    def __init__(self, use_mock_gateway=False, gateway_type: str = "brisk_eshiten", 
+                 entry_start_time: str = "15:22", log_suffix=None):
         super().__init__(use_mock_gateway=use_mock_gateway, gateway_type=gateway_type, log_suffix=log_suffix)
         
         # 策略参数（默认值，会被YAML配置覆盖）
@@ -73,7 +74,9 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         self.single_stock_max_position = 1_000_000  # 单只股票最大持仓金额（日元）
         self.min_position_size = 100  # 最小持仓数量（fallback）
         self.cancel_protection_seconds = 20  # 订单发送后多少秒内不允许取消
-        self.entry_start_time = time(15, 22)
+        
+        # 解析entry_start_time字符串为time对象
+        self.entry_start_time = self._parse_time_string(entry_start_time)
         self.entry_end_time = time(15, 25)
         self.exit_start_time = time(15, 25)
         self.strategy_init_time = time(14, 50)
@@ -89,6 +92,29 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         # 不需要在这里初始化，由基类的set_configuration_provider方法处理
         
         self.write_log(f"收盘竞价策略初始化完成 - 建仓窗口: {self.entry_start_time}-{self.entry_end_time}, 平仓窗口: {self.exit_start_time}开始")
+    
+    def _parse_time_string(self, time_str: str) -> time:
+        """解析时间字符串为time对象
+        
+        Args:
+            time_str: 时间字符串，格式为"HH:MM"，如"15:22"
+            
+        Returns:
+            time对象
+            
+        Raises:
+            ValueError: 时间格式不正确
+        """
+        try:
+            hour, minute = map(int, time_str.split(':'))
+            if not (0 <= hour <= 23 and 0 <= minute <= 59):
+                raise ValueError(f"时间值超出范围: {time_str}")
+            return time(hour, minute)
+        except (ValueError, IndexError) as e:
+            if "time value out of range" in str(e).lower() or "时间值超出范围" in str(e):
+                raise ValueError(f"时间值超出范围: {time_str}")
+            else:
+                raise ValueError(f"时间格式不正确: {time_str}，应为HH:MM格式，如15:22") from e
     
     def _register_market_close_timer(self):
         """注册收盘前平仓定时器"""
@@ -506,6 +532,9 @@ if __name__ == "__main__":
     parser.add_argument('--gateway', type=str, default='brisk_eshiten',
                        choices=['brisk_eshiten', 'brisk'],
                        help='选择网关类型: brisk_eshiten 或 brisk')
+    parser.add_argument('--entry-start-time', type=str, default='15:22',
+                       choices=['15:22', '15:23', '15:24'],
+                       help='建仓开始时间: 15:22, 15:23 或 15:24')
     
     args = parser.parse_args()
     
@@ -514,6 +543,7 @@ if __name__ == "__main__":
     using_mock_data = args.mock
     debug = args.debug
     gateway_type = args.gateway
+    entry_start_time = args.entry_start_time
     
     # 检查当前时间，14:50前不初始化策略
     init_time = dt_time(14, 50)
@@ -529,9 +559,14 @@ if __name__ == "__main__":
     
     # 创建策略实例
     actual_gateway_type = "mock" if using_mock_data else gateway_type
-    strategy = ClosingAuctionBetStrategy(use_mock_gateway=using_mock_data, gateway_type=actual_gateway_type)
+    strategy = ClosingAuctionBetStrategy(
+        use_mock_gateway=using_mock_data, 
+        gateway_type=actual_gateway_type,
+        entry_start_time=entry_start_time
+    )
     
     print(f"使用网关类型: {actual_gateway_type}")
+    print(f"建仓开始时间: {entry_start_time}")
     if using_mock_data:
         print("注意: 使用模拟数据时，网关类型自动设置为 'mock'")
     

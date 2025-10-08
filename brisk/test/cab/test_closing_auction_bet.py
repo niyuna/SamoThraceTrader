@@ -384,6 +384,60 @@ def test_gateway_parameter():
     print("  [PASS] gateway命令行参数测试通过")
     return True
 
+def test_entry_start_time_parameter():
+    """测试entry_start_time参数功能"""
+    print("=== 测试entry_start_time参数 ===")
+    
+    # 测试1: 默认entry_start_time
+    print("  测试1: 默认entry_start_time")
+    strategy1 = ClosingAuctionBetStrategy(use_mock_gateway=True)
+    assert strategy1.entry_start_time.hour == 15
+    assert strategy1.entry_start_time.minute == 22
+    print("  [PASS] 默认entry_start_time为15:22")
+    
+    # 测试2: 自定义entry_start_time
+    print("  测试2: 自定义entry_start_time")
+    strategy2 = ClosingAuctionBetStrategy(use_mock_gateway=True, entry_start_time="15:23")
+    assert strategy2.entry_start_time.hour == 15
+    assert strategy2.entry_start_time.minute == 23
+    print("  [PASS] 自定义entry_start_time为15:23")
+    
+    # 测试3: 另一个时间
+    print("  测试3: entry_start_time为15:24")
+    strategy3 = ClosingAuctionBetStrategy(use_mock_gateway=True, entry_start_time="15:24")
+    assert strategy3.entry_start_time.hour == 15
+    assert strategy3.entry_start_time.minute == 24
+    print("  [PASS] entry_start_time为15:24")
+    
+    # 测试4: 时间解析错误处理
+    print("  测试4: 时间解析错误处理")
+    try:
+        strategy4 = ClosingAuctionBetStrategy(use_mock_gateway=True, entry_start_time="invalid")
+        print("  [FAIL] 应该抛出ValueError")
+        return False
+    except ValueError as e:
+        if "时间格式不正确" in str(e):
+            print("  [PASS] 无效时间格式被正确拒绝")
+        else:
+            print(f"  [FAIL] 错误信息不正确: {e}")
+            return False
+    
+    # 测试5: 时间值超出范围
+    print("  测试5: 时间值超出范围")
+    try:
+        strategy5 = ClosingAuctionBetStrategy(use_mock_gateway=True, entry_start_time="25:00")
+        print("  [FAIL] 应该抛出ValueError")
+        return False
+    except ValueError as e:
+        if "时间值超出范围" in str(e):
+            print("  [PASS] 超出范围的时间被正确拒绝")
+        else:
+            print(f"  [FAIL] 错误信息不正确: {e}")
+            return False
+    
+    print("  [PASS] entry_start_time参数测试通过")
+    return True
+
 def test_cancel_protection_logic():
     """测试价格退出触发区间的取消逻辑"""
     print("=== 测试取消保护逻辑 ===")
@@ -541,6 +595,7 @@ def run_all_tests():
         test_dynamic_position_calculation()
         test_cancel_protection_logic()
         test_gateway_parameter()
+        test_entry_start_time_parameter()
         
         print("=" * 50)
         print("[SUCCESS] 所有测试通过！")
