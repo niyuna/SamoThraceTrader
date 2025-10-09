@@ -535,8 +535,8 @@ if __name__ == "__main__":
     parser.add_argument('--debug', action='store_true', default=True,
                        help='启用调试模式')
     parser.add_argument('--gateway', type=str, default='brisk_eshiten',
-                       choices=['brisk_eshiten', 'brisk'],
-                       help='选择网关类型: brisk_eshiten 或 brisk')
+                       choices=['brisk_eshiten', 'brisk', 'brisk_click'],
+                       help='选择网关类型: brisk_eshiten、brisk 或 brisk_click')
     parser.add_argument('--entry-start-time', type=str, default='15:22',
                        choices=['15:22', '15:23', '15:24'],
                        help='建仓开始时间: 15:22, 15:23 或 15:24')
