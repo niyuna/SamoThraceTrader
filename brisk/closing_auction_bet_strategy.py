@@ -64,14 +64,15 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
     """收盘竞价策略 - 基于收盘竞价的时间驱动策略"""
     
     def __init__(self, use_mock_gateway=False, gateway_type: str = "brisk_eshiten", 
-                 entry_start_time: str = "15:22", log_suffix=None):
+                 entry_start_time: str = "15:22", single_stock_max_position: int = 1_000_000, 
+                 log_suffix=None):
         super().__init__(use_mock_gateway=use_mock_gateway, gateway_type=gateway_type, log_suffix=log_suffix)
         
         # 策略参数（默认值，会被YAML配置覆盖）
         self.long_multiplier = 0.995
         self.short_multiplier = 1.0055
         self.trigger_tick_count = 3
-        self.single_stock_max_position = 1_000_000  # 单只股票最大持仓金额（日元）
+        self.single_stock_max_position = single_stock_max_position  # 单只股票最大持仓金额（日元）
         self.min_position_size = 100  # 最小持仓数量（fallback）
         self.cancel_protection_seconds = 20  # 订单发送后多少秒内不允许取消
         
@@ -539,6 +540,8 @@ if __name__ == "__main__":
     parser.add_argument('--entry-start-time', type=str, default='15:22',
                        choices=['15:22', '15:23', '15:24'],
                        help='建仓开始时间: 15:22, 15:23 或 15:24')
+    parser.add_argument('--max-position', type=int, default=1_000_000,
+                       help='单只股票最大持仓金额（日元），默认1000000')
     
     args = parser.parse_args()
     
@@ -548,6 +551,7 @@ if __name__ == "__main__":
     debug = args.debug
     gateway_type = args.gateway
     entry_start_time = args.entry_start_time
+    single_stock_max_position = args.max_position
     
     # 检查当前时间，14:50前不初始化策略
     init_time = dt_time(14, 50)
@@ -566,11 +570,13 @@ if __name__ == "__main__":
     strategy = ClosingAuctionBetStrategy(
         use_mock_gateway=using_mock_data, 
         gateway_type=actual_gateway_type,
-        entry_start_time=entry_start_time
+        entry_start_time=entry_start_time,
+        single_stock_max_position=single_stock_max_position
     )
     
     print(f"使用网关类型: {actual_gateway_type}")
     print(f"建仓开始时间: {entry_start_time}")
+    print(f"单只股票最大持仓金额: {single_stock_max_position:,} 日元")
     if using_mock_data:
         print("注意: 使用模拟数据时，网关类型自动设置为 'mock'")
     

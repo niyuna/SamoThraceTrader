@@ -438,6 +438,64 @@ def test_entry_start_time_parameter():
     print("  [PASS] entry_start_time参数测试通过")
     return True
 
+def test_single_stock_max_position_parameter():
+    """测试single_stock_max_position参数功能"""
+    print("=== 测试single_stock_max_position参数 ===")
+    
+    # 测试1: 默认single_stock_max_position
+    print("  测试1: 默认single_stock_max_position")
+    strategy1 = ClosingAuctionBetStrategy(use_mock_gateway=True)
+    assert strategy1.single_stock_max_position == 1_000_000
+    print("  [PASS] 默认single_stock_max_position为1,000,000")
+    
+    # 测试2: 自定义single_stock_max_position
+    print("  测试2: 自定义single_stock_max_position")
+    strategy2 = ClosingAuctionBetStrategy(use_mock_gateway=True, single_stock_max_position=500_000)
+    assert strategy2.single_stock_max_position == 500_000
+    print("  [PASS] 自定义single_stock_max_position为500,000")
+    
+    # 测试3: 另一个值
+    print("  测试3: single_stock_max_position为2,000,000")
+    strategy3 = ClosingAuctionBetStrategy(use_mock_gateway=True, single_stock_max_position=2_000_000)
+    assert strategy3.single_stock_max_position == 2_000_000
+    print("  [PASS] single_stock_max_position为2,000,000")
+    
+    # 测试4: 验证仓位计算使用正确的max_position
+    print("  测试4: 验证仓位计算使用正确的max_position")
+    context = strategy2.create_context("9984")
+    context.base_price = 1000.0
+    context.base_price_set = True
+    
+    # 计算仓位大小
+    position_size = strategy2.calculate_position_size("9984")
+    expected_size = 500_000 // 1000  # 500,000 / 1000 = 500
+    assert position_size == expected_size
+    print(f"  [PASS] 仓位计算正确: {position_size} (预期: {expected_size})")
+    
+    # 测试5: 命令行参数测试
+    print("  测试5: 命令行参数测试")
+    import subprocess
+    import sys
+    import os
+    
+    try:
+        result = subprocess.run([
+            sys.executable, "closing_auction_bet_strategy.py", "--help"
+        ], capture_output=True, text=True, cwd=os.path.dirname(os.path.abspath(__file__)) + "/../..")
+        
+        if "--max-position" in result.stdout:
+            print("  [PASS] max-position参数在帮助信息中正确显示")
+        else:
+            print("  [FAIL] max-position参数未在帮助信息中找到")
+            return False
+            
+    except Exception as e:
+        print(f"  [FAIL] 运行帮助命令失败: {e}")
+        return False
+    
+    print("  [PASS] single_stock_max_position参数测试通过")
+    return True
+
 def test_cancel_protection_logic():
     """测试价格退出触发区间的取消逻辑"""
     print("=== 测试取消保护逻辑 ===")
@@ -596,6 +654,7 @@ def run_all_tests():
         test_cancel_protection_logic()
         test_gateway_parameter()
         test_entry_start_time_parameter()
+        test_single_stock_max_position_parameter()
         
         print("=" * 50)
         print("[SUCCESS] 所有测试通过！")
