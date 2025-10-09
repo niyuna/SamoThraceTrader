@@ -238,6 +238,10 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         symbol = bar.symbol
         context = self.get_context(symbol)
         
+        # skip all the large price stokcs
+        if bar.close_price > 30000:
+            return
+
         # 检查是否是15:00的K线，设置base price
         if bar.datetime.time() == time(15, 0) and not context.base_price_set:
             context.base_price = bar.close_price
