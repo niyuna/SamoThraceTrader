@@ -571,7 +571,8 @@ if __name__ == "__main__":
         use_mock_gateway=using_mock_data, 
         gateway_type=actual_gateway_type,
         entry_start_time=entry_start_time,
-        single_stock_max_position=single_stock_max_position
+        single_stock_max_position=single_stock_max_position,
+        log_suffix=actual_gateway_type
     )
     
     print(f"使用网关类型: {actual_gateway_type}")
