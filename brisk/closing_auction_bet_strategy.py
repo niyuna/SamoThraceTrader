@@ -402,6 +402,8 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
             
             # 2. 对已有持仓发送平仓订单
             if context.position != 0 and not context.exit_order_id:
+                # handle potential partially filled entry order
+                context.already_traded = context.position_size - abs(context.position)
                 direction = Direction.SHORT if context.position > 0 else Direction.LONG
                 order_id = self._execute_exit(context, None, 0, direction, OrderType.MARKET)
                 if order_id:
