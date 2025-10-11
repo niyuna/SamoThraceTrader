@@ -538,7 +538,7 @@ class BriskClickGateway(BaseGateway):
             try:
                 order = self._convert_broker_order_to_vnpy(broker_order)
                 if not order:
-                    self.write_log(f"skip irregular or non-margin order: {broker_order}")
+                    # self.write_log(f"skip irregular or non-margin order: {broker_order}")
                     continue
                 orderid = order.orderid
                 old_order = self.local_orders.get(orderid)

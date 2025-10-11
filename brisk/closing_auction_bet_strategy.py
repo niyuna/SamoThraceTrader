@@ -144,8 +144,10 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
             self.entry_window_active = False
         
         self.write_log(f"当前时间 {current_time} 已达到平仓时间 {self.exit_start_time}，开始执行收盘前平仓流程...")
-        self._execute_market_close_liquidation()
-        self.liquidation_executed = True
+        if not self.liquidation_executed:
+            self._execute_market_close_liquidation()
+        else:
+            self.write_log("收盘前平仓流程已执行，跳过")
     
     def _update_strategy_specific_params(self, params: Dict[str, Any]):
         """更新收盘竞价策略特定参数"""
@@ -378,6 +380,7 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         """执行收盘前平仓"""
         liquidation_count = 0
         canceled_orders = 0
+        failed_count = 0
         
         self.write_log(f"执行收盘前平仓")
         for symbol, context in self.contexts.items():
@@ -390,6 +393,7 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
                         context.entry_order_id = ""
                         context.state = StrategyState.IDLE
                     else:
+                        failed_count += 1
                         self.write_log(f"取消entry订单失败: {symbol} {context.entry_order_id}")
                 else:
                     # 状态是WAITING_ENTRY但没有订单ID，直接重置状态
@@ -403,6 +407,9 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
                 if order_id:
                     liquidation_count += 1
                     self.write_log(f"发送平仓订单: {symbol} {direction.value} MARKET {order_id}")
+                else:
+                    failed_count += 1
+                    self.write_log(f"发送平仓订单失败: {symbol} {direction.value} MARKET")
                 
             time_module.sleep(0.3)
 
@@ -414,6 +421,12 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         
         if canceled_orders == 0 and liquidation_count == 0:
             self.write_log("收盘前清算完成，无需要取消的订单或无持仓需要平仓")
+
+        if failed_count > 0:
+            self.write_log(f"收盘前平仓部分失败，成功: {liquidation_count}个，失败: {failed_count}个，将重试")
+        else:
+            self.liquidation_executed = True
+            self.write_log(f"收盘前平仓订单发送完成，成功: {liquidation_count}个")
     
     def on_order(self, event):
         """订单状态回调"""
