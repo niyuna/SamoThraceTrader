@@ -467,6 +467,9 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         if order.status != Status.ALLTRADED:
             return
         
+        # reset already_traded which indicates the number of traded when it's partially filled
+        self.already_traded = 0
+
         # 处理入场订单成交
         if order.orderid == context.entry_order_id:
             self._handle_entry_filled(order.symbol, context, order)

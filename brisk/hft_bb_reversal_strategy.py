@@ -979,6 +979,9 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         if order.status != Status.ALLTRADED:
             return
         
+        # reset already_traded which indicates the number of traded when it's partially filled
+        self.already_traded = 0
+
         # 查找对应的HFT context
         context = self._find_hft_context_by_order_id(order.orderid)
         if not context:
