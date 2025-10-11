@@ -226,7 +226,8 @@ class BriskClickGateway(BaseGateway):
         Returns:
             List[dict]: 持仓数据列表，每个元素包含 Symbol, LeavesQty, HoldQty, Side 等
         """
-        raise NotImplementedError("to be implemented")
+        # raise NotImplementedError("to be implemented")
+        return None
 
     def query_history(self, req: HistoryRequest) -> List[BarData]:
         """查询历史数据"""
@@ -606,6 +607,8 @@ class BriskClickGateway(BaseGateway):
     #     'orderKey_long': '251010110340770001',
     #     'orderKeyLink_href': 'javascript:void(0);',
     #     'customOrderId': '1801_close_100_short_202510092130'}
+
+    # orderStatus could be: 取消済, 発注受付, 全量約定, 一部約定
     def _convert_broker_order_to_vnpy(self, broker_order: Dict) -> OrderData:
         """将kabus API订单格式转换为vnpy格式"""
 

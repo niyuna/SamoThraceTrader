@@ -219,7 +219,8 @@ class BriskEshitenGateway(BaseGateway):
         Returns:
             List[dict]: 持仓数据列表，每个元素包含 Symbol, LeavesQty, HoldQty, Side 等
         """
-        raise NotImplementedError("to be implemented")
+        # raise NotImplementedError("to be implemented")
+        return None
 
     def query_history(self, req: HistoryRequest) -> List[BarData]:
         """查询历史数据"""
