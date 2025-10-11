@@ -544,7 +544,7 @@ class BriskClickGateway(BaseGateway):
                 orderid = order.orderid
                 old_order = self.local_orders.get(orderid)
                 # 检测状态变化：状态不同 或 成交量不同
-                if (not old_order) or (old_order.status != order.status or old_order.traded != order.traded):
+                if (not old_order) or not hasattr(old_order, 'orderkey') or (old_order.status != order.status or old_order.traded != order.traded):
                     self.local_orders[orderid] = order
                     self.on_order(order)  # 推送事件
                     self.write_log(f"订单状态更新: {orderid} {order.symbol} {old_order.status if old_order else 'NEW'} -> {order.status}")
