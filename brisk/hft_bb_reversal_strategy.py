@@ -76,6 +76,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         super().__init__(use_mock_gateway=use_mock_gateway, gateway_type="brisk", log_suffix=log_suffix)
         
         # BB策略特定参数
+        # note since we are updaing this through the parameter update system at a specific time, if we start the strategy at a different time, the parameters will not be updated
+        # so we need to set the parameters to the updated values here
         self.bb_period = 20
         self.bb_entry_std_multiplier = 3.0
         self.bb_exit_std_multiplier = -1.0
@@ -92,7 +94,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.price_limit_afternoon = 3000  # 下午时段价格上限
         
         # 股价变动限制配置
-        self.max_price_change_pct = 8.0    # 最大允许的股价变动百分比
+        self.max_price_change_pct = 12.0    # 最大允许的股价变动百分比
         
         # 订单取消保护配置
         self.cancel_protection_seconds = 20  # 订单发送后多少秒内不允许取消
@@ -114,7 +116,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.default_stop_loss_config = StopLossConfig(0.02, 0.05, True)
         self.stop_loss_by_time = {
             "morning": StopLossConfig(0.005, 0.0055, True),  # 早上更保守
-            "noon": StopLossConfig(0.003, 0.0035, True),     # 中午稍微宽松
+            "noon": StopLossConfig(0.005, 0.0055, True),     # 中午稍微宽松, too tight lose cut is actually worse
             "afternoon": StopLossConfig(0.005, 0.0055, True),  # 下午跟早上一样保守
         }
 
@@ -180,7 +182,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.parameter_update_completed = False
         
         # 注册参数更新定时器
-        self._register_parameter_update_timer()
+        # self._register_parameter_update_timer()
 
         self.write_log(f"策略初始化完成: {self.strategy_name}")
         
@@ -913,7 +915,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 positions['long_exit_time'] = current_time
                 entry_time_str = positions['long_entry_time'].strftime('%H:%M:%S') if positions['long_entry_time'] else '未知'
                 self.write_log(f"模拟Long Exit触发: {symbol} 价格: {current_price:.2f} >= {bb_levels['exit_long']:.2f} 时间: {current_time.strftime('%H:%M:%S')} (持仓时长: {current_time - positions['long_entry_time'] if positions['long_entry_time'] else '未知'})")
-        
+                context.can_trade = self.check_x_condition(symbol)
+
         elif positions['short']:
             # Short仓位平仓
             if current_price <= bb_levels['exit_short']:
@@ -921,7 +924,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 positions['short_exit_time'] = current_time
                 entry_time_str = positions['short_entry_time'].strftime('%H:%M:%S') if positions['short_entry_time'] else '未知'
                 self.write_log(f"模拟Short Exit触发: {symbol} 价格: {current_price:.2f} <= {bb_levels['exit_short']:.2f} 时间: {current_time.strftime('%H:%M:%S')} (持仓时长: {current_time - positions['short_entry_time'] if positions['short_entry_time'] else '未知'})")
-    
+                context.can_trade = self.check_x_condition(symbol)
+
     def _find_hft_context_by_order_id(self, order_id: str) -> Optional[HFTBBStockContext]:
         """
         根据订单ID查找HFT context
@@ -1909,6 +1913,7 @@ def main():
         
         # 连接Gateway
         strategy.connect(mock_setting)
+        strategy._register_parameter_update_timer()
         
         # 订阅股票
         # we will be using a static symbols list for this strategy, it should be a subset of TOPIX500
