@@ -23,6 +23,12 @@ class TestAfternoonTimeWindowExclusion(unittest.TestCase):
         self.strategy = HFTBBReversalStrategy(use_mock_gateway=True)
         self.strategy.write_log = Mock()
         
+        # 覆盖策略参数，使测试独立于默认参数
+        self.strategy.price_limit_morning = 5000    # 提高morning时段价格限制
+        self.strategy.price_limit_noon = 5000       # 提高noon时段价格限制  
+        self.strategy.price_limit_afternoon = 5000  # 提高afternoon时段价格限制
+        self.strategy.max_price_change_pct = 20.0   # 提高价格变动限制
+        
         # 创建测试用的 context
         self.symbol = "9984"
         self.strategy.create_hft_context(self.symbol)
@@ -90,14 +96,14 @@ class TestAfternoonTimeWindowExclusion(unittest.TestCase):
             self.assertTrue(result)
     
     def test_15_25_allowed(self):
-        """测试15:25:00被允许（在时间窗口内）"""
+        """测试15:25:00被排除（超出时间窗口）"""
         test_time = time(15, 25, 0)
         
         with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
             mock_datetime.now.return_value = datetime.combine(datetime.now().date(), test_time)
             
             result = self.strategy.check_x_condition(self.symbol)
-            self.assertTrue(result)
+            self.assertFalse(result)
     
     def test_15_26_excluded(self):
         """测试15:26:00被排除（超出时间窗口）"""

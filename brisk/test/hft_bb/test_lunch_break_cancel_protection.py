@@ -25,6 +25,12 @@ class TestLunchBreakCancelProtection(unittest.TestCase):
         self.strategy._cancel_entry_order = Mock()
         self.strategy._send_entry_order = Mock()
         
+        # 覆盖策略参数，使测试独立于默认参数
+        self.strategy.price_limit_morning = 5000    # 提高morning时段价格限制
+        self.strategy.price_limit_noon = 5000       # 提高noon时段价格限制  
+        self.strategy.price_limit_afternoon = 5000  # 提高afternoon时段价格限制
+        self.strategy.max_price_change_pct = 20.0   # 提高价格变动限制
+        
         # 创建测试用的 context
         self.context = HFTBBStockContext(symbol="9984")
         self.context.position = 0
@@ -99,18 +105,23 @@ class TestLunchBreakCancelProtection(unittest.TestCase):
             )
     
     def test_normal_time_11_29_cancel_allowed(self):
-        """测试11:29时允许取消订单"""
+        """测试11:29时不取消订单（被排除的时间）"""
         with patch('brisk.hft_bb_reversal_strategy.datetime') as mock_datetime:
-            # 模拟11:29时间（不在休市期间）
+            # 模拟11:29时间（被排除的时间）
             mock_datetime.now.return_value = datetime(2024, 1, 1, 11, 29, 0)
             
-            # 价格在触发区间内，应该取消订单
+            # 价格在触发区间内，但不应该取消订单
             self.tick.last_price = 100.0  # 在95-105之间
             
             self.strategy._check_entry_logic("9984", self.tick, self.context)
             
-            # 验证调用了取消订单
-            self.strategy._cancel_entry_order.assert_called_once()
+            # 验证没有调用取消订单
+            self.strategy._cancel_entry_order.assert_not_called()
+            
+            # 验证日志输出
+            self.strategy.write_log.assert_any_call(
+                "跳过取消订单: 9984 当前时间在11:29分钟(11:29)，避免收盘前频繁撤单损耗API配额"
+            )
     
     def test_normal_time_11_32_cancel_allowed(self):
         """测试11:32时允许取消订单"""

@@ -25,6 +25,12 @@ class Test1524CancelProtection(unittest.TestCase):
         self.strategy._cancel_entry_order = Mock()
         self.strategy._send_entry_order = Mock()
         
+        # 覆盖策略参数，使测试独立于默认参数
+        self.strategy.price_limit_morning = 5000    # 提高morning时段价格限制
+        self.strategy.price_limit_noon = 5000       # 提高noon时段价格限制  
+        self.strategy.price_limit_afternoon = 5000  # 提高afternoon时段价格限制
+        self.strategy.max_price_change_pct = 20.0   # 提高价格变动限制
+        
         # 创建测试用的 context
         self.context = HFTBBStockContext(symbol="9984")
         self.context.position = 0
@@ -131,7 +137,6 @@ class Test1524CancelProtection(unittest.TestCase):
         test_times = [
             (9, 30),   # 早上
             (10, 15),  # 上午
-            (11, 29),  # 中午前
             (11, 32),  # 中午后
             (12, 30),  # 下午
             (14, 30),  # 下午

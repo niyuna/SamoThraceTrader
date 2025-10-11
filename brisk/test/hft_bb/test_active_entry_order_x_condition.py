@@ -25,6 +25,7 @@ class TestActiveEntryOrderXCondition(unittest.TestCase):
         self.strategy.price_limit_noon = 5000       # 提高noon时段价格限制  
         self.strategy.price_limit_afternoon = 5000  # 提高afternoon时段价格限制
         self.strategy.max_price_change_pct = 20.0   # 提高价格变动限制
+        self.strategy.aggressive_x_condition_enabled = True  # 启用激进X条件以测试模拟持仓逻辑
         
         # 添加测试股票
         self.strategy.add_symbol("9984")

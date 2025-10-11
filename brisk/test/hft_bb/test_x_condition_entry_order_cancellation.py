@@ -23,6 +23,13 @@ class TestXConditionEntryOrderCancellation(unittest.TestCase):
         self.strategy = HFTBBReversalStrategy(use_mock_gateway=True)
         self.strategy.write_log = Mock()
         
+        # 覆盖策略参数，使测试独立于默认参数
+        self.strategy.price_limit_morning = 5000    # 提高morning时段价格限制
+        self.strategy.price_limit_noon = 5000       # 提高noon时段价格限制  
+        self.strategy.price_limit_afternoon = 5000  # 提高afternoon时段价格限制
+        self.strategy.max_price_change_pct = 20.0   # 提高价格变动限制
+        self.strategy.aggressive_x_condition_enabled = True  # 启用激进X条件以测试模拟持仓逻辑
+        
         # 创建测试用的 context
         self.symbol = "9984"
         self.strategy.create_hft_context(self.symbol)

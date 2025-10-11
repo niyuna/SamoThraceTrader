@@ -86,7 +86,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # X条件std_pct阈值参数
         self.std_pct_threshold_morning = 0.0007    # 早上9:05-9:35阈值
         self.std_pct_threshold_noon = 0.000001      # 中午11:29-11:30阈值（极小的值，几乎总是通过）
-        self.std_pct_threshold_afternoon = 0.0004  # 下午14:35-15:20阈值
+        self.std_pct_threshold_afternoon = 0.0003  # 下午14:35-15:20阈值
         
         # 价格限制配置（前一天收盘价上限）
         self.price_limit_morning = 2000    # 早上时段价格上限
@@ -98,6 +98,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         
         # 订单取消保护配置
         self.cancel_protection_seconds = 20  # 订单发送后多少秒内不允许取消
+        self.aggressive_x_condition_enabled = False  # 是否启用激进X条件, this will increase the opportunity to trade when there is a simulated position, default false for conservative
         
         # 收盘前平仓参数
         self.market_close_liquidation_enabled = True  # 是否启用收盘前平仓
@@ -285,7 +286,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # 2. 检查模拟持仓 - 智能检查逻辑
         if symbol in self.simulated_positions:
             positions = self.simulated_positions[symbol]
-            if positions['long'] or positions['short']:
+            # only when aggressive flag is on, we will allow x condition to pass when there is a simulated position, this will increase the opportunity to trade
+            if self.aggressive_x_condition_enabled and (positions['long'] or positions['short']):
                 # 获取模拟持仓的entry时间
                 entry_time = positions['long_entry_time'] if positions['long'] else positions['short_entry_time']
                 
