@@ -19,11 +19,20 @@ from common.trading_common import next_tick_price, TypicalTimes
 class VWAPFailureStrategy(IntradayStrategyBase):
     """VWAP Failure 日内交易策略"""
     
-    def __init__(self, use_mock_gateway=True, enable_delayed_entry=False):
-        super().__init__(use_mock_gateway=use_mock_gateway)
+    def __init__(self, use_mock_gateway=True, enable_delayed_entry=False, 
+                 symbol_lower_bound="0000", symbol_upper_bound="ZZZZ", log_suffix=None):
+        # Generate log_suffix based on bounds if not explicitly provided
+        if log_suffix is None and (symbol_lower_bound != "0000" or symbol_upper_bound != "ZZZZ"):
+            log_suffix = f"{symbol_lower_bound}_{symbol_upper_bound}"
+        
+        super().__init__(use_mock_gateway=use_mock_gateway, log_suffix=log_suffix)
         
         # 设置延迟执行标志
         self.enable_delayed_entry = enable_delayed_entry
+        
+        # 设置股票代码范围过滤参数
+        self.symbol_lower_bound = symbol_lower_bound
+        self.symbol_upper_bound = symbol_upper_bound
         
         # 策略参数
         self.market_cap_threshold = 100_000_000_000  # 1000亿日元
@@ -160,12 +169,17 @@ class VWAPFailureStrategy(IntradayStrategyBase):
     def _pre_filter_by_market_cap(self):
         """基于市值预筛选股票"""
         for symbol, stock_info in self.stock_master.items():
+            # Check symbol range (inclusive bounds)
+            if not (self.symbol_lower_bound <= symbol <= self.symbol_upper_bound):
+                continue
+                
             market_cap = stock_info.get('market_cap', 0)
             prefix = stock_info.get('prefix', '')
             if market_cap >= self.market_cap_threshold and prefix != 'E':
                 self.market_cap_eligible.add(symbol)
                 # print(f"股票 {symbol} 通过市值筛选: {market_cap:,.0f} 日元")
         
+        self.write_log(f"股票代码范围: {self.symbol_lower_bound} ~ {self.symbol_upper_bound}")
         self.write_log(f"市值筛选后符合条件的股票数量: {len(self.market_cap_eligible)}")
     
     def on_tick(self, event):
@@ -918,9 +932,28 @@ class VWAPFailureStrategy(IntradayStrategyBase):
 
 def main():
     """主函数 - 测试VWAP Failure策略"""
-    print("启动VWAP Failure策略 ...")
+    import argparse
     
-    strategy = VWAPFailureStrategy(use_mock_gateway=False, enable_delayed_entry=True)
+    # 设置命令行参数解析
+    parser = argparse.ArgumentParser(description='VWAP Failure策略')
+    parser.add_argument('--symbol-lower-bound', type=str, default='0000',
+                       help='股票代码下限 (默认: 0000)')
+    parser.add_argument('--symbol-upper-bound', type=str, default='ZZZZ',
+                       help='股票代码上限 (默认: ZZZZ)')
+    parser.add_argument('--mock', action='store_true', default=False,
+                       help='使用模拟数据')
+    
+    args = parser.parse_args()
+    
+    print("启动VWAP Failure策略 ...")
+    print(f"股票代码范围: {args.symbol_lower_bound} ~ {args.symbol_upper_bound}")
+    
+    strategy = VWAPFailureStrategy(
+        use_mock_gateway=args.mock, 
+        enable_delayed_entry=True,
+        symbol_lower_bound=args.symbol_lower_bound,
+        symbol_upper_bound=args.symbol_upper_bound
+    )
     
     try:
         weekday = datetime.now().weekday()
@@ -952,18 +985,6 @@ def main():
             max_exit_wait_time_gap_down=40,    # 最大平仓等待时间（分钟）
             max_vol_ma5_ratio_threshold_gap_down=3.0, # Gap Down时的成交量MA5阈值
         )
-
-        # 配置Mock Gateway的replay模式
-        # mock_setting = {
-        #     "tick_mode": "replay",
-        #     "replay_data_dir": "D:\\dev\\github\\brisk-hack\\brisk_in_day_frames",
-        #     "replay_date": "20250718",  # 根据实际数据文件调整
-        #     "replay_speed": 10.0,       # 10倍速回放
-        #     "mock_account_balance": 10000000,
-        # }
-        
-        # 连接Gateway
-        # strategy.connect(mock_setting)
         
         strategy.connect()
 
