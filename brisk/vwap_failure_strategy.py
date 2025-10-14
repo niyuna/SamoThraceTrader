@@ -532,6 +532,12 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         context = self.get_context(symbol)
         
         # 更新 entry 订单
+        # in case we already have trigger setup, override the trigger price and order price to 0 when it's not trading time
+        if context.state == StrategyState.IDLE and not self._is_within_trading_time(bar.datetime) and (context.entry_trigger_price > 0 or context.entry_trigger_order_price > 0):
+            self.write_log(f"override trigger price for {context.symbol} trigger price: {context.entry_trigger_price} order price: {context.entry_trigger_order_price} when it's not trading time")
+            context.entry_trigger_price = 0.0
+            context.entry_trigger_order_price = 0.0
+            
         # for entry case, if it's alreadsy past the latest_entry_time, cancel the the existing order if any instead of updating the price
         if context.state == StrategyState.WAITING_ENTRY and context.entry_order_id:
             if not self._is_within_trading_time(bar.datetime):
@@ -630,6 +636,7 @@ class VWAPFailureStrategy(IntradayStrategyBase):
         """生成交易信号 - 基于 Context 状态"""
         # 检查交易时间限制
         if not self._is_within_trading_time(bar.datetime):
+            # need to cancell all the triggers
             return
         
         # 获取 Context
