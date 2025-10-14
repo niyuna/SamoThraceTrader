@@ -395,6 +395,7 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
                     else:
                         failed_count += 1
                         self.write_log(f"取消entry订单失败: {symbol} {context.entry_order_id}")
+                    time_module.sleep(0.3)
                 else:
                     # 状态是WAITING_ENTRY但没有订单ID，直接重置状态
                     self.write_log(f"重置异常状态: {symbol} 状态为WAITING_ENTRY但无订单ID")
@@ -411,9 +412,65 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
                     self.write_log(f"发送平仓订单: {symbol} {direction.value} MARKET {order_id}")
                 else:
                     failed_count += 1
-                    self.write_log(f"发送平仓订单失败: {symbol} {direction.value} MARKET")
-                
-            time_module.sleep(0.3)
+                    self.write_log(f"发送平仓订单失败: {symbol} {direction.value} MARKET")   
+                time_module.sleep(0.3)
+            
+        try:
+            # 1. 通过 gateway 获取实际持仓
+            positions = self.gateway.get_positions()
+            if not positions:
+                self.write_log("无法获取实际持仓数据，跳过保险平仓")
+            else:
+                # 2. 分析未覆盖的持仓并发送平仓订单
+                self.write_log(f"开始执行保险平仓检查... {len(positions)}个持仓")
+                for position in positions:
+                    symbol = position["Symbol"]
+                    leaves_qty = position["LeavesQty"]  # 总持有数量
+                    hold_qty = position["HoldQty"]      # 被平仓订单锁定的数量
+                    side = position["Side"]             # "1"=空头持仓, "2"=多头持仓
+                    
+                    # 计算未锁定的数量
+                    uncovered_qty = leaves_qty - hold_qty
+                    
+                    if uncovered_qty > 0:
+                        # 确定平仓方向（与持仓方向相反）
+                        if side == "1":  # 空头持仓，需要买多平仓
+                            direction = Direction.LONG
+                        else:  # 多头持仓，需要卖空平仓
+                            direction = Direction.SHORT
+                        
+                        # 创建临时的 context 用于发送订单
+                        temp_context = type('TempContext', (), {
+                            'symbol': symbol,
+                            'position_size': uncovered_qty,
+                            'already_traded': 0
+                        })()
+                        
+                        # 发送 market 平仓订单
+                        order_id = self._execute_order(
+                            context=temp_context,
+                            bar=None,
+                            price=0,  # market order
+                            direction=direction,
+                            offset=Offset.CLOSE,
+                            order_type=OrderType.MARKET,
+                            reference_prefix="insurance_liquidation",
+                            quantity=uncovered_qty
+                        )
+                        
+                        if order_id:
+                            self.write_log(f"保险平仓订单发送成功: {symbol} {direction} {uncovered_qty}股, 订单ID: {order_id}")
+                            liquidation_count += 1
+                        else:
+                            self.write_log(f"保险平仓订单发送失败: {symbol} {direction} {uncovered_qty}股")
+                            failed_count += 1
+                        
+                        time_module.sleep(0.5)  # 避免过于频繁的订单
+                        
+        except Exception as e:
+            self.write_log(f"保险平仓检查异常: {e}")
+            failed_count += 1  # 异常也算失败
+
 
         # 输出总结
         if canceled_orders > 0:
