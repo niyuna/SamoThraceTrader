@@ -187,10 +187,12 @@ class BriskClickGateway(BaseGateway):
                 reference=req.reference
             )
             self._add_order(initial_order)
-            self.write_log(f"订单已发送并添加到缓存: {order_id}")
-        
+            self.write_log(f"订单已发送并添加到缓存: {order_id} {req.symbol} {req.offset} {req.direction} {req.price} {req.volume}")
+            time.sleep(0.2)
+        else:
+            self.write_log(f"订单发送失败: {order_id} {req.symbol} {req.offset} {req.direction} {req.price} {req.volume}")
         # special sleep because this is a web simulation api
-        time.sleep(0.2)
+        
         return order_id
 
     # TODO: need check: done
