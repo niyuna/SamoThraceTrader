@@ -231,7 +231,7 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         self._check_time_windows(current_time)
         
         # 3. 处理建仓逻辑
-        if self.entry_window_active and context.state == StrategyState.IDLE:
+        if self.entry_window_active and (context.state == StrategyState.IDLE or context.state == StrategyState.WAITING_ENTRY):
             self._handle_entry_logic(symbol, context, tick)
         
         # 4. 平仓逻辑现在通过timer处理，不在这里处理
