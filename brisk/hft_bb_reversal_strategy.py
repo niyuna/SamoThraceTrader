@@ -100,6 +100,9 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.cancel_protection_seconds = 20  # 订单发送后多少秒内不允许取消
         self.aggressive_x_condition_enabled = False  # 是否启用激进X条件, this will increase the opportunity to trade when there is a simulated position, default false for conservative
         
+        # 个股交易配置
+        self.enable_individual_stock_trading = True  # 是否启用个股自定义交易配置，默认True
+        
         # 收盘前平仓参数
         self.market_close_liquidation_enabled = True  # 是否启用收盘前平仓
         self.market_close_time = time(15, 24)        # 普通交易结束时间
@@ -231,13 +234,15 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         if not self.x_condition_enabled:
             return ['long', 'short']
         
-        # 检查个股是否有自定义配置
-        stock_config = self.stock_config_manager.get_stock_config(symbol)
-        if stock_config and stock_config.trading_windows:
-            return self._check_custom_trading_windows(symbol, stock_config, current_time)
-        else:
-            # 使用默认的X条件检查逻辑
-            return self._check_default_x_condition(symbol, current_time)
+        # 检查是否启用个股自定义交易配置
+        if self.enable_individual_stock_trading:
+            # 检查个股是否有自定义配置
+            stock_config = self.stock_config_manager.get_stock_config(symbol)
+            if stock_config and stock_config.trading_windows:
+                return self._check_custom_trading_windows(symbol, stock_config, current_time)
+        
+        # 使用默认的X条件检查逻辑
+        return self._check_default_x_condition(symbol, current_time)
     
     def _check_custom_trading_windows(self, symbol: str, stock_config, current_time: datetime = None) -> List[str]:
         """检查自定义交易窗口（完全使用个股配置）"""
@@ -1837,7 +1842,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             'bb_entry_std_multiplier',
             'bb_exit_std_multiplier',
             'trigger_tick_count',
-            'cancel_protection_seconds'
+            'cancel_protection_seconds',
+            'enable_individual_stock_trading'
         ]
         
         for param in other_params:
