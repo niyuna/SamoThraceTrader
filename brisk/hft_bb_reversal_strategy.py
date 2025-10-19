@@ -103,6 +103,11 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # 个股交易配置
         self.enable_individual_stock_trading = True  # 是否启用个股自定义交易配置，默认True
         
+        # 时间窗口允许方向配置
+        self.morning_allowed_directions = ['long', 'short']    # 早上窗口允许方向
+        self.noon_allowed_directions = ['long', 'short']       # 中午窗口允许方向  
+        self.afternoon_allowed_directions = ['long', 'short']  # 下午窗口允许方向
+        
         # 收盘前平仓参数
         self.market_close_liquidation_enabled = True  # 是否启用收盘前平仓
         self.market_close_time = time(15, 24)        # 普通交易结束时间
@@ -146,7 +151,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 'end': time(9, 41),
                 'threshold': self.std_pct_threshold_morning,
                 'name': 'morning',
-                'allowed_directions': ['long', 'short'],  # 早上窗口允许多空双向
+                'allowed_directions': self.morning_allowed_directions,  # 使用动态参数
                 'exclude_minutes': []  # 排除的分钟（如15:00）
             },
             {
@@ -154,7 +159,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 'end': time(11, 31),
                 'threshold': self.std_pct_threshold_noon,
                 'name': 'noon',
-                'allowed_directions': ['long', 'short'],  # 中午窗口允许多空双向
+                'allowed_directions': self.noon_allowed_directions,  # 使用动态参数
                 'exclude_minutes': []  # 排除的分钟
             },
             {
@@ -162,7 +167,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 'end': time(15, 22),
                 'threshold': self.std_pct_threshold_afternoon,
                 'name': 'afternoon',
-                'allowed_directions': ['long', 'short'],  # 下午窗口允许多空双向
+                'allowed_directions': self.afternoon_allowed_directions,  # 使用动态参数
                 'exclude_minutes': [(14, 30), (15, 0)]  # 排除14:30和15:00分钟
             }
         ]
@@ -1821,6 +1826,16 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         else:
             self.write_log(f"发送入场订单失败: {symbol} {direction.value} 价格{price:.2f}")
     
+    def _update_time_windows_directions(self):
+        """更新time_windows中的allowed_directions"""
+        for window in self.time_windows:
+            if window['name'] == 'morning':
+                window['allowed_directions'] = self.morning_allowed_directions
+            elif window['name'] == 'noon':
+                window['allowed_directions'] = self.noon_allowed_directions
+            elif window['name'] == 'afternoon':
+                window['allowed_directions'] = self.afternoon_allowed_directions
+    
     def _update_strategy_specific_params(self, params: Dict[str, Any]):
         """更新HFT BB Reversal策略特定参数"""
         # 更新价格限制参数
@@ -1837,6 +1852,20 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 setattr(self, param, new_value)
                 self.write_log(f"价格限制参数 {param} 更新: {old_value} -> {new_value}")
         
+        # 更新时间窗口允许方向参数
+        direction_params = [
+            'morning_allowed_directions',
+            'noon_allowed_directions', 
+            'afternoon_allowed_directions'
+        ]
+        
+        for param in direction_params:
+            if param in params:
+                old_value = getattr(self, param, None)
+                new_value = params[param]
+                setattr(self, param, new_value)
+                self.write_log(f"时间窗口方向参数 {param} 更新: {old_value} -> {new_value}")
+        
         # 更新其他策略特定参数（如果需要的话）
         other_params = [
             'bb_entry_std_multiplier',
@@ -1852,6 +1881,10 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 new_value = params[param]
                 setattr(self, param, new_value)
                 self.write_log(f"策略参数 {param} 更新: {old_value} -> {new_value}")
+        
+        # 如果更新了方向参数，需要同步更新time_windows
+        if any(param in params for param in direction_params):
+            self._update_time_windows_directions()
 
 
 def main():
