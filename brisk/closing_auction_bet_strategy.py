@@ -220,7 +220,8 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         symbol = tick.symbol
         context = self.get_context(symbol)
         
-        current_time = tick.datetime.time()
+        # current_time = tick.datetime.time()
+        current_time = datetime.now().time()
         
         # 1. 更新BarGenerator
         if symbol not in self.bar_generators:
@@ -322,6 +323,8 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
                 if time_diff.total_seconds() < self.cancel_protection_seconds:
                     self.write_log(f"跳过取消订单: {symbol} 订单在{self.cancel_protection_seconds}秒内发送，避免频繁撤单")
                     return
+                else:
+                    self.write_log(f"取消订单: {symbol} 订单在{time_diff.total_seconds()}秒外发送，取消订单")
             
             # 检查价格是否退出触发区间
             # 当价格在long_trigger_price和short_trigger_price之间时，取消订单
@@ -367,14 +370,14 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         calculated_size = self.calculate_position_size(context.symbol)
         context.position_size = calculated_size
         
-        order_id = self._execute_entry(
+        self._execute_entry(
             context, None, price, direction
         )
-        if order_id:
+        if context.entry_order_id:
             # 记录订单发送时间
             context.entry_order_time = datetime.now()
             # Base strategy已经在_execute_trade中更新了context.entry_order_id和context.state
-            self.write_log(f"发送建仓订单: {context.symbol} {direction.value} {price:.2f} 数量:{calculated_size} {order_id}")
+            self.write_log(f"发送建仓订单: {context.symbol} {direction.value} {price:.2f} 数量:{calculated_size} {context.entry_order_id}")
     
     def _execute_market_close_liquidation(self):
         """执行收盘前平仓"""
