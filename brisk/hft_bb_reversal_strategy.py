@@ -348,9 +348,9 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                     return []
         
         # 3. 没有模拟持仓或有模拟持仓记录但没有持仓，使用原有逻辑
-        # if not self._check_no_position(symbol):
-        #     self.write_log(f"X条件检查失败: {symbol} 已有持仓")
-        #     return []
+        if not self._check_no_position(symbol):
+            self.write_log(f"X条件检查失败: {symbol} 已有持仓")
+            return []
         
         # 3. 检查股价变动限制
         price_change_result = self._check_price_change_limit(symbol)
@@ -652,7 +652,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         
         price_limit = price_limit_map[time_period]
         
-        if prev_close >= price_limit or prev_close < 1000:
+        if prev_close >= price_limit or prev_close < 100:
             return {
                 'ok': False,
                 'reason': f'{time_period}时段股价{prev_close}超过{price_limit}限制'
