@@ -88,6 +88,8 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         self.entry_window_active = False
         self.exit_window_active = False
         self.liquidation_executed = False  # 是否已执行平仓
+
+        self.skip_symbols = ["6098"]
         
         # 动态参数管理（由基类处理）
         # 不需要在这里初始化，由基类的set_configuration_provider方法处理
@@ -244,6 +246,9 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         
         # skip all the large price stokcs
         if bar.close_price > 30000:
+            return
+        if symbol in self.skip_symbols:
+            self.write_log(f"跳过股票: {symbol}")
             return
 
         # 检查是否是15:00的K线，设置base price
