@@ -652,7 +652,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         
         price_limit = price_limit_map[time_period]
         
-        if prev_close >= price_limit:
+        if prev_close >= price_limit or prev_close < 1000:
             return {
                 'ok': False,
                 'reason': f'{time_period}时段股价{prev_close}超过{price_limit}限制'
