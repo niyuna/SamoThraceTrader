@@ -20,7 +20,7 @@ params:
   trigger_tick_count: 3       # 触发价格距离目标价格的tick数量
   
   # 交易参数
-  single_stock_max_position: 1500000  # 单只股票最大持仓金额（日元，可通过命令行参数覆盖）
+  single_stock_max_position: 2000000  # 单只股票最大持仓金额（日元，可通过命令行参数覆盖）
   min_position_size: 100              # 最小持仓数量（fallback）
   cancel_protection_seconds: 50       # 订单取消保护时间（秒）
   
