@@ -86,7 +86,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # X条件std_pct阈值参数
         self.std_pct_threshold_morning = 0.0007    # 早上9:05-9:35阈值
         self.std_pct_threshold_noon = 0.000001      # 中午11:29-11:30阈值（极小的值，几乎总是通过）
-        self.std_pct_threshold_afternoon = 0.0004  # 下午14:35-15:20阈值
+        self.std_pct_threshold_afternoon = 0.0007  # 下午14:35-15:20阈值
         
         # 价格限制配置（前一天收盘价上限）
         self.price_limit_morning = 2000    # 早上时段价格上限
@@ -297,7 +297,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         if symbol in self.simulated_positions:
             positions = self.simulated_positions[symbol]
             # only when aggressive flag is on, we will allow x condition to pass when there is a simulated position, this will increase the opportunity to trade
-            if self.aggressive_x_condition_enabled and (positions['long'] or positions['short']):
+            # make an exception for the noon time
+            if (self.aggressive_x_condition_enabled or (11 <= datetime.now().hour < 12)) and (positions['long'] or positions['short']):
                 # 获取模拟持仓的entry时间
                 entry_time = positions['long_entry_time'] if positions['long'] else positions['short_entry_time']
                 
@@ -306,9 +307,9 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                     return []
                 
                 # 检查entry时间是否在任意窗口内
-                if not self._is_entry_time_in_any_window(entry_time):
-                    self.write_log(f"X条件检查失败: {symbol} 模拟持仓entry时间不在任何交易窗口内")
-                    return []
+                # if not self._is_entry_time_in_any_window(entry_time):
+                #     self.write_log(f"X条件检查失败: {symbol} 模拟持仓entry时间不在任何交易窗口内")
+                #     return []
                 
                 # 获取模拟持仓方向
                 simulated_direction = self._get_simulated_position_direction(symbol)
