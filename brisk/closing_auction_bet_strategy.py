@@ -245,7 +245,7 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         context = self.get_context(symbol)
         
         # skip all the large price stokcs
-        if bar.close_price > 30000:
+        if bar.close_price > 35000:
             return
         if symbol in self.skip_symbols:
             self.write_log(f"跳过股票: {symbol}")
