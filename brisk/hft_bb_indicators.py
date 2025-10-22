@@ -9,7 +9,7 @@ import os
 from vnpy.trader.object import BarData
 from vnpy.trader.constant import Exchange, Interval, Direction
 from vnpy.trader.utility import ArrayManager
-from common.trading_common import next_tick_price
+from common.trading_common import next_tick_price, get_tick_size, normalize_price
 
 
 class HFTBBReversalIndicatorV2:
@@ -117,22 +117,25 @@ class HFTBBReversalIndicatorV2:
         
         if sma is None or std is None:
             return {}
-        
+
         # 计算BB价格水平
         upper_raw = sma + (self.entry_std_multiplier * std)      # short entry
         lower_raw = sma - (self.entry_std_multiplier * std)      # long entry  
         exit_long_raw = sma - (self.exit_std_multiplier * std)   # long exit
         exit_short_raw = sma + (self.exit_std_multiplier * std)  # short exit
         
+        tick_size = get_tick_size(self.symbol, sma)
+        need_tick_adjustment = tick_size / std < 0.5
+        
         # 对实际会发送到broker的价格进行tick对齐
         # upper用于SHORT entry，向下调整
-        upper_aligned = self._align_price_to_tick(upper_raw, Direction.SHORT)
+        upper_aligned = self._align_price_to_tick(upper_raw, Direction.SHORT) if need_tick_adjustment else normalize_price(self.symbol, upper_raw)
         # lower用于LONG entry，向上调整  
-        lower_aligned = self._align_price_to_tick(lower_raw, Direction.LONG)
+        lower_aligned = self._align_price_to_tick(lower_raw, Direction.LONG) if need_tick_adjustment else normalize_price(self.symbol, lower_raw)
         # exit_long用于平仓LONG头寸，是SHORT订单，向下调整
-        exit_long_aligned = self._align_price_to_tick(exit_long_raw, Direction.SHORT)
+        exit_long_aligned = self._align_price_to_tick(exit_long_raw, Direction.SHORT) if need_tick_adjustment else normalize_price(self.symbol, exit_long_raw)
         # exit_short用于平仓SHORT头寸，是LONG订单，向上调整
-        exit_short_aligned = self._align_price_to_tick(exit_short_raw, Direction.LONG)
+        exit_short_aligned = self._align_price_to_tick(exit_short_raw, Direction.LONG) if need_tick_adjustment else normalize_price(self.symbol, exit_short_raw)
         
         bb_levels = {
             'upper': upper_aligned,                                # short entry (对齐后)
