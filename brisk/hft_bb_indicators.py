@@ -133,9 +133,9 @@ class HFTBBReversalIndicatorV2:
         # lower用于LONG entry，向上调整  
         lower_aligned = self._align_price_to_tick(lower_raw, Direction.LONG) if need_tick_adjustment else normalize_price(self.symbol, lower_raw)
         # exit_long用于平仓LONG头寸，是SHORT订单，向下调整
-        exit_long_aligned = self._align_price_to_tick(exit_long_raw, Direction.SHORT) if need_tick_adjustment else normalize_price(self.symbol, exit_long_raw)
+        exit_long_aligned = self._align_price_to_tick(exit_long_raw, Direction.SHORT) #if need_tick_adjustment else normalize_price(self.symbol, exit_long_raw)
         # exit_short用于平仓SHORT头寸，是LONG订单，向上调整
-        exit_short_aligned = self._align_price_to_tick(exit_short_raw, Direction.LONG) if need_tick_adjustment else normalize_price(self.symbol, exit_short_raw)
+        exit_short_aligned = self._align_price_to_tick(exit_short_raw, Direction.LONG) #if need_tick_adjustment else normalize_price(self.symbol, exit_short_raw)
         
         bb_levels = {
             'upper': upper_aligned,                                # short entry (对齐后)
