@@ -22,7 +22,7 @@ params:
   # 交易参数
   single_stock_max_position: 2000000  # 单只股票最大持仓金额（日元，可通过命令行参数覆盖）
   min_position_size: 100              # 最小持仓数量（fallback）
-  cancel_protection_seconds: 50       # 订单取消保护时间（秒）
+  cancel_protection_seconds: 10       # 订单取消保护时间（秒）
   
   # 时间参数
   # entry_start_time: "15:22"   # 建仓开始时间
