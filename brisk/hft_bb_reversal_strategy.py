@@ -85,7 +85,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         
         # X条件std_pct阈值参数
         self.std_pct_threshold_morning = 0.0007    # 早上9:05-9:35阈值
-        self.std_pct_threshold_noon = 0.000001      # 中午11:29-11:30阈值（极小的值，几乎总是通过）
+        self.std_pct_threshold_noon = 0.0005      # 中午11:29-11:30阈值（极小的值，几乎总是通过）
         self.std_pct_threshold_afternoon = 0.0007  # 下午14:35-15:20阈值
         
         # 价格限制配置（前一天收盘价上限）
@@ -94,7 +94,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.price_limit_afternoon = 3000  # 下午时段价格上限
         
         # 股价变动限制配置
-        self.max_price_change_pct = 12.0    # 最大允许的股价变动百分比
+        self.max_price_change_pct = 8.0    # 最大允许的股价变动百分比
         
         # 订单取消保护配置
         self.cancel_protection_seconds = 20  # 订单发送后多少秒内不允许取消
@@ -297,8 +297,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         if symbol in self.simulated_positions:
             positions = self.simulated_positions[symbol]
             # only when aggressive flag is on, we will allow x condition to pass when there is a simulated position, this will increase the opportunity to trade
-            # make an exception for the noon time
-            if (self.aggressive_x_condition_enabled or (11 <= datetime.now().hour < 12)) and (positions['long'] or positions['short']):
+            if self.aggressive_x_condition_enabled and (positions['long'] or positions['short']):
                 # 获取模拟持仓的entry时间
                 entry_time = positions['long_entry_time'] if positions['long'] else positions['short_entry_time']
                 
@@ -1895,7 +1894,7 @@ def main():
     # 设置命令行参数解析
     parser = argparse.ArgumentParser(description='HFT BB Reversal策略')
     parser.add_argument('--profile', type=str, default='600_2000', 
-                       choices=['600_2000', '2000_4000', '600_4000', '600_5000'],
+                       choices=['600_2000', '2000_4000', '600_4000', '600_5000', '600_6000'],
                        help='选择运行profile (默认: 600_2000)')
     parser.add_argument('--mock', action='store_true', default=False,
                        help='使用模拟数据')
@@ -1931,6 +1930,11 @@ def main():
             'log_suffix': '600_5000',
             'low_price': 600,
             'high_price': 5000,
+        },
+        '600_6000': {
+            'log_suffix': '600_6000',
+            'low_price': 600,
+            'high_price': 6000,
         },
     }
     
