@@ -334,7 +334,7 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
             # 检查价格是否退出触发区间
             # 当价格在long_trigger_price和short_trigger_price之间时，取消订单
             should_cancel = False
-            if context.long_trigger_price < current_price < context.short_trigger_price:
+            if context.long_trigger_price < current_price < context.short_trigger_price and context.position == 0:
                 should_cancel = True
                 self.write_log(f"价格退出触发区间: {symbol} {current_price:.2f} 在 {context.long_trigger_price:.2f} 和 {context.short_trigger_price:.2f} 之间")
             
