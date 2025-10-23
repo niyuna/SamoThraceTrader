@@ -17,7 +17,7 @@ metadata:
 params:
   # 价格限制参数（动态可调整）
   price_limit_morning: 600    # 早上时段价格上限
-  price_limit_noon: 6000       # 中午时段价格上限  
+  price_limit_noon: 3000       # 中午时段价格上限  
   price_limit_afternoon: 6000  # 下午时段价格上限
   
   # 订单取消保护参数
