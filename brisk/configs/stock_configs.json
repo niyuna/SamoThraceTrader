@@ -34,7 +34,7 @@
     "exclude_minutes": ["12:00", "15:00"]
   },
   "8593": {
-    "bb_entry_std_multiplier": 3.0,
+    "bb_entry_std_multiplier": 100.0,
     "bb_exit_std_multiplier": -0.5,
     "trading_windows": [
       {
@@ -70,7 +70,7 @@
     "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
   },
   "8604,5019,7272,4612,2801,3407,8750,8601,7267,7205": {
-    "bb_entry_std_multiplier": 3.0,
+    "bb_entry_std_multiplier": 100.0,
     "bb_exit_std_multiplier": -0.5,
     "trading_windows": [
       {
@@ -82,7 +82,7 @@
     "exclude_minutes": ["12:30", "13:00", "14:00", "14:30", "15:00"]
   },
   "ZZZZ,9759,7732": {
-    "bb_entry_std_multiplier": 10.0,
+    "bb_entry_std_multiplier": 1000.0,
     "bb_exit_std_multiplier": -0.5,
     "trading_windows": [
       {
