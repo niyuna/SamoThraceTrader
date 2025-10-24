@@ -1010,6 +1010,9 @@ def main():
         print("按Ctrl+C退出...")
         while True:
             time.sleep(30)
+            current_time = datetime.now()
+            if current_time.hour == 11 and 35 >= current_time.minute >= 31:
+                break
             print(strategy.get_signals_summary())
             
     except KeyboardInterrupt:

@@ -2020,6 +2020,9 @@ def main():
         print("按Ctrl+C退出...")
         while True:
             time_module.sleep(30)
+            current_time = datetime.now()
+            if current_time.hour == 15 and 35 >= current_time.minute >= 31:
+                break
             # 定期打印模拟持仓状态
             if debug:
                 strategy.print_simulation_summary()
