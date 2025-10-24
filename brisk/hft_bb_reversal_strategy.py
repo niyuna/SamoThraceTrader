@@ -1425,7 +1425,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
     def _update_indicator_managers_parameters(self):
         """更新所有技术指标管理器的参数"""
         for symbol, manager in self.indicator_managers.items():
-            if hasattr(manager, 'update_parameters'):
+            # only targetting stocks that have no custom config
+            if hasattr(manager, 'update_parameters') and self.stock_config_manager.get_stock_config(symbol) is None:
                 manager.update_parameters(
                     entry_std_multiplier=self.bb_entry_std_multiplier,
                     exit_std_multiplier=self.bb_exit_std_multiplier
