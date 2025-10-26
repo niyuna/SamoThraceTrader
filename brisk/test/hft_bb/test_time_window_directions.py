@@ -44,33 +44,42 @@ class TestTimeWindowDirections(unittest.TestCase):
         # 设置早上时间
         morning_time = datetime(2024, 1, 1, 9, 20)
         
-        result = self.strategy._check_time_window_with_std_pct("9984", morning_time)
-        
-        self.assertTrue(result['in_window'])
-        self.assertEqual(result['time_period'], 'morning')
-        self.assertEqual(result['allowed_directions'], ['long', 'short'])
+        # 模拟价格检查通过
+        with patch.object(self.strategy, '_check_price_limit') as mock_price_limit:
+            mock_price_limit.return_value = {'ok': True, 'reason': '价格检查通过'}
+            result = self.strategy._check_time_window_with_std_pct("9984", morning_time)
+            
+            self.assertTrue(result['in_window'])
+            self.assertEqual(result['time_period'], 'morning')
+            self.assertEqual(result['allowed_directions'], ['long', 'short'])
     
     def test_noon_window_allows_both_directions(self):
         """测试中午窗口允许多空双向交易"""
         # 设置中午时间
         noon_time = datetime(2024, 1, 1, 11, 29, 30)
         
-        result = self.strategy._check_time_window_with_std_pct("9984", noon_time)
-        
-        self.assertTrue(result['in_window'])
-        self.assertEqual(result['time_period'], 'noon')
-        self.assertEqual(result['allowed_directions'], ['long', 'short'])
+        # 模拟价格检查通过
+        with patch.object(self.strategy, '_check_price_limit') as mock_price_limit:
+            mock_price_limit.return_value = {'ok': True, 'reason': '价格检查通过'}
+            result = self.strategy._check_time_window_with_std_pct("9984", noon_time)
+            
+            self.assertTrue(result['in_window'])
+            self.assertEqual(result['time_period'], 'noon')
+            self.assertEqual(result['allowed_directions'], ['long', 'short'])
     
     def test_afternoon_window_allows_both_directions(self):
         """测试下午窗口允许多空双向交易"""
         # 设置下午时间（非15:00）
         afternoon_time = datetime(2024, 1, 1, 14, 40)
         
-        result = self.strategy._check_time_window_with_std_pct("9984", afternoon_time)
-        
-        self.assertTrue(result['in_window'])
-        self.assertEqual(result['time_period'], 'afternoon')
-        self.assertEqual(result['allowed_directions'], ['long', 'short'])
+        # 模拟价格检查通过
+        with patch.object(self.strategy, '_check_price_limit') as mock_price_limit:
+            mock_price_limit.return_value = {'ok': True, 'reason': '价格检查通过'}
+            result = self.strategy._check_time_window_with_std_pct("9984", afternoon_time)
+            
+            self.assertTrue(result['in_window'])
+            self.assertEqual(result['time_period'], 'afternoon')
+            self.assertEqual(result['allowed_directions'], ['long', 'short'])
     
     def test_outside_window_returns_empty_directions(self):
         """测试在交易窗口外时返回空的交易方向"""
@@ -97,9 +106,11 @@ class TestTimeWindowDirections(unittest.TestCase):
         # 设置早上时间
         morning_time = datetime(2024, 1, 1, 9, 20)
         
-        # 模拟std_pct检查通过
-        with patch.object(self.strategy, '_calculate_and_check_std_pct') as mock_std_pct:
+        # 模拟std_pct检查通过和价格检查通过
+        with patch.object(self.strategy, '_calculate_and_check_std_pct') as mock_std_pct, \
+             patch.object(self.strategy, '_check_price_limit') as mock_price_limit:
             mock_std_pct.return_value = {'std_pct': 0.001, 'ok': True}
+            mock_price_limit.return_value = {'ok': True, 'reason': '价格检查通过'}
             
             result = self.strategy.check_x_condition("9984", morning_time)
             

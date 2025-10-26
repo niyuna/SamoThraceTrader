@@ -173,8 +173,10 @@ class TestEligibleStocks(unittest.TestCase):
         test_time = datetime.now().replace(hour=9, minute=20, second=0, microsecond=0)
         
         # 测试X条件
-        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime, \
+             patch.object(self.strategy, '_check_price_limit') as mock_price_limit:
             mock_datetime.now.return_value = test_time
+            mock_price_limit.return_value = {'ok': True, 'reason': '价格检查通过'}
             result = self.strategy.check_x_condition("2330")
         
         # 验证X条件通过

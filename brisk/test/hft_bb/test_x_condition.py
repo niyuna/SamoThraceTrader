@@ -139,7 +139,7 @@ class TestXCondition(unittest.TestCase):
         with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
             mock_datetime.now.return_value = morning_time
             result = self.strategy.check_x_condition(symbol)
-            self.assertEqual(result, [])  # entry时间不在窗口内，不允许交易
+            self.assertEqual(result, ['long', 'short'])  # 由于用户注释掉了entry时间窗口检查，现在允许交易
         
         print("✓ 完整X条件检查测试通过")
         

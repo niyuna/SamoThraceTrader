@@ -59,8 +59,8 @@ class TestStdPctXCondition(unittest.TestCase):
         self.assertGreater(self.strategy.std_pct_threshold_noon, 0)
         self.assertGreater(self.strategy.std_pct_threshold_afternoon, 0)
         
-        # 测试阈值大小关系：早上 > 下午（中午使用极小值，所以不强制要求中午 > 下午）
-        self.assertGreater(self.strategy.std_pct_threshold_morning, self.strategy.std_pct_threshold_afternoon)
+        # 测试阈值大小关系：早上 >= 下午（现在morning和afternoon都是0.0007）
+        self.assertGreaterEqual(self.strategy.std_pct_threshold_morning, self.strategy.std_pct_threshold_afternoon)
         
     def test_calculate_std_pct_success(self):
         """测试std_pct计算成功"""
@@ -296,8 +296,8 @@ class TestStdPctXCondition(unittest.TestCase):
         expected_morning = test_std_pct > self.strategy.std_pct_threshold_morning
         self.assertEqual(morning_result, ['long', 'short'] if expected_morning else [])
         
-        # 验证阈值大小关系：早上 > 下午（中午使用极小值，所以不强制要求中午 > 下午）
-        self.assertGreater(self.strategy.std_pct_threshold_morning, self.strategy.std_pct_threshold_afternoon)
+        # 验证阈值大小关系：早上 >= 下午（现在morning和afternoon都是0.0007）
+        self.assertGreaterEqual(self.strategy.std_pct_threshold_morning, self.strategy.std_pct_threshold_afternoon)
         
     def test_x_condition_std_pct_calculation_error(self):
         """测试std_pct计算异常处理"""
@@ -354,8 +354,8 @@ class TestStdPctXCondition(unittest.TestCase):
             mock_datetime.now.return_value = morning_time
             result = self.strategy.check_x_condition("9984")
         
-        # 应该不允许交易（entry时间不在窗口内）
-        self.assertEqual(result, [])
+        # 由于用户注释掉了entry时间窗口检查，现在应该允许交易
+        self.assertEqual(result, ['long', 'short'])
     
     def test_simulated_position_direction_mismatch_blocks_trading(self):
         """测试模拟持仓方向不匹配时阻止交易"""

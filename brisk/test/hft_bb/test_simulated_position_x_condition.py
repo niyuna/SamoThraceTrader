@@ -126,8 +126,8 @@ class TestSimulatedPositionXCondition(unittest.TestCase):
         current_time = datetime(2024, 1, 1, 9, 30, 0)
         result = self.strategy._check_default_x_condition(self.symbol, current_time)
         
-        # 应该不允许交易（entry时间不在窗口内）
-        self.assertEqual(result, [])
+        # 由于用户注释掉了entry时间窗口检查，现在允许交易
+        self.assertEqual(result, ['long', 'short'])
     
     def test_simulated_position_entry_time_none(self):
         """测试模拟持仓entry时间为None时不允许交易"""

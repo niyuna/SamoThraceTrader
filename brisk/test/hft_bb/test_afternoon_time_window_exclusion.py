@@ -79,8 +79,10 @@ class TestAfternoonTimeWindowExclusion(unittest.TestCase):
         """测试15:01:00被允许"""
         test_time = time(15, 1, 0)
         
-        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime, \
+             patch.object(self.strategy, '_check_price_limit') as mock_price_limit:
             mock_datetime.now.return_value = datetime.combine(datetime.now().date(), test_time)
+            mock_price_limit.return_value = {'ok': True, 'reason': '价格检查通过'}
             
             result = self.strategy.check_x_condition(self.symbol)
             self.assertTrue(result)
@@ -89,8 +91,10 @@ class TestAfternoonTimeWindowExclusion(unittest.TestCase):
         """测试14:59:59被允许"""
         test_time = time(14, 59, 59)
         
-        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime, \
+             patch.object(self.strategy, '_check_price_limit') as mock_price_limit:
             mock_datetime.now.return_value = datetime.combine(datetime.now().date(), test_time)
+            mock_price_limit.return_value = {'ok': True, 'reason': '价格检查通过'}
             
             result = self.strategy.check_x_condition(self.symbol)
             self.assertTrue(result)
@@ -119,8 +123,10 @@ class TestAfternoonTimeWindowExclusion(unittest.TestCase):
         """测试早上时间窗口不受影响"""
         test_time = time(9, 20, 0)  # 早上时间
         
-        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime, \
+             patch.object(self.strategy, '_check_price_limit') as mock_price_limit:
             mock_datetime.now.return_value = datetime.combine(datetime.now().date(), test_time)
+            mock_price_limit.return_value = {'ok': True, 'reason': '价格检查通过'}
             
             result = self.strategy.check_x_condition(self.symbol)
             self.assertTrue(result)
@@ -129,8 +135,10 @@ class TestAfternoonTimeWindowExclusion(unittest.TestCase):
         """测试中午时间窗口不受影响"""
         test_time = time(11, 29, 30)  # 中午时间
         
-        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime:
+        with patch('hft_bb_reversal_strategy.datetime') as mock_datetime, \
+             patch.object(self.strategy, '_check_price_limit') as mock_price_limit:
             mock_datetime.now.return_value = datetime.combine(datetime.now().date(), test_time)
+            mock_price_limit.return_value = {'ok': True, 'reason': '价格检查通过'}
             
             result = self.strategy.check_x_condition(self.symbol)
             self.assertTrue(result)
