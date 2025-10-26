@@ -1891,11 +1891,12 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
 def main():
     """主函数"""
     import argparse
+    from common.trading_common import high_liquidity_stocks
     
     # 设置命令行参数解析
     parser = argparse.ArgumentParser(description='HFT BB Reversal策略')
     parser.add_argument('--profile', type=str, default='600_2000', 
-                       choices=['600_2000', '2000_4000', '600_4000', '600_5000', '600_6000'],
+                       choices=['600_2000', '2000_4000', '600_4000', '600_5000', '600_6000', '600_10000'],
                        help='选择运行profile (默认: 600_2000)')
     parser.add_argument('--mock', action='store_true', default=False,
                        help='使用模拟数据')
@@ -1937,6 +1938,12 @@ def main():
             'low_price': 600,
             'high_price': 6000,
         },
+        '600_10000_high_liquidity': {
+            'log_suffix': '600_10000_high_liquidity',
+            'low_price': 600,
+            'high_price': 10000,
+            'high_liquidity_stocks_only': True, # only trade high liquidity stocks
+        },
     }
     
     # 根据命令行参数选择profile
@@ -1974,6 +1981,8 @@ def main():
         else:
             strategy.initialize_stock_master()
             for symbol in topix500:
+                if profile.get('high_liquidity_stocks_only') and symbol not in high_liquidity_stocks:
+                    continue
                 prev_close = strategy.get_stock_prev_close(symbol)
                 # 600~1500 63 stocks
                 # 600~2000 contains ~140 stocks, we will do further filter in x_condition
