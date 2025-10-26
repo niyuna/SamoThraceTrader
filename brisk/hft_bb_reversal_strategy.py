@@ -72,7 +72,8 @@ class HFTBBStockContext:
 class HFTBBReversalStrategy(IntradayStrategyBase):
     """HFT BB Reversal策略 - 基于布林带反转的日内高频交易策略"""
     
-    def __init__(self, use_mock_gateway=False, use_real_data=False, data_dir="data/brisk_agged_ohlc", log_suffix=None):
+    def __init__(self, use_mock_gateway=False, use_real_data=False, data_dir="data/brisk_agged_ohlc", log_suffix=None, 
+                 enable_individual_stock_trading=True, enable_default_stock_trading=True):
         super().__init__(use_mock_gateway=use_mock_gateway, gateway_type="brisk", log_suffix=log_suffix)
         
         # BB策略特定参数
@@ -101,7 +102,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.aggressive_x_condition_enabled = False  # 是否启用激进X条件, this will increase the opportunity to trade when there is a simulated position, default false for conservative
         
         # 个股交易配置
-        self.enable_individual_stock_trading = True  # 是否启用个股自定义交易配置，默认True
+        self.enable_individual_stock_trading = enable_individual_stock_trading  # 是否启用个股自定义交易配置
+        self.enable_default_stock_trading = enable_default_stock_trading        # 是否启用默认股票交易配置
         
         # 时间窗口允许方向配置
         self.morning_allowed_directions = ['long', 'short']    # 早上窗口允许方向
@@ -288,6 +290,11 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
     
     def _check_default_x_condition(self, symbol: str, current_time: datetime = None) -> List[str]:
         """检查默认X条件（原有逻辑 + 模拟持仓智能检查）"""
+        # 0. 如果默认股票交易被禁用，直接返回空列表
+        if not self.enable_default_stock_trading:
+            self.write_log(f"默认股票交易已禁用，跳过X条件检查: {symbol}")
+            return []
+            
         # 1. 检查股票是否在eligible_stocks中
         if symbol not in self.eligible_stocks:
             self.write_log(f"X条件检查失败: {symbol} 不在eligible_stocks中")
@@ -1873,7 +1880,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             'bb_exit_std_multiplier',
             'trigger_tick_count',
             'cancel_protection_seconds',
-            'enable_individual_stock_trading'
+            'enable_individual_stock_trading',
+            'enable_default_stock_trading'
         ]
         
         for param in other_params:
@@ -1896,7 +1904,8 @@ def main():
     # 设置命令行参数解析
     parser = argparse.ArgumentParser(description='HFT BB Reversal策略')
     parser.add_argument('--profile', type=str, default='600_2000', 
-                       choices=['600_2000', '2000_4000', '600_4000', '600_5000', '600_6000', '600_10000'],
+                       choices=['600_2000', '2000_4000', '600_4000', '600_5000', '600_6000', '600_10000_high_liquidity', 
+                               'individual_only', 'default_only', 'disabled'],
                        help='选择运行profile (默认: 600_2000)')
     parser.add_argument('--mock', action='store_true', default=False,
                        help='使用模拟数据')
@@ -1917,32 +1926,66 @@ def main():
             'log_suffix': '600_2000',
             'low_price': 600,
             'high_price': 2000,
+            'enable_individual_stock_trading': False,
+            'enable_default_stock_trading': True,
         },
         '2000_4000': {
             'log_suffix': '2000_4000',
             'low_price': 2000,
             'high_price': 4000,
+            'enable_individual_stock_trading': False,
+            'enable_default_stock_trading': True,
         },
         '600_4000': {
             'log_suffix': '600_4000',
             'low_price': 600,
             'high_price': 4000,
+            'enable_individual_stock_trading': False,
+            'enable_default_stock_trading': True,
         },
         '600_5000': {
             'log_suffix': '600_5000',
             'low_price': 600,
             'high_price': 5000,
+            'enable_individual_stock_trading': False,
+            'enable_default_stock_trading': True,
         },
         '600_6000': {
             'log_suffix': '600_6000',
             'low_price': 600,
             'high_price': 6000,
+            'enable_individual_stock_trading': False,
+            'enable_default_stock_trading': True,
         },
         '600_10000_high_liquidity': {
             'log_suffix': '600_10000_high_liquidity',
             'low_price': 600,
             'high_price': 10000,
             'high_liquidity_stocks_only': True, # only trade high liquidity stocks
+            'enable_individual_stock_trading': True,
+            'enable_default_stock_trading': False,
+        },
+        # 新增一些特殊的profile用于测试不同的交易配置
+        'individual_only': {
+            'log_suffix': 'individual_only',
+            'low_price': 600,
+            'high_price': 2000,
+            'enable_individual_stock_trading': True,
+            'enable_default_stock_trading': False,  # 只使用个股配置
+        },
+        'default_only': {
+            'log_suffix': 'default_only',
+            'low_price': 600,
+            'high_price': 2000,
+            'enable_individual_stock_trading': False,  # 只使用默认配置
+            'enable_default_stock_trading': True,
+        },
+        'disabled': {
+            'log_suffix': 'disabled',
+            'low_price': 600,
+            'high_price': 2000,
+            'enable_individual_stock_trading': False,
+            'enable_default_stock_trading': False,  # 完全禁用交易
         },
     }
     
@@ -1956,7 +1999,14 @@ def main():
     print(f"Profile配置: {profile}")
 
     # 创建策略实例
-    strategy = HFTBBReversalStrategy(use_mock_gateway=using_mock_data, use_real_data=True, data_dir="data/brisk_agged_ohlc", log_suffix=profile['log_suffix'])
+    strategy = HFTBBReversalStrategy(
+        use_mock_gateway=using_mock_data, 
+        use_real_data=True, 
+        data_dir="data/brisk_agged_ohlc", 
+        log_suffix=profile['log_suffix'],
+        enable_individual_stock_trading=profile['enable_individual_stock_trading'],
+        enable_default_stock_trading=profile['enable_default_stock_trading']
+    )
     
     try:
         # 连接Gateway

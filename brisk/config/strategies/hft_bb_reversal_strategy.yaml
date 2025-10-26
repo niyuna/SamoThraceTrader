@@ -22,9 +22,12 @@ params:
   
   # 订单取消保护参数
   cancel_protection_seconds: 20  # 订单发送后多少秒内不允许取消
+
+  # single_stock_max_position: 800000  # don't use this right now because we are not handling size change when there is already a position, so very likely there will be issue after the update
   
   # 个股交易配置
-  enable_individual_stock_trading: true  # 是否启用个股自定义交易配置
+  # enable_individual_stock_trading: true  # 是否启用个股自定义交易配置
+  # enable_default_stock_trading: true     # 是否启用默认股票交易配置，默认True
   
   # 时间窗口允许方向配置
   morning_allowed_directions: ['long', 'short']    # 早上窗口允许方向
@@ -43,6 +46,7 @@ parameter_descriptions:
   price_limit_afternoon: "下午交易时段（14:10-15:25）的股价上限，超过此价格的股票不允许交易"
   cancel_protection_seconds: "订单发送后多少秒内不允许取消，用于避免频繁撤单"
   enable_individual_stock_trading: "是否启用个股自定义交易配置，当为false时所有股票使用默认X条件检查"
+  enable_default_stock_trading: "是否启用默认股票交易配置，当为false时默认X条件检查直接返回空列表"
   morning_allowed_directions: "早上交易窗口允许的交易方向，可选值：['long'], ['short'], ['long', 'short']"
   noon_allowed_directions: "中午交易窗口允许的交易方向，可选值：['long'], ['short'], ['long', 'short']"
   afternoon_allowed_directions: "下午交易窗口允许的交易方向，可选值：['long'], ['short'], ['long', 'short']"
@@ -90,6 +94,9 @@ validation_rules:
   enable_individual_stock_trading:
     type: "boolean"
     description: "个股交易配置开关，必须为true或false"
+  enable_default_stock_trading:
+    type: "boolean"
+    description: "默认股票交易配置开关，必须为true或false"
   morning_allowed_directions:
     type: "array"
     items:
