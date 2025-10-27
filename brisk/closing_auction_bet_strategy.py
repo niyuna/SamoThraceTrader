@@ -74,7 +74,7 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         self.trigger_tick_count = 2
         self.single_stock_max_position = single_stock_max_position  # 单只股票最大持仓金额（日元）
         self.min_position_size = 100  # 最小持仓数量（fallback）
-        self.cancel_protection_seconds = 20  # 订单发送后多少秒内不允许取消
+        self.cancel_protection_seconds = 15  # 订单发送后多少秒内不允许取消
         
         # 解析entry_start_time字符串为time对象
         self.entry_start_time = self._parse_time_string(entry_start_time)
