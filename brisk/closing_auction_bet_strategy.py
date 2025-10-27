@@ -71,7 +71,7 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         # 策略参数（默认值，会被YAML配置覆盖）
         self.long_multiplier = 0.995
         self.short_multiplier = 1.0055
-        self.trigger_tick_count = 3
+        self.trigger_tick_count = 2
         self.single_stock_max_position = single_stock_max_position  # 单只股票最大持仓金额（日元）
         self.min_position_size = 100  # 最小持仓数量（fallback）
         self.cancel_protection_seconds = 20  # 订单发送后多少秒内不允许取消
