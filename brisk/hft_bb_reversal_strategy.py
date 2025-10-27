@@ -120,7 +120,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.simulated_positions = {}  # symbol -> {'long': bool, 'short': bool, 'long_entry_time': datetime, 'short_entry_time': datetime, 'long_exit_time': datetime, 'short_exit_time': datetime}
         
         # 单只股票最大持仓金额（日元）
-        self.single_stock_max_position = 800_000
+        self.single_stock_max_position = 1_000_000
         self.stock_config_manager = StockConfigManager("configs/stock_configs.json")
         
         # 止损配置
