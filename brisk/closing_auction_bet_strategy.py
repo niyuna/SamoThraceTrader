@@ -329,7 +329,7 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
                     self.write_log(f"跳过取消订单: {symbol} 订单在{self.cancel_protection_seconds}秒内发送，避免频繁撤单")
                     return
                 else:
-                    self.write_log(f"取消订单: {symbol} 订单在{time_diff.total_seconds()}秒外发送，取消订单")
+                    self.write_log(f"取消订单: {symbol} 订单在{time_diff.total_seconds()}秒外发送，允许取消订单")
             
             # 检查价格是否退出触发区间
             # 当价格在long_trigger_price和short_trigger_price之间时，取消订单
