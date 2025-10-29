@@ -312,7 +312,12 @@ class IntradayStrategyBase:
         """更新通用动态参数"""
         # 增量更新黑名单
         if 'black_list' in params:
-            self._update_black_list_incrementally(params['black_list'])
+            final_black_list = []
+            for symbol_or_list in params['black_list']:
+                for sol in symbol_or_list:
+                    for s in sol.split(','):
+                        final_black_list.append(s)
+            self._update_black_list_incrementally(final_black_list)
         
         # 更新其他通用参数
         common_params = ['enable_dynamic_params', 'config_check_interval']
