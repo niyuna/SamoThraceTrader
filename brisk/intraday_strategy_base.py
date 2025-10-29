@@ -313,10 +313,12 @@ class IntradayStrategyBase:
         # 增量更新黑名单
         if 'black_list' in params:
             final_black_list = []
-            for symbol_or_list in params['black_list']:
-                for sol in symbol_or_list:
+            for sol in params['black_list']:
+                if isinstance(sol, str):
                     for s in sol.split(','):
                         final_black_list.append(s)
+                else:
+                    final_black_list.append(sol)
             self._update_black_list_incrementally(final_black_list)
         
         # 更新其他通用参数
