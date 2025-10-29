@@ -73,7 +73,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
     """HFT BB Reversal策略 - 基于布林带反转的日内高频交易策略"""
     
     def __init__(self, use_mock_gateway=False, use_real_data=False, data_dir="data/brisk_agged_ohlc", log_suffix=None, 
-                 enable_individual_stock_trading=True, enable_default_stock_trading=True):
+                 enable_individual_stock_trading=True, enable_default_stock_trading=True,
+                 single_stock_max_position: int = 1_000_000):
         super().__init__(use_mock_gateway=use_mock_gateway, gateway_type="brisk", log_suffix=log_suffix)
         
         # BB策略特定参数
@@ -120,7 +121,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.simulated_positions = {}  # symbol -> {'long': bool, 'short': bool, 'long_entry_time': datetime, 'short_entry_time': datetime, 'long_exit_time': datetime, 'short_exit_time': datetime}
         
         # 单只股票最大持仓金额（日元）
-        self.single_stock_max_position = 1_000_000
+        self.single_stock_max_position = single_stock_max_position
         self.stock_config_manager = StockConfigManager("configs/stock_configs.json")
         
         # 止损配置
@@ -1911,6 +1912,8 @@ def main():
                        help='使用模拟数据')
     parser.add_argument('--debug', action='store_true', default=True,
                        help='启用调试模式')
+    parser.add_argument('--single-stock-max-position', type=int, default=1_000_000,
+                       help='单只股票最大持仓金额（日元），默认1000000')
     
     args = parser.parse_args()
     
@@ -2005,7 +2008,8 @@ def main():
         data_dir="data/brisk_agged_ohlc", 
         log_suffix=profile['log_suffix'],
         enable_individual_stock_trading=profile['enable_individual_stock_trading'],
-        enable_default_stock_trading=profile['enable_default_stock_trading']
+        enable_default_stock_trading=profile['enable_default_stock_trading'],
+        single_stock_max_position=args.single_stock_max_position
     )
     
     try:
