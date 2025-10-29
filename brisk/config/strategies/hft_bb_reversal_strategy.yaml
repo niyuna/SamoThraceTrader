@@ -33,6 +33,9 @@ params:
   morning_allowed_directions: ['long', 'short']    # 早上窗口允许方向
   noon_allowed_directions: ['long', 'short']       # 中午窗口允许方向
   afternoon_allowed_directions: ['long', 'short']  # 下午窗口允许方向
+
+  black_list:
+    - "6098"
   
   # 其他策略参数（可选动态调整）
   # bb_entry_std_multiplier: 3.0    # BB入场标准差倍数
