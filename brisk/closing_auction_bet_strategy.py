@@ -358,7 +358,7 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         # else:
         #     self.write_log(f"未触发: {symbol} {tick.datetime} {current_price:.2f} trigger: {context.long_trigger_price:.2f} {context.short_trigger_price:.2f}")
     
-    def calculate_position_size(self, symbol: str) -> int:
+    def calculate_position_size(self, symbol: str, direction: Direction) -> int:
         """计算持仓数量，基于单只股票最大持仓量和base price"""
         context = self.get_context(symbol)
         if not context or context.base_price <= 0:
@@ -366,13 +366,16 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         
         # 计算基于base price的持仓数量
         position_size = round(self.single_stock_max_position / context.base_price / 100) * 100
-        
+        # using half of the position size for long position
+        if direction == Direction.LONG:
+            position_size = position_size // 2
+
         return max(position_size, self.min_position_size)
     
     def _send_entry_order(self, context: ClosingAuctionContext, direction: Direction, price: float):
         """发送建仓订单"""
         # 动态计算持仓数量
-        calculated_size = self.calculate_position_size(context.symbol)
+        calculated_size = self.calculate_position_size(context.symbol, direction)
         context.position_size = calculated_size
         
         self._execute_entry(
