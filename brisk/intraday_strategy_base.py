@@ -398,7 +398,7 @@ class IntradayStrategyBase:
             direction=direction,
             type=order_type,
             volume=order_volume,
-            price=price,
+            price=price, # should make this 0 or None for market order
             offset=offset,
             reference=f"{reference_prefix}_{context.symbol}_{datetime.now().strftime('%H%M%S')}"
         )

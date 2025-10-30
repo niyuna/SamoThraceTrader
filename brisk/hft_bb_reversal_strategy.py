@@ -1569,6 +1569,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             if stop_loss_price is not None and self._is_second_stage_stop_loss(symbol, context, current_price):
                 # 第二阶段止损使用market order
                 order_type = OrderType.MARKET
+                exit_price = 0
                 self.write_log(f"使用市价单进行第二阶段止损: {symbol}")
             else:
                 # 其他情况使用limit order
