@@ -220,8 +220,14 @@ class IntradayStrategyBase:
             return 100  # 默认持仓数量
         
         # 计算基于价格的持仓数量
-        position_size = round(self.single_stock_max_position / price / 100) * 100
-                
+        # 2025/11/04
+        earning_stocks = '7974,8058,9432,8002,4689,8601,9104,9021,6841,4005,6806,2282,7951,4203,7729,6471,2296,2222,8283,7205,4547,4534,8255,1723,8173,6200,4746,4326,4886,3371,6644,1301,1967,6718,7609,9619,8081,7236,6809,7723,7537,9845,3914,9768,7480,7466,6853,3157,1826,2937,2816,1787,7565,4752,7461,5367,7883,6060,7859,3317,9849,7162'
+        earning_stocks = earning_stocks.split(',')
+        if not symbol in earning_stocks:
+            position_size = round(self.single_stock_max_position / price / 100) * 100
+        else:
+            position_size = round(self.single_stock_max_position / 2 / price / 100) * 100
+
         return max(position_size, 100)
     
     def _ban_symbol_trading(self, symbol):
