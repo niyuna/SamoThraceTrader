@@ -127,9 +127,9 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # 止损配置
         self.default_stop_loss_config = StopLossConfig(0.02, 0.05, True)
         self.stop_loss_by_time = {
-            "morning": StopLossConfig(0.005, 0.0055, True),  # 早上更保守
+            "morning": StopLossConfig(0.007, 0.0075, True),  # 早上更保守
             "noon": StopLossConfig(0.005, 0.0055, True),     # 中午稍微宽松, too tight lose cut is actually worse
-            "afternoon": StopLossConfig(0.005, 0.0055, True),  # 下午跟早上一样保守
+            "afternoon": StopLossConfig(0.01, 0.011, True),  # 下午跟早上一样保守
         }
 
         self.indicator_size = 20  # 修改为20以匹配真实数据
