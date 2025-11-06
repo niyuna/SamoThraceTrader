@@ -367,8 +367,8 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         # 计算基于base price的持仓数量
         position_size = round(self.single_stock_max_position / context.base_price / 100) * 100
         # using half of the position size for long position
-        if direction == Direction.LONG:
-            position_size = position_size // 2
+        # if direction == Direction.LONG:
+        #     position_size = position_size // 2
 
         return max(position_size, self.min_position_size)
     
