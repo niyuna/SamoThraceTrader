@@ -164,7 +164,11 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
                 old_value = getattr(self, param, None)
                 new_value = params[param]
                 setattr(self, param, new_value)
-                self.write_log(f"价格倍数参数 {param} 更新: {old_value} -> {new_value}")
+                if old_value != new_value:
+                    self.write_log(f"价格倍数参数 {param} 更新: {old_value} -> {new_value}")
+                    for symbol, context in self.contexts.items():
+                        self.write_log(f"更新价格倍数参数: {symbol} {param} = {new_value}")
+                        self._calculate_target_and_trigger_prices(context)
         
         # 更新其他策略参数
         other_params = [
@@ -179,7 +183,8 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
                 old_value = getattr(self, param, None)
                 new_value = params[param]
                 setattr(self, param, new_value)
-                self.write_log(f"策略参数 {param} 更新: {old_value} -> {new_value}")
+                if old_value != new_value:
+                    self.write_log(f"策略参数 {param} 更新: {old_value} -> {new_value}")
         
         # 更新时间参数
         time_params = [
@@ -195,7 +200,8 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
                 time_str = params[param]
                 new_value = time(*map(int, time_str.split(":")))
                 setattr(self, param, new_value)
-                self.write_log(f"时间参数 {param} 更新: {old_value} -> {new_value}")
+                if old_value != new_value:
+                    self.write_log(f"时间参数 {param} 更新: {old_value} -> {new_value}")
     
     def create_context(self, symbol: str) -> ClosingAuctionContext:
         """创建股票Context"""
@@ -697,7 +703,7 @@ if __name__ == "__main__":
         strategy.subscribe(symbols)
         
         # 设置动态参数配置提供者
-        strategy.set_configuration_provider(YAMLConfigurationProvider("config/strategies", "production"))
+        strategy.set_configuration_provider(YAMLConfigurationProvider("config/strategies", "production"), check_interval=7)
         
         # 注册收盘前平仓定时器
         strategy._register_market_close_timer()

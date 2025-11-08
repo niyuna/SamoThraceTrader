@@ -11,12 +11,12 @@ from .dynamic_config import ConfigurationProvider, StrategyConfig
 class DynamicParamManager:
     """动态参数管理器"""
     
-    def __init__(self, strategy, config_provider: ConfigurationProvider):
+    def __init__(self, strategy, config_provider: ConfigurationProvider, check_interval: int = 20):
         self.strategy = strategy
         self.config_provider = config_provider
         self.last_check_time: Optional[datetime] = None
         self.last_config: Optional[StrategyConfig] = None
-        self.check_interval: int = 20  # 默认60秒检查一次
+        self.check_interval: int = check_interval  # 默认20秒检查一次
         
     def should_check_config(self) -> bool:
         """判断是否应该检查配置"""

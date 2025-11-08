@@ -369,9 +369,9 @@ class IntradayStrategyBase:
         """更新策略特定参数 - 子类需要实现"""
         pass
     
-    def set_configuration_provider(self, config_provider: ConfigurationProvider):
+    def set_configuration_provider(self, config_provider: ConfigurationProvider, check_interval: int = 20):
         """设置配置提供者"""
-        self.dynamic_param_manager = DynamicParamManager(self, config_provider)
+        self.dynamic_param_manager = DynamicParamManager(self, config_provider, check_interval)
         self.write_log("配置提供者设置完成")
         
         # 注册定时器
