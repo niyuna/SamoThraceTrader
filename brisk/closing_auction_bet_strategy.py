@@ -69,12 +69,12 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         super().__init__(use_mock_gateway=use_mock_gateway, gateway_type=gateway_type, log_suffix=log_suffix)
         
         # 策略参数（默认值，会被YAML配置覆盖）
-        self.long_multiplier = 0.995
-        self.short_multiplier = 1.0055
+        self.long_multiplier = 0.0055
+        self.short_multiplier = 0.0055
         self.trigger_tick_count = 2
         self.single_stock_max_position = single_stock_max_position  # 单只股票最大持仓金额（日元）
         self.min_position_size = 100  # 最小持仓数量（fallback）
-        self.cancel_protection_seconds = 15  # 订单发送后多少秒内不允许取消
+        self.cancel_protection_seconds = 10  # 订单发送后多少秒内不允许取消
         
         # 解析entry_start_time字符串为time对象
         self.entry_start_time = self._parse_time_string(entry_start_time)
@@ -292,10 +292,10 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         from common.trading_common import next_tick_price
         
         context.long_target_price = next_tick_price(
-            context.symbol, context.base_price * self.long_multiplier, upside=True
+            context.symbol, context.base_price * (1 - self.long_multiplier), upside=True
         )
         context.short_target_price = next_tick_price(
-            context.symbol, context.base_price * self.short_multiplier, upside=False
+            context.symbol, context.base_price * (1 + self.short_multiplier), upside=False
         )
         
         # 计算触发价格

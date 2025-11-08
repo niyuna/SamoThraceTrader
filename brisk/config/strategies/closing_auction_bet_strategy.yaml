@@ -12,9 +12,9 @@ metadata:
 
 # 策略参数配置
 params:
-  # 价格倍数参数
-  long_multiplier: 0.9915     # 做多目标价格倍数（base_price * (1 - 0.0085)）
-  short_multiplier: 1.0055    # 做空目标价格倍数（base_price * (1 + 0.0055)）
+  # 价格倍数参数 note both are positive values
+  long_multiplier: 0.0085     # 做多目标价格倍数（base_price * (1 - 0.0085)）
+  short_multiplier: 0.0055    # 做空目标价格倍数（base_price * (1 + 0.0055)）
   
   # 触发价格参数
   trigger_tick_count: 3       # 触发价格距离目标价格的tick数量
