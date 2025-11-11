@@ -89,7 +89,7 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         self.exit_window_active = False
         self.liquidation_executed = False  # 是否已执行平仓
 
-        self.skip_symbols = ["6098", "285A", "6525", "9984"]
+        self.skip_symbols = ["6098", "285A"]
         
         # 动态参数管理（由基类处理）
         # 不需要在这里初始化，由基类的set_configuration_provider方法处理
