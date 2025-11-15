@@ -15,7 +15,7 @@ from vnpy.trader.event import EVENT_ORDER, EVENT_TRADE
 
 from intraday_strategy_base import IntradayStrategyBase, StrategyState
 from enhanced_bargenerator import EnhancedBarGenerator
-from common.trading_common import next_n_tick_price, topix500, normalize_price
+from common.trading_common import next_n_tick_price, topix500, normalize_price, legacy_topix500
 
 # 动态参数系统导入
 from util.yaml_config_provider import YAMLConfigurationProvider
@@ -694,7 +694,7 @@ if __name__ == "__main__":
             symbols = ["8136"]  # 使用单只股票进行测试
         else:
             # 使用topix500股票列表
-            symbols = list(topix500)
+            symbols = list(legacy_topix500)
         
         print(f"订阅股票数量: {len(symbols)}")
         print(f"订阅股票: {symbols[:10]}..." if len(symbols) > 10 else f"订阅股票: {symbols}")
