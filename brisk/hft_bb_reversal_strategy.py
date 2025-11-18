@@ -88,7 +88,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # X条件std_pct阈值参数
         self.std_pct_threshold_morning = 0.0008    # 早上9:05-9:35阈值
         self.std_pct_threshold_noon = 0.0005      # 中午11:29-11:30阈值（极小的值，几乎总是通过）
-        self.std_pct_threshold_afternoon = 0.0007  # 下午14:35-15:20阈值
+        self.std_pct_threshold_afternoon = 0.0008  # 下午14:35-15:20阈值
         
         # 价格限制配置（前一天收盘价上限）
         self.price_limit_morning = 2000    # 早上时段价格上限
@@ -128,8 +128,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.default_stop_loss_config = StopLossConfig(0.02, 0.05, True)
         self.stop_loss_by_time = {
             "morning": StopLossConfig(0.007, 0.0075, True),  # 早上更保守
-            "noon": StopLossConfig(0.01, 0.011, True),     # 中午稍微宽松, too tight lose cut is actually worse
-            "afternoon": StopLossConfig(0.01, 0.011, True),  # 下午跟早上一样保守
+            "noon": StopLossConfig(0.0055, 0.006, True),     # 中午稍微宽松, too tight lose cut is actually worse
+            "afternoon": StopLossConfig(0.0055, 0.006, True),  # 下午跟早上一样保守
         }
 
         self.indicator_size = 20  # 修改为20以匹配真实数据
@@ -1906,7 +1906,7 @@ def main():
     # 设置命令行参数解析
     parser = argparse.ArgumentParser(description='HFT BB Reversal策略')
     parser.add_argument('--profile', type=str, default='600_2000', 
-                       choices=['600_2000', '2000_4000', '600_4000', '600_5000', '600_6000', '600_10000_high_liquidity', 
+                       choices=['600_2000', '2000_4000', '600_4000', '600_5000', '600_6000', '600_8000', '600_10000_high_liquidity', 
                                'individual_only', 'default_only', 'disabled'],
                        help='选择运行profile (默认: 600_2000)')
     parser.add_argument('--mock', action='store_true', default=False,
@@ -1958,6 +1958,13 @@ def main():
             'log_suffix': '600_6000',
             'low_price': 600,
             'high_price': 6000,
+            'enable_individual_stock_trading': False,
+            'enable_default_stock_trading': True,
+        },
+        '600_8000': {
+            'log_suffix': '600_8000',
+            'low_price': 600,
+            'high_price': 8000,
             'enable_individual_stock_trading': False,
             'enable_default_stock_trading': True,
         },
