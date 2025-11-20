@@ -171,7 +171,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 'threshold': self.std_pct_threshold_afternoon,
                 'name': 'afternoon',
                 'allowed_directions': self.afternoon_allowed_directions,  # 使用动态参数
-                'exclude_minutes': [(14, 30), (15, 0)]  # 排除14:30和15:00分钟
+                'exclude_minutes': [(14, 0)] #[(14, 30), (15, 0)]  # 排除14:30和15:00分钟
             }
         ]
         
