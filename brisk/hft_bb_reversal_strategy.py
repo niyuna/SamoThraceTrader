@@ -973,13 +973,19 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.write_log(f"订单状态更新: {order.orderid} {order.symbol} {order.direction.value} {order.offset.value} "
                       f"状态: {order.status.value} 价格: {order.price:.2f} 数量: {order.volume}")
         
+        # 查找对应的HFT context
+        context = self._find_hft_context_by_order_id(order.orderid)
+        if not context:
+            self.write_log(f"警告: 未找到订单ID {order.orderid} 对应的HFT context")
+            return
+
         # 记录部分成交情况
-        if order.status == Status.PARTTRADED:
+        if order.status == Status.PARTTRADED or (order.status == Status.CANCELLED and order.traded != abs(context.position)):
             self.write_log(f"部分成交: {order.symbol} {order.direction.value} {order.offset.value} "
-                          f"已成交数量: {order.traded} 剩余数量: {order.volume - order.traded}")
+                          f"已成交数量: {order.traded} 剩余数量: {order.volume - order.traded} "
+                          f"订单状态: {order.status.value} 持仓: {context.position}")
             
             # 更新已成交数量和持仓
-            context = self._find_hft_context_by_order_id(order.orderid)
             if context:
                 context.already_traded = order.traded
                 
@@ -1005,12 +1011,6 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         
         # reset already_traded which indicates the number of traded when it's partially filled
         self.already_traded = 0
-
-        # 查找对应的HFT context
-        context = self._find_hft_context_by_order_id(order.orderid)
-        if not context:
-            self.write_log(f"警告: 未找到订单ID {order.orderid} 对应的HFT context")
-            return
         
         # 处理入场订单成交
         if order.orderid == context.entry_order_id:
