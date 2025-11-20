@@ -997,9 +997,10 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                         context.position = -order.traded
                 elif order.offset == Offset.CLOSE:
                     if order.direction == Direction.LONG:
-                        context.position += order.traded
+                        # we can't use position size here because it's possilbe that the open order is not fully filled
+                        context.position = -int(order.volume) + order.traded
                     else:  # SHORT
-                        context.position -= order.traded
+                        context.position = int(order.volume) - order.traded
                 
                 self.write_log(f"更新持仓: {order.symbol} position={context.position} already_traded={context.already_traded}")
             
