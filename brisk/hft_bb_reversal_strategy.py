@@ -1717,17 +1717,18 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             
             if context.entry_order_time:
                 # 检查是否在取消保护时间内
-                time_diff = current_time - context.entry_order_time
-                if time_diff.total_seconds() < self.cancel_protection_seconds:
-                    self.write_log(f"跳过取消订单: {symbol} 订单在{self.cancel_protection_seconds}秒内发送，避免频繁撤单")
-                    return  # 直接返回，不执行任何订单操作
-                
-                # 检查是否在同一分钟内（小时和分钟数相同）
                 entry_hour = context.entry_order_time.hour
                 entry_minute = context.entry_order_time.minute
+
+                # 检查是否在同一分钟内（小时和分钟数相同）
                 if entry_hour == current_hour and entry_minute == current_minute:
                     self.write_log(f"跳过取消订单: {symbol} 订单在同一分钟内发送({current_time.strftime('%H:%M')})，避免频繁撤单")
                     return  # 直接返回，不执行任何订单操作
+
+                # time_diff = current_time - context.entry_order_time
+                # if time_diff.total_seconds() < self.cancel_protection_seconds:
+                #     self.write_log(f"跳过取消订单: {symbol} 订单在{self.cancel_protection_seconds}秒内发送，避免频繁撤单")
+                #     return  # 直接返回，不执行任何订单操作
             
             # 检查是否在中午休市时间（11:30-11:31），如果是则不取消订单
             if current_hour == 11 and current_minute >= 30 and current_minute <= 31:
