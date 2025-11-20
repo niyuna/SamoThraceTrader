@@ -96,7 +96,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.price_limit_afternoon = 3000  # 下午时段价格上限
         
         # 股价变动限制配置
-        self.max_price_change_pct = 8.0    # 最大允许的股价变动百分比
+        self.max_price_change_pct = 15.0    # 最大允许的股价变动百分比
         
         # 订单取消保护配置
         self.cancel_protection_seconds = 20  # 订单发送后多少秒内不允许取消
