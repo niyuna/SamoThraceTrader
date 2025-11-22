@@ -88,7 +88,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # X条件std_pct阈值参数
         self.std_pct_threshold_morning = 0.0008    # 早上9:05-9:35阈值
         self.std_pct_threshold_noon = 0.0005      # 中午11:29-11:30阈值（极小的值，几乎总是通过）
-        self.std_pct_threshold_afternoon = 0.0008  # 下午14:35-15:20阈值
+        self.std_pct_threshold_afternoon = 0.0007  # 下午14:35-15:20阈值
         
         # 价格限制配置（前一天收盘价上限）
         self.price_limit_morning = 2000    # 早上时段价格上限
