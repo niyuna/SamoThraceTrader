@@ -980,7 +980,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             return
 
         # 记录部分成交情况
-        if order.status == Status.PARTTRADED or (order.status == Status.CANCELLED and order.traded != abs(context.position)):
+        if order.status == Status.PARTTRADED or (order.status == Status.CANCELLED and order.traded > 0 and order.traded != int(order.volume)):
             self.write_log(f"部分成交: {order.symbol} {order.direction.value} {order.offset.value} "
                           f"已成交数量: {order.traded} 剩余数量: {order.volume - order.traded} "
                           f"订单状态: {order.status.value} 持仓: {context.position}")
