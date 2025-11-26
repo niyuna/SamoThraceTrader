@@ -314,9 +314,16 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                     return []
                 
                 # 检查entry时间是否在任意窗口内
-                # if not self._is_entry_time_in_any_window(entry_time):
-                #     self.write_log(f"X条件检查失败: {symbol} 模拟持仓entry时间不在任何交易窗口内")
-                #     return []
+                if not self._is_entry_time_in_any_window(entry_time):
+                    self.write_log(f"X条件检查失败: {symbol} 模拟持仓entry时间不在任何交易窗口内")
+                    return []
+
+                # check the time diff between entry time and current time
+                current_time = datetime.now()
+                time_diff = current_time - entry_time
+                if time_diff.total_seconds() > 90:
+                    self.write_log(f"X条件检查失败: {symbol} 模拟持仓entry时间与当前时间相差超过90秒")
+                    return []
                 
                 # 获取模拟持仓方向
                 simulated_direction = self._get_simulated_position_direction(symbol)
