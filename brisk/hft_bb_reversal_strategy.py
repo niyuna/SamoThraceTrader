@@ -83,7 +83,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         self.bb_period = 20
         self.bb_entry_std_multiplier = 3.0
         self.bb_exit_std_multiplier = -1.0
-        self.trigger_tick_count = 3  # trigger价格调整的tick数量
+        self.trigger_tick_count = 5  # trigger价格调整的tick数量
         
         # X条件std_pct阈值参数
         self.std_pct_threshold_morning = 0.0008    # 早上9:05-9:35阈值
