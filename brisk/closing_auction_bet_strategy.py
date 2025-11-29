@@ -52,6 +52,7 @@ class ClosingAuctionContext:
     base_price_set: bool = False         # 是否已设置base price
     trigger_prices_set: bool = False     # 是否已设置触发价格
     entry_window_active: bool = False    # 是否在建仓窗口内
+    canary_update_done: bool = False     # 是否已更新canary参数
     
     # Base strategy 需要的字段
     trading_banned: bool = False         # 是否被禁止交易
@@ -98,6 +99,9 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         # we use the result of the canary symbols to decide the parameters for the normal ones
         self.canary_short_symbols = set()
         self.canary_long_symbols = set()
+
+        # the switch boundry parameter we use to compare with the number of canary signals
+        self.canary_switch_boundry = 8
         
         # 动态参数管理（由基类处理）
         # 不需要在这里初始化，由基类的set_configuration_provider方法处理
@@ -161,6 +165,17 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
     
     def _update_strategy_specific_params(self, params: Dict[str, Any]):
         """更新收盘竞价策略特定参数"""
+
+        # better to use this flag instead of time to avoid edge cases
+        if self.entry_window_active:
+            self.write_log(f"建仓窗口活跃，跳过特定参数更新")
+            return
+        else: # need to handle this case otherwise the position size could be incorrect
+            current_time = datetime.now().time()
+            if current_time >= self.entry_end_time:
+                self.write_log(f"建仓窗口已结束，跳过特定参数更新")
+                return
+
         # 更新价格倍数参数
         multiplier_params = [
             'long_multiplier',
@@ -248,12 +263,16 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
 
         # 3. 检查时间窗口
         self._check_time_windows(current_time)
+
+        # 4. update the strategy specific parameters
+        if self.entry_window_active:
+            self._update_context_specific_params(context)
         
-        # 4. 处理建仓逻辑
+        # 5. 处理建仓逻辑
         if self.entry_window_active and (context.state == StrategyState.IDLE or context.state == StrategyState.WAITING_ENTRY):
             self._handle_entry_logic(symbol, context, tick)
         
-        # 5. 平仓逻辑现在通过timer处理，不在这里处理
+        # 6. 平仓逻辑现在通过timer处理，不在这里处理
     
     def on_1min_bar(self, bar: BarData):
         """1分钟K线回调函数"""
@@ -303,20 +322,50 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
             self.canary_short_symbols.add(context.symbol)
             self.write_log(f"canary做空触发: {context.symbol} {context.short_target_price:.2f} {current_price:.2f}")
 
+    def _update_context_specific_params(self, context: ClosingAuctionContext):
+        """更新股票Context特定参数"""
+        if context.canary_update_done:
+            return
+        self.write_log(f"更新股票Context特定参数: {context.symbol}")
+        self._calculate_target_and_trigger_prices(context)
+        context.canary_update_done = True
+
     def _check_time_windows(self, current_time: time):
         """检查时间窗口"""
         # 检查建仓窗口
         if self.entry_start_time <= current_time < self.entry_end_time:
             if not self.entry_window_active:
                 self.entry_window_active = True
-                # TODO: add the logic of using canary symbols to decide the parameters for the normal ones
                 self.write_log(f"进入建仓窗口: {current_time}")
+                self._update_parameters_using_canary_signals()
         elif current_time >= self.entry_end_time and self.entry_window_active:
             self.entry_window_active = False
             self.write_log(f"退出建仓窗口: {current_time}")
         
         # 注意：平仓逻辑现在通过timer处理，不在这里检查
-    
+
+    def _update_parameters_using_canary_signals(self):
+        """更新canary参数"""
+        cnt_of_canary_signals = len(self.canary_long_symbols) + len(self.canary_short_symbols)
+        if cnt_of_canary_signals >= self.canary_switch_boundry:
+            self.write_log(f"canary信号数量大于等于阈值，跳过参数更新: {cnt_of_canary_signals} >= {self.canary_switch_boundry}")
+            return
+        
+        self.write_log(f"canary信号数量小于阈值，更新参数: {cnt_of_canary_signals} < {self.canary_switch_boundry}")
+        # update the strategy parameters, it need to be picked up later to be reflected in the context
+        self.long_multiplier = 0.0065
+        self.short_multiplier = 0.0055
+        self.single_stock_max_position = int(self.single_stock_max_position * 1.15)
+
+        # trigger the updates for all context
+        # this will cost ~150ms for 500 symbols, if this is causing perf issue, we can split the logic for each symbol
+        # for symbol, context in self.contexts.items():
+        #     self.write_log(f"更新价格倍数参数: {symbol} canary signals detected")
+        #     self._calculate_target_and_trigger_prices(context)
+
+        # parameter update will stop because the trading windows is open
+
+
     def _calculate_target_and_trigger_prices(self, context: ClosingAuctionContext):
         """计算目标价格和触发价格"""
         if context.base_price <= 0:
