@@ -81,6 +81,9 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         self.entry_end_time = time(15, 25)
         self.exit_start_time = time(15, 25)
         self.strategy_init_time = time(14, 50)
+
+        self.canary_start_time = time(15, 21)
+        self.canary_end_time = time(15, 22)
         
         # 策略状态
         self.contexts: Dict[str, ClosingAuctionContext] = {}
@@ -90,6 +93,11 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         self.liquidation_executed = False  # 是否已执行平仓
 
         self.skip_symbols = ["6098", "285A"]
+
+        # canary symbols which are triggered prio to the normal ones
+        # we use the result of the canary symbols to decide the parameters for the normal ones
+        self.canary_short_symbols = set()
+        self.canary_long_symbols = set()
         
         # 动态参数管理（由基类处理）
         # 不需要在这里初始化，由基类的set_configuration_provider方法处理
@@ -228,7 +236,6 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
         symbol = tick.symbol
         context = self.get_context(symbol)
         
-        # current_time = tick.datetime.time()
         current_time = datetime.now().time()
         
         # 1. 更新BarGenerator
@@ -236,14 +243,17 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
             self.bar_generators[symbol] = EnhancedBarGenerator(self.on_1min_bar)
         self.bar_generators[symbol].update_tick(tick)
         
-        # 2. 检查时间窗口
+        # 2. check if we are in the canary window, if so, check whether the symbol will trigger any order and add it to the canary symbols
+        self._check_canary_window(current_time, context, tick)
+
+        # 3. 检查时间窗口
         self._check_time_windows(current_time)
         
-        # 3. 处理建仓逻辑
+        # 4. 处理建仓逻辑
         if self.entry_window_active and (context.state == StrategyState.IDLE or context.state == StrategyState.WAITING_ENTRY):
             self._handle_entry_logic(symbol, context, tick)
         
-        # 4. 平仓逻辑现在通过timer处理，不在这里处理
+        # 5. 平仓逻辑现在通过timer处理，不在这里处理
     
     def on_1min_bar(self, bar: BarData):
         """1分钟K线回调函数"""
@@ -275,12 +285,31 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
             # 计算目标价格和触发价格
             self._calculate_target_and_trigger_prices(context)
     
+    def _check_canary_window(self, current_time: time, context: ClosingAuctionContext, tick: TickData):
+        """检查canary窗口"""
+        if not (self.canary_start_time <= current_time < self.canary_end_time):
+            return
+        
+        current_price = tick.last_price
+        if not context.trigger_prices_set:
+            self.write_log(f"canary窗口: {context.symbol} 价格未设置触发价格，跳过")
+            return
+
+        # check if the price in the tick is within the target price range
+        if current_price <= context.long_target_price:
+            self.canary_long_symbols.add(context.symbol)
+            self.write_log(f"canary做多触发: {context.symbol} {context.long_target_price:.2f} {current_price:.2f}")
+        elif current_price >= context.short_target_price:
+            self.canary_short_symbols.add(context.symbol)
+            self.write_log(f"canary做空触发: {context.symbol} {context.short_target_price:.2f} {current_price:.2f}")
+
     def _check_time_windows(self, current_time: time):
         """检查时间窗口"""
         # 检查建仓窗口
         if self.entry_start_time <= current_time < self.entry_end_time:
             if not self.entry_window_active:
                 self.entry_window_active = True
+                # TODO: add the logic of using canary symbols to decide the parameters for the normal ones
                 self.write_log(f"进入建仓窗口: {current_time}")
         elif current_time >= self.entry_end_time and self.entry_window_active:
             self.entry_window_active = False
