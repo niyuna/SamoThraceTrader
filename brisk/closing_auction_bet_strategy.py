@@ -316,11 +316,13 @@ class ClosingAuctionBetStrategy(IntradayStrategyBase):
 
         # check if the price in the tick is within the target price range
         if current_price <= context.long_target_price:
+            if context.symbol not in self.canary_long_symbols:
+                self.write_log(f"canary做多触发: {context.symbol} {context.long_target_price:.2f} {current_price:.2f}")
             self.canary_long_symbols.add(context.symbol)
-            self.write_log(f"canary做多触发: {context.symbol} {context.long_target_price:.2f} {current_price:.2f}")
         elif current_price >= context.short_target_price:
+            if context.symbol not in self.canary_short_symbols:
+                self.write_log(f"canary做空触发: {context.symbol} {context.short_target_price:.2f} {current_price:.2f}")
             self.canary_short_symbols.add(context.symbol)
-            self.write_log(f"canary做空触发: {context.symbol} {context.short_target_price:.2f} {current_price:.2f}")
 
     def _update_context_specific_params(self, context: ClosingAuctionContext):
         """更新股票Context特定参数"""
