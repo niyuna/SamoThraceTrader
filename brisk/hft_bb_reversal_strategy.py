@@ -100,7 +100,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         
         # 订单取消保护配置
         self.cancel_protection_seconds = 20  # 订单发送后多少秒内不允许取消
-        self.aggressive_x_condition_enabled = False  # 是否启用激进X条件, this will increase the opportunity to trade when there is a simulated position, default false for conservative
+        self.aggressive_x_condition_enabled = True  # 是否启用激进X条件, this will increase the opportunity to trade when there is a simulated position, default false for conservative
         
         # 个股交易配置
         self.enable_individual_stock_trading = enable_individual_stock_trading  # 是否启用个股自定义交易配置
@@ -321,8 +321,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 # check the time diff between entry time and current time
                 current_time = datetime.now()
                 time_diff = current_time - entry_time
-                if time_diff.total_seconds() > 90:
-                    self.write_log(f"X条件检查失败: {symbol} 模拟持仓entry时间与当前时间相差超过90秒")
+                if time_diff.total_seconds() > 60:
+                    self.write_log(f"X条件检查失败: {symbol} 模拟持仓entry时间与当前时间相差超过60秒")
                     return []
                 
                 # 获取模拟持仓方向
@@ -356,7 +356,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 # 检查方向是否匹配
                 allowed_directions = time_window_result['allowed_directions']
                 if simulated_direction in allowed_directions:
-                    self.write_log(f"X条件检查通过: {symbol} 模拟持仓方向匹配，允许{simulated_direction}交易")
+                    self.write_log(f"with position, X条件检查通过: {symbol} 模拟持仓方向匹配，允许{simulated_direction}交易")
                     return allowed_directions
                 else:
                     self.write_log(f"X条件检查失败: {symbol} 模拟持仓方向{simulated_direction}与允许方向{allowed_directions}不匹配")
