@@ -349,7 +349,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
 
                 # also need std_pct in the simulation position to pass the x condition
                 threshold = time_window_result['threshold'] if time_window_result['threshold'] is not None else 1
-                if positions.get('std_pct', 0) < threshold - 0.0001:
+                if positions.get('std_pct', 0) < threshold:
                     self.write_log(f"with position, X条件检查失败: {symbol} std_pct={positions.get('std_pct', 0):.6f} "
                                   f"低于{time_window_result['time_period']}阈值{threshold:.6f}")
                     return []
