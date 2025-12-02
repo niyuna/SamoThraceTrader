@@ -1127,7 +1127,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
     def print_simulation_summary(self):
         """打印模拟持仓摘要"""
         print("\n=== 模拟持仓摘要 ===")
-        for symbol, positions in self.simulated_positions.items():
+        for symbol, positions in list(self.simulated_positions.items()):
             status = []
             if positions['long']:
                 status.append("LONG")
@@ -2104,8 +2104,8 @@ def main():
             if current_time.hour == 15 and 35 >= current_time.minute >= 31:
                 break
             # 定期打印模拟持仓状态
-            if debug:
-                strategy.print_simulation_summary()
+            # if debug:
+            #     strategy.print_simulation_summary()
             
     except KeyboardInterrupt:
         print("\n收到退出信号...")
