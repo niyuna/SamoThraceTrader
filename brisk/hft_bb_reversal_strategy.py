@@ -310,47 +310,54 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 entry_time = positions['long_entry_time'] if positions['long'] else positions['short_entry_time']
                 
                 if entry_time is None:
-                    self.write_log(f"X条件检查失败: {symbol} 模拟持仓entry时间为None")
+                    self.write_log(f"without position, X条件检查失败: {symbol} 模拟持仓entry时间为None")
                     return []
                 
                 # 检查entry时间是否在任意窗口内
                 if not self._is_entry_time_in_any_window(entry_time):
-                    self.write_log(f"X条件检查失败: {symbol} 模拟持仓entry时间不在任何交易窗口内")
+                    self.write_log(f"without position, X条件检查失败: {symbol} 模拟持仓entry时间不在任何交易窗口内")
                     return []
 
                 # check the time diff between entry time and current time
                 current_time = datetime.now()
                 time_diff = current_time - entry_time
                 if time_diff.total_seconds() > 60:
-                    self.write_log(f"X条件检查失败: {symbol} 模拟持仓entry时间与当前时间相差超过60秒")
+                    self.write_log(f"without position, X条件检查失败: {symbol} 模拟持仓entry时间与当前时间相差超过60秒")
                     return []
                 
                 # 获取模拟持仓方向
                 simulated_direction = self._get_simulated_position_direction(symbol)
                 if simulated_direction is None:
-                    self.write_log(f"X条件检查失败: {symbol} 无法确定模拟持仓方向")
+                    self.write_log(f"without position, X条件检查失败: {symbol} 无法确定模拟持仓方向")
                     return []
                 
                 # 先获取时间窗口结果以确定允许的交易方向
                 time_window_result = self._check_time_window_with_std_pct(symbol, current_time)
                 if not time_window_result['in_window']:
-                    self.write_log(f"X条件检查失败: 当前时间不在交易窗口内")
+                    self.write_log(f"without position, X条件检查失败: 当前时间不在交易窗口内")
                     return []
                 
                 # 检查价格限制
                 if not time_window_result['price_check_ok']:
-                    self.write_log(f"X条件检查失败: {symbol} {time_window_result['price_check_reason']}")
+                    self.write_log(f"without position, X条件检查失败: {symbol} {time_window_result['price_check_reason']}")
                     return []
                     
                 if not time_window_result['std_pct_ok']:
-                    self.write_log(f"X条件检查失败: {symbol} std_pct={time_window_result['std_pct']:.6f} "
+                    self.write_log(f"without position, X条件检查失败: {symbol} std_pct={time_window_result['std_pct']:.6f} "
                                   f"低于{time_window_result['time_period']}阈值{time_window_result['threshold']:.6f}")
+                    return []
+
+                # also need std_pct in the simulation position to pass the x condition
+                threshold = time_window_result['threshold'] if time_window_result['threshold'] is not None else 1
+                if positions.get('std_pct', 0) < threshold:
+                    self.write_log(f"with position, X条件检查失败: {symbol} std_pct={positions.get('std_pct', 0):.6f} "
+                                  f"低于{time_window_result['time_period']}阈值{threshold:.6f}")
                     return []
                 
                 # 检查股价变动限制
                 price_change_result = self._check_price_change_limit(symbol)
                 if not price_change_result['ok']:
-                    self.write_log(f"X条件检查失败: {symbol} {price_change_result['reason']}")
+                    self.write_log(f"with position, X条件检查失败: {symbol} {price_change_result['reason']}")
                     return []
                 
                 # 检查方向是否匹配
@@ -566,7 +573,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 return {
                     'in_window': False,
                     'time_period': None,
-                    'threshold': None,
+                    'threshold': 1,
                     'std_pct': None,
                     'std_pct_ok': False,
                     'allowed_directions': [],
@@ -577,7 +584,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
             return {
                 'in_window': False,
                 'time_period': None,
-                'threshold': None,
+                'threshold': 1,
                 'std_pct': None,
                 'std_pct_ok': False,
                 'allowed_directions': [],
@@ -630,7 +637,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         return {
             'in_window': False,
             'time_period': None,
-            'threshold': None,
+            'threshold': 1,
             'std_pct': None,
             'std_pct_ok': False,
             'allowed_directions': [],
@@ -914,7 +921,8 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                 'long_entry_time': None,
                 'short_entry_time': None,
                 'long_exit_time': None,
-                'short_exit_time': None
+                'short_exit_time': None,
+                'std_pct': 0
             }
         
         positions = self.simulated_positions[symbol]
@@ -924,12 +932,27 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         if not positions['long'] and not positions['short']:
             # 检查long entry
             if current_price <= bb_levels['lower']:
+                std = bb_levels.get('std', 0)
+                middle = bb_levels.get('middle', 0)
+                
+                if middle == 0:
+                    positions['std_pct'] = 0
+                else:
+                    positions['std_pct'] = std / middle
                 positions['long'] = True
                 positions['long_entry_time'] = current_time
                 self.write_log(f"模拟Long Entry触发: {symbol} 价格: {current_price:.2f} <= {bb_levels['lower']:.2f} 时间: {current_time.strftime('%H:%M:%S')}")
             
             # 检查short entry
             elif current_price >= bb_levels['upper']:
+                std = bb_levels.get('std', 0)
+                middle = bb_levels.get('middle', 0)
+                
+                if middle == 0:
+                    positions['std_pct'] = 0
+                else:
+                    positions['std_pct'] = std / middle
+
                 positions['short'] = True
                 positions['short_entry_time'] = current_time
                 self.write_log(f"模拟Short Entry触发: {symbol} 价格: {current_price:.2f} >= {bb_levels['upper']:.2f} 时间: {current_time.strftime('%H:%M:%S')}")
