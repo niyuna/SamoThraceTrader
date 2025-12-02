@@ -342,14 +342,14 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
                     self.write_log(f"without position, X条件检查失败: {symbol} {time_window_result['price_check_reason']}")
                     return []
                     
-                if not time_window_result['std_pct_ok']:
-                    self.write_log(f"without position, X条件检查失败: {symbol} std_pct={time_window_result['std_pct']:.6f} "
-                                  f"低于{time_window_result['time_period']}阈值{time_window_result['threshold']:.6f}")
-                    return []
+                # if not time_window_result['std_pct_ok']:
+                #     self.write_log(f"without position, X条件检查失败: {symbol} std_pct={time_window_result['std_pct']:.6f} "
+                #                   f"低于{time_window_result['time_period']}阈值{time_window_result['threshold']:.6f}")
+                #     return []
 
                 # also need std_pct in the simulation position to pass the x condition
                 threshold = time_window_result['threshold'] if time_window_result['threshold'] is not None else 1
-                if positions.get('std_pct', 0) < threshold:
+                if positions.get('std_pct', 0) < threshold - 0.0001:
                     self.write_log(f"with position, X条件检查失败: {symbol} std_pct={positions.get('std_pct', 0):.6f} "
                                   f"低于{time_window_result['time_period']}阈值{threshold:.6f}")
                     return []
