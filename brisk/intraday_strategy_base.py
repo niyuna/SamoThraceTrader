@@ -221,7 +221,7 @@ class IntradayStrategyBase:
         
         # 计算基于价格的持仓数量
         # 2025/11/04
-        earning_stocks = '4506,4587,7003,9501,9509'
+        earning_stocks = '4506,4587,7003,9501,9509,4516'
         earning_stocks = earning_stocks.split(',')
         if not symbol in earning_stocks:
             position_size = round(self.single_stock_max_position / price / 100) * 100
