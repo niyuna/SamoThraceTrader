@@ -82,7 +82,7 @@ class HFTBBReversalStrategy(IntradayStrategyBase):
         # so we need to set the parameters to the updated values here
         self.bb_period = 20
         self.bb_entry_std_multiplier = 3.0
-        self.bb_exit_std_multiplier = -1.0
+        self.bb_exit_std_multiplier = -0.5
         self.trigger_tick_count = 5  # trigger价格调整的tick数量
         
         # X条件std_pct阈值参数
