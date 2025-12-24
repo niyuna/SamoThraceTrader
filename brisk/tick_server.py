@@ -391,39 +391,39 @@ async def post_in_day_frames(frames: Dict[str, List[Frame]]):
         # 确保输出目录存在
         # os.makedirs(FRAMES_OUTPUT_DIR, exist_ok=True)
         
-        # 目标文件路径
-        target_file_path = f"{FRAMES_OUTPUT_DIR}/brisk_in_day_frames_{formatted_date}_{ts}.json"
+        # # 目标文件路径
+        # target_file_path = f"{FRAMES_OUTPUT_DIR}/brisk_in_day_frames_{formatted_date}_{ts}.json"
         
-        # 创建临时文件
-        temp_fd, temp_file_path = tempfile.mkstemp(suffix='.json', dir=FRAMES_OUTPUT_DIR)
+        # # 创建临时文件
+        # temp_fd, temp_file_path = tempfile.mkstemp(suffix='.json', dir=FRAMES_OUTPUT_DIR)
         
-        try:
-            # 使用文件描述符写入数据
-            with os.fdopen(temp_fd, 'w') as temp_file:
-                json.dump(data_dict, temp_file, default=vars)
+        # try:
+        #     # 使用文件描述符写入数据
+        #     with os.fdopen(temp_fd, 'w') as temp_file:
+        #         json.dump(data_dict, temp_file, default=vars)
                 
-                # 确保数据写入磁盘
-                temp_file.flush()
-                os.fsync(temp_file.fileno())
+        #         # 确保数据写入磁盘
+        #         temp_file.flush()
+        #         os.fsync(temp_file.fileno())
             
-            # 原子性地重命名临时文件为目标文件
-            # 在大多数文件系统上，重命名操作是原子的
-            shutil.move(temp_file_path, target_file_path)
+        #     # 原子性地重命名临时文件为目标文件
+        #     # 在大多数文件系统上，重命名操作是原子的
+        #     shutil.move(temp_file_path, target_file_path)
             
-            logger.info(f"Successfully wrote {new_frame_cnt} frames to {target_file_path}")
-            return ['ok', f'new frame cnt: {new_frame_cnt}']
+        #     logger.info(f"Successfully wrote {new_frame_cnt} frames to {target_file_path}")
+        #     return ['ok', f'new frame cnt: {new_frame_cnt}']
             
-        except Exception as e:
-            # 发生错误时，尝试清理临时文件
-            logger.error(f"Error writing frames: {type(e).__name__}: {str(e) if str(e) else repr(e)}")
-            logger.error(f"异常详情: {e}", exc_info=True)
-            try:
-                if os.path.exists(temp_file_path):
-                    os.remove(temp_file_path)
-            except:
-                pass  # 忽略清理临时文件时的错误
+        # except Exception as e:
+        #     # 发生错误时，尝试清理临时文件
+        #     logger.error(f"Error writing frames: {type(e).__name__}: {str(e) if str(e) else repr(e)}")
+        #     logger.error(f"异常详情: {e}", exc_info=True)
+        #     try:
+        #         if os.path.exists(temp_file_path):
+        #             os.remove(temp_file_path)
+        #     except:
+        #         pass  # 忽略清理临时文件时的错误
             
-            raise HTTPException(status_code=500, detail=f"Error writing frames: {str(e)}")
+        #     raise HTTPException(status_code=500, detail=f"Error writing frames: {str(e)}")
     
     return ['ok', f'no new frames to write']
 
