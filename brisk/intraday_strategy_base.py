@@ -18,6 +18,7 @@ from brisk_gateway import BriskGateway
 from mock_brisk_gateway import MockBriskGateway
 from brisk_eshiten_gateway import BriskEshitenGateway
 from brisk_click_gateway import BriskClickGateway
+from kabus_gateway import KabusGateway
 
 from vnpy.trader.event import EVENT_TICK, EVENT_LOG, EVENT_ORDER, EVENT_TRADE
 from vnpy.event import Event
@@ -48,6 +49,7 @@ class GatewayType(Enum):
     BRISK = "brisk"
     BRISK_ESHITEN = "brisk_eshiten"
     BRISK_CLICK = "brisk_click"
+    KABUS = "kabus"
 
 
 @dataclass
@@ -85,7 +87,7 @@ class IntradayStrategyBase:
         
         Args:
             use_mock_gateway: 是否使用mock gateway（向后兼容参数）
-            gateway_type: Gateway类型 ("mock", "brisk", "brisk_eshiten", "brisk_click")
+            gateway_type: Gateway类型 ("mock", "brisk", "brisk_eshiten", "brisk_click", "kabus")
             log_suffix: 日志后缀
         """
         # 保持向后兼容性
@@ -1010,6 +1012,9 @@ class IntradayStrategyBase:
         elif self.gateway_type == "brisk_click":
             gateway_cls = BriskClickGateway
             gateway_name = "BRISK_CLICK"
+        elif self.gateway_type == "kabus":
+            gateway_cls = KabusGateway
+            gateway_name = "KABUS"
         else:  # 默认使用brisk
             gateway_cls = BriskGateway
             gateway_name = "BRISK"
@@ -1053,6 +1058,14 @@ class IntradayStrategyBase:
                     "heartbeat_interval": 30,
                     "max_reconnect_attempts": 20,
                     "polling_interval": 5,
+                }
+            elif self.gateway_type == "kabus":
+                setting = {
+                    "tick_server_url": "ws://192.168.50.131:16080/kabusapi/websocket",
+                    "tick_server_http_url": "http://192.168.50.131:16080/kabusapi/websocket",
+                    "reconnect_interval": 5,
+                    "max_reconnect_attempts": 20,
+                    "polling_interval": 10,
                 }
             else:  # brisk
                 setting = {
