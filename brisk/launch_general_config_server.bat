@@ -1,2 +1,2 @@
-REM installed on nssm on brisk2
-uvicorn general_config_server:app --host=0.0.0.0 --port=8002 --log-level info > general_config_server.log 2>&1
+REM installed on nssm on brisk2, note --timeout-keep-alive 0 is necessary to have low latency otherwise some os will not end the request immediately
+uvicorn general_config_server:app --host=0.0.0.0 --port=8002 --timeout-keep-alive 0 --log-level info > general_config_server.log 2>&1
