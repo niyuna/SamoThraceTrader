@@ -212,6 +212,62 @@ class VolumeMACalculator(BaseCalculator):
         return self.latest_volume_ma
 
 
+class HLRangeMACalculator(BaseCalculator):
+    """HL Range MA计算器 - 计算过去N个5分钟线的h-l平均值
+    
+    只在5分钟bar出现时更新，计算过去period个5分钟bar的(high-low)平均值
+    """
+    
+    def __init__(self, period: int = 5):
+        self.period = period
+        self.current_date = None
+        self.hl_ranges = []  # 存储过去period个5分钟bar的h-l值
+        self.latest_hl_range_ma = 0.0
+    
+    def update_bar(self, bar: BarData, **kwargs) -> float:
+        """更新bar数据并计算HL Range MA
+        
+        注意：这个指标只在5分钟bar出现时更新
+        需要在策略的on_5min_bar回调中调用
+        """
+        # 检查是否是新的一天
+        bar_date = bar.datetime.date()
+        if self.current_date != bar_date:
+            self.reset_daily(bar_date)
+        
+        # 计算当前bar的h-l值
+        hl_range = bar.high_price - bar.low_price
+        
+        # 添加到列表
+        self.hl_ranges.append(hl_range)
+        
+        # 只保留最近period个值
+        if len(self.hl_ranges) > self.period:
+            self.hl_ranges.pop(0)
+        
+        # 计算平均值
+        if len(self.hl_ranges) >= self.period:
+            self.latest_hl_range_ma = sum(self.hl_ranges) / len(self.hl_ranges)
+        else:
+            # 如果数据不足，使用当前已有的数据计算平均值
+            if len(self.hl_ranges) > 0:
+                self.latest_hl_range_ma = sum(self.hl_ranges) / len(self.hl_ranges)
+            else:
+                self.latest_hl_range_ma = 0.0
+        
+        return self.latest_hl_range_ma
+    
+    def reset_daily(self, new_date):
+        """重置每日数据"""
+        self.current_date = new_date
+        self.hl_ranges.clear()
+        self.latest_hl_range_ma = 0.0
+    
+    def get_hl_range_ma(self) -> float:
+        """获取当前HL Range MA值"""
+        return self.latest_hl_range_ma
+
+
 class TechnicalIndicatorManager:
     """技术指标管理器 - 组合各个计算器"""
     
