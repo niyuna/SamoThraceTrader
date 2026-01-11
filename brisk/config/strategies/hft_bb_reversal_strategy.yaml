@@ -37,6 +37,7 @@ params:
   black_list:
     - "6098"
     - "285A"
+    - "9501,9509"
     # - {"operation": "remove", "symbol": "8035"}
 
   # 其他策略参数（可选动态调整）
