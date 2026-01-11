@@ -1,0 +1,117 @@
+"""
+Dotenkun 日内交易策略
+基于intraday_strategy_base实现，使用kabus gateway
+"""
+from datetime import datetime
+from typing import Dict, Any
+
+from vnpy.trader.constant import Direction, Offset, Status, OrderType, Exchange
+from vnpy.trader.object import BarData
+
+from intraday_strategy_base import IntradayStrategyBase, StrategyState
+from technical_indicators import TechnicalIndicatorManager, HLRangeMACalculator
+
+
+class DotenkunStrategy(IntradayStrategyBase):
+    """Dotenkun 日内交易策略"""
+    
+    def __init__(self, log_suffix=None):
+        # 使用kabus gateway
+        super().__init__(gateway_type="kabus", log_suffix=log_suffix)
+        
+        # 策略参数（后续可以添加）
+        # 暂时留空，等策略逻辑确定后再添加
+        
+        # 自定义Bar Generator和技术指标配置
+        self.bar_window = 5            # 使用5分钟K线
+        self.indicator_size = 15       # 需要足够的历史bar
+        
+        # 固定订阅的股票
+        self.fixed_symbol = "9984"
+    
+    def _create_indicator_manager(self, symbol: str):
+        """创建Dotenkun策略专用的技术指标管理器"""
+        # 创建基础的技术指标管理器
+        manager = TechnicalIndicatorManager(symbol, size=self.indicator_size)
+        
+        # 添加HL Range MA计算器
+        hl_range_ma_calc = HLRangeMACalculator(period=5)
+        manager.hl_range_ma_calc = hl_range_ma_calc
+        
+        return manager
+    
+    def on_5min_bar(self, bar: BarData):
+        """5分钟K线回调函数"""
+        # 调用父类方法（记录日志等）
+        super().on_5min_bar(bar)
+        
+        # 更新HL Range MA指标
+        if bar.symbol in self.indicator_managers:
+            manager = self.indicator_managers[bar.symbol]
+            if hasattr(manager, 'hl_range_ma_calc'):
+                hl_range_ma = manager.hl_range_ma_calc.update_bar(bar)
+                
+                # 更新指标到latest_indicators中
+                indicators = manager.get_indicators()
+                indicators['hl_range_ma_5'] = hl_range_ma
+                manager.latest_indicators = indicators
+                
+                self.write_log(f"5分钟K线: {bar.symbol} HL Range MA(5) = {hl_range_ma:.2f}")
+        
+        # 策略逻辑（后续实现）
+        # self._check_entry_signal(bar)
+        # self._check_exit_signal(bar)
+    
+    # 子类必须实现的抽象方法
+    def get_entry_direction(self, symbol: str) -> str:
+        """获取指定股票的entry方向"""
+        # 暂时返回'none'，等策略逻辑确定后再实现
+        return 'none'
+    
+    def _calculate_entry_price(self, context, bar, indicators) -> float:
+        """计算 entry 价格"""
+        # 暂时返回0，等策略逻辑确定后再实现
+        return 0.0
+    
+    def _calculate_exit_price(self, context, bar, indicators) -> float:
+        """计算 exit 价格"""
+        # 暂时返回0，等策略逻辑确定后再实现
+        return 0.0
+
+
+def main():
+    """主函数"""
+    print("启动Dotenkun策略...")
+    
+    # 创建策略实例
+    strategy = DotenkunStrategy()
+    
+    try:
+        # 连接Gateway
+        strategy.connect()
+        
+        # 订阅固定股票
+        strategy.subscribe([strategy.fixed_symbol])
+        
+        # 等待一段时间接收数据
+        print("等待接收数据...")
+        import time
+        time.sleep(1)
+        
+        # 保持运行
+        print("按Ctrl+C退出...")
+        while True:
+            time.sleep(1)
+            
+    except KeyboardInterrupt:
+        print("\n收到退出信号...")
+    except Exception as e:
+        print(f"运行过程中出现错误: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        strategy.close()
+
+
+if __name__ == "__main__":
+    main()
