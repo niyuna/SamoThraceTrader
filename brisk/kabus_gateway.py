@@ -45,7 +45,6 @@ class KabusGateway(BaseGateway):
         "tick_server_url": "ws://192.168.50.131:16080/kabusapi/websocket",
         "tick_server_http_url": "http://192.168.50.131:16080/kabusapi/websocket",
         "reconnect_interval": 5,
-        "heartbeat_interval": 30,
         "max_reconnect_attempts": 20,
         "polling_interval": 1,  # 订单状态轮询间隔（秒）
     }
@@ -61,14 +60,11 @@ class KabusGateway(BaseGateway):
         self._http_url: str = ""
         self._connected: bool = False
         self._reconnect_interval: int = 5
-        self._heartbeat_interval: int = 20
         self._max_reconnect_attempts: int = 10
         self._reconnect_attempts: int = 0
-        self._last_heartbeat: float = 0
 
         # 线程相关
         self._ws_thread: Optional[threading.Thread] = None
-        self._heartbeat_thread: Optional[threading.Thread] = None
         self._polling_thread: Optional[threading.Thread] = None
         self._active: bool = False
 
@@ -106,7 +102,6 @@ class KabusGateway(BaseGateway):
         self._ws_url = setting.get("tick_server_url", self.default_setting["tick_server_url"])
         self._http_url = setting.get("tick_server_http_url", self.default_setting["tick_server_http_url"])
         self._reconnect_interval = setting.get("reconnect_interval", self.default_setting["reconnect_interval"])
-        self._heartbeat_interval = setting.get("heartbeat_interval", self.default_setting["heartbeat_interval"])
         self._max_reconnect_attempts = setting.get("max_reconnect_attempts", self.default_setting["max_reconnect_attempts"])
         self.polling_interval = setting.get("polling_interval", self.default_setting["polling_interval"])
 
@@ -314,15 +309,6 @@ class KabusGateway(BaseGateway):
             if "ConnectionClosed" in str(type(e)) or "WebSocketException" in str(type(e)):
                 raise
 
-    async def _process_tick_data(self, frames: Dict[str, List[Dict]]) -> None:
-        """处理tick数据"""
-        for symbol, frame_list in frames.items():
-            for frame_data in frame_list:
-                tick = self._convert_frame_to_tick(symbol, frame_data)
-                if tick:
-                    # 发送tick事件
-                    self.on_tick(tick)
-
     def _reset_daily_cache(self, symbol: str, new_date):
         """重置指定symbol的每日缓存"""
         if symbol in self._trading_cache:
@@ -332,7 +318,9 @@ class KabusGateway(BaseGateway):
                 'last_turnover': 0,
                 'current_turnover': 0,
                 'last_timestamp': 0,
-                'last_date': new_date
+                'last_date': new_date,
+                'last_trading_volume': 0,
+                'last_trading_volume_time': ''
             }
             self.write_log(f"重置 {symbol} 的每日缓存")
 
@@ -368,7 +356,9 @@ class KabusGateway(BaseGateway):
                     'last_turnover': 0,
                     'current_turnover': 0,
                     'last_timestamp': 0,
-                    'last_date': None
+                    'last_date': None,
+                    'last_trading_volume': 0,
+                    'last_trading_volume_time': ''
                 }
             
             cache = self._trading_cache[symbol]
@@ -411,51 +401,6 @@ class KabusGateway(BaseGateway):
         except Exception as e:
             self.write_log(f"数据转换失败: symbol={symbol}, frame={frame}, error={e}")
             return None
-
-    def _run_heartbeat(self) -> None:
-        """运行心跳检测"""
-        while self._active:
-            try:
-                if self._connected and self._ws:
-                    current_time = time.time()
-                    time_since_last_heartbeat = current_time - self._last_heartbeat
-                    
-                    # 添加调试日志
-                    self.write_log(f"心跳检测: 连接状态={self._connected}, 距离上次心跳={time_since_last_heartbeat:.1f}秒, 心跳间隔={self._heartbeat_interval}秒")
-                    
-                    # 先检查心跳超时（超过2倍间隔没有收到pong）
-                    if time_since_last_heartbeat >= self._heartbeat_interval * 3:
-                        self.write_log("心跳超时，准备重连")
-                        self._connected = False
-                        # 强制关闭连接以触发重连
-                        try:
-                            asyncio.run(self._ws.close())
-                            self.write_log("心跳检测：已关闭WebSocket连接")
-                        except Exception as e:
-                            self.write_log(f"心跳检测：关闭连接失败: {e}")
-                        # break
-                    
-                    # 再检查是否超过心跳间隔，需要发送ping
-                    elif time_since_last_heartbeat > self._heartbeat_interval:
-                        # 发送ping消息
-                        try:
-                            ping_msg = {"type": "ping"}
-                            self.write_log("发送心跳ping")
-                            asyncio.run(self._ws.send(json.dumps(ping_msg)))
-                            # 更新心跳时间，避免重复发送
-                            self._last_heartbeat = current_time
-                            self.write_log(f"更新心跳时间后: _last_heartbeat={self._last_heartbeat}")
-                        except Exception as e:
-                            self.write_log(f"发送心跳ping失败: {e}")
-                            # self._connected = False
-                            # break
-                else:
-                    # 添加调试日志：为什么心跳检测被跳过
-                    self.write_log(f"心跳检测跳过: _connected={self._connected}, _ws={self._ws is not None}")
-                
-                time.sleep(self._heartbeat_interval)
-            except Exception as e:
-                self.write_log(f"心跳检测异常: {e}")
 
     def _start_polling_thread(self):
         """启动订单状态轮询线程"""
