@@ -294,17 +294,33 @@ class KabusGateway(BaseGateway):
                     self._ws = None
         self.write_log("[_connect_websocket] RETURNING")
 
-    # TODO: handle kabus push stream message
     async def _on_message(self, message: str) -> None:
-        """处理接收到的消息"""
+        """处理接收到的Kabus WebSocket消息"""
         try:
             data = json.loads(message)
-            # TODO: handle kabus push stream message
+            
+            # 提取Symbol字段
+            symbol = data.get("Symbol")
+            if not symbol:
+                self.write_log(f"消息缺少Symbol字段: {data}")
+                return
+            
+            # 检查是否已订阅该symbol
+            if symbol not in self._subscribed_symbols:
+                # 未订阅的symbol，忽略消息
+                return
+            
+            # 调用转换方法处理消息
+            tick = self._convert_kabus_message_to_tick(symbol, data)
+            
+            # 如果检测到tick变化，生成TickData并推送
+            if tick:
+                self.on_tick(tick)
                 
         except json.JSONDecodeError as e:
-            self.write_log(f"JSON解析失败: {e}")
+            self.write_log(f"JSON解析失败: {e}, message: {message[:200]}")
         except Exception as e:
-            self.write_log(f"消息处理失败: {e}")
+            self.write_log(f"消息处理失败: {e}, message: {message[:200]}")
             # 如果是连接相关异常，重新抛出以触发重连
             if "ConnectionClosed" in str(type(e)) or "WebSocketException" in str(type(e)):
                 raise
@@ -313,93 +329,191 @@ class KabusGateway(BaseGateway):
         """重置指定symbol的每日缓存"""
         if symbol in self._trading_cache:
             self._trading_cache[symbol] = {
-                'last_volume': 0,
-                'current_volume': 0,
-                'last_turnover': 0,
-                'current_turnover': 0,
-                'last_timestamp': 0,
-                'last_date': new_date,
                 'last_trading_volume': 0,
-                'last_trading_volume_time': ''
+                'last_trading_volume_time': '',
+                'volume': 0,  # 累计成交量
+                'turnover': 0,  # 累计成交额
+                'last_date': new_date
             }
-            self.write_log(f"重置 {symbol} 的每日缓存")
+            self.write_log(f"重置 {symbol} 的每日缓存，日期: {new_date}")
 
-    def _convert_frame_to_tick(self, symbol: str, frame: Dict, date_str: str = None) -> Optional[TickData]:
-        """将Frame转换为TickData（增强版 - 支持累计成交量和成交额）"""
+    def _convert_kabus_message_to_tick(self, symbol: str, message: Dict) -> Optional[TickData]:
+        """将Kabus WebSocket消息转换为TickData
+        
+        检测tick变化：只有当TradingVolume或TradingVolumeTime变化时才生成tick
+        """
         try:
-            # 解析时间戳 - frame中的timestamp是距离当天JST 0点的微秒数
-            micro_seconds = frame.get("timestamp", 0)
-            
-            # 如果没有提供日期，使用当前日期
-            if date_str is None:
-                date_str = datetime.now(ZoneInfo("Asia/Tokyo")).strftime("%Y%m%d")
-            
-            # 创建当天0点的时间
-            base_date = datetime.strptime(date_str, "%Y%m%d")
-            #.replace(tzinfo=ZoneInfo("Asia/Tokyo"))
-            
-            # 将微秒转换为秒，然后加到基础时间上
-            seconds = micro_seconds / 1_000_000  # 微秒转秒
-            dt = base_date + timedelta(seconds=seconds)
-            
-            # 处理成交量和成交额
-            frame_volume = frame.get("quantity", 0)
-            frame_price = frame.get("price10", 0) / 10.0  # 转换为实际价格
-            frame_turnover = frame_volume * frame_price   # 计算单次成交额
-            frame_timestamp = frame.get("timestamp", 0)
-            
             # 初始化缓存
             if symbol not in self._trading_cache:
                 self._trading_cache[symbol] = {
-                    'last_volume': 0,
-                    'current_volume': 0,
-                    'last_turnover': 0,
-                    'current_turnover': 0,
-                    'last_timestamp': 0,
-                    'last_date': None,
                     'last_trading_volume': 0,
-                    'last_trading_volume_time': ''
+                    'last_trading_volume_time': '',
+                    'volume': 0,  # 累计成交量
+                    'turnover': 0,  # 累计成交额
+                    'last_date': None
                 }
             
             cache = self._trading_cache[symbol]
             
-            # 检查是否需要重置每日数据
-            frame_date = base_date.date()
-            if cache['last_date'] is not None and cache['last_date'] != frame_date:
-                self._reset_daily_cache(symbol, frame_date)
-                cache = self._trading_cache[symbol]  # 重新获取缓存引用
+            # 提取TradingVolume和TradingVolumeTime用于检测tick变化
+            current_volume = message.get('TradingVolume', 0)
+            current_volume_time = message.get('TradingVolumeTime', '')
             
-            # 检查时间戳，确保按顺序处理
-            if frame_timestamp < cache['last_timestamp']:
-                self.write_log(f"警告：{symbol} 时间戳倒序，跳过frame (当前:{frame_timestamp}, 上次:{cache['last_timestamp']})")
+            # 检查日期变化，必要时重置每日数据
+            if current_volume_time:
+                try:
+                    # 解析时间字符串获取日期
+                    dt_volume = datetime.fromisoformat(current_volume_time)
+                    current_date = dt_volume.date()
+                    
+                    if cache['last_date'] is not None and cache['last_date'] != current_date:
+                        self._reset_daily_cache(symbol, current_date)
+                        cache = self._trading_cache[symbol]  # 重新获取缓存引用
+                except Exception as e:
+                    self.write_log(f"解析TradingVolumeTime失败: {e}, time={current_volume_time}")
+            
+            # 检测tick变化：只有当TradingVolume或TradingVolumeTime变化时才生成tick
+            if (current_volume == cache['last_trading_volume'] and 
+                current_volume_time == cache['last_trading_volume_time']):
+                # 只是orderbook更新，不生成tick
                 return None
             
-            # 更新累计成交量和成交额
-            cache['last_volume'] = cache['current_volume']
-            cache['last_turnover'] = cache['current_turnover']
-            cache['current_volume'] += frame_volume
-            cache['current_turnover'] += frame_turnover
-            cache['last_timestamp'] = frame_timestamp
-            cache['last_date'] = frame_date
+            # 首次收到该symbol的消息，初始化缓存但不生成tick（可选）
+            if cache['last_trading_volume'] == 0 and cache['last_trading_volume_time'] == '':
+                cache['last_trading_volume'] = current_volume
+                cache['last_trading_volume_time'] = current_volume_time
+                cache['volume'] = current_volume
+                cache['turnover'] = message.get('TradingValue', 0)
+                if current_volume_time:
+                    try:
+                        dt_volume = datetime.fromisoformat(current_volume_time)
+                        cache['last_date'] = dt_volume.date()
+                    except:
+                        pass
+                # 首次不生成tick，等待下一次变化
+                return None
             
-            # 创建TickData
+            # 解析时间 - 使用TradingVolumeTime或CurrentPriceTime
+            time_str = current_volume_time or message.get('CurrentPriceTime', '')
+            if not time_str:
+                self.write_log(f"消息缺少时间字段: symbol={symbol}")
+                return None
+            
+            try:
+                # 处理ISO 8601格式的时间字符串
+                dt = datetime.fromisoformat(time_str)
+                # 如果没有时区信息，假设是JST
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=ZoneInfo("Asia/Tokyo"))
+            except Exception as e:
+                self.write_log(f"时间解析失败: {e}, time_str={time_str}")
+                return None
+            
+            # 提取价格数据
+            last_price = float(message.get('CurrentPrice', 0))
+            pre_close = float(message.get('PreviousClose', 0))
+            open_price = float(message.get('OpeningPrice', 0))
+            high_price = float(message.get('HighPrice', 0))
+            low_price = float(message.get('LowPrice', 0))
+            
+            # 提取成交量数据
+            volume = float(current_volume)  # 累计成交量
+            turnover = float(message.get('TradingValue', 0))  # 累计成交额
+            
+            # 计算本次变化量
+            last_volume = volume - cache['volume'] if cache['volume'] > 0 else 0
+            
+            # 提取订单簿数据
+            # BidPrice/AskPrice是第1档
+            bid_price_1 = float(message.get('BidPrice', 0))
+            bid_volume_1 = float(message.get('BidQty', 0))
+            ask_price_1 = float(message.get('AskPrice', 0))
+            ask_volume_1 = float(message.get('AskQty', 0))
+            
+            # 初始化订单簿数组（共5档）
+            bid_prices = [bid_price_1]
+            bid_volumes = [bid_volume_1]
+            ask_prices = [ask_price_1]
+            ask_volumes = [ask_volume_1]
+            
+            # Buy2-6对应买盘（bid）的第2-5档，价格从高到低
+            for i in range(2, 6):  # Buy2-5
+                buy_key = f'Buy{i}'
+                if buy_key in message and isinstance(message[buy_key], dict):
+                    buy_data = message[buy_key]
+                    bid_prices.append(float(buy_data.get('Price', 0)))
+                    bid_volumes.append(float(buy_data.get('Qty', 0)))
+                else:
+                    bid_prices.append(0.0)
+                    bid_volumes.append(0.0)
+            
+            # Sell2-6对应卖盘（ask）的第2-5档，价格从低到高
+            for i in range(2, 6):  # Sell2-5
+                sell_key = f'Sell{i}'
+                if sell_key in message and isinstance(message[sell_key], dict):
+                    sell_data = message[sell_key]
+                    ask_prices.append(float(sell_data.get('Price', 0)))
+                    ask_volumes.append(float(sell_data.get('Qty', 0)))
+                else:
+                    ask_prices.append(0.0)
+                    ask_volumes.append(0.0)
+            
+            # 更新缓存
+            cache['last_trading_volume'] = current_volume
+            cache['last_trading_volume_time'] = current_volume_time
+            cache['volume'] = volume
+            cache['turnover'] = turnover
+            if current_volume_time:
+                try:
+                    dt_volume = datetime.fromisoformat(current_volume_time)
+                    cache['last_date'] = dt_volume.date()
+                except:
+                    pass
+            
+            # 创建TickData对象
             tick = TickData(
                 symbol=symbol,
                 exchange=DEFAULT_EXCHANGE,
                 datetime=dt,
                 gateway_name=self.gateway_name,
-                name=symbol,
-                volume=cache['current_volume'],             # 累计成交量
-                turnover=cache['current_turnover'],         # 累计成交额
-                last_price=frame_price,
-                last_volume=frame_volume,                   # 单次成交量
+                name=message.get('SymbolName', symbol),
+                volume=volume,
+                turnover=turnover,
+                last_price=last_price,
+                last_volume=last_volume,
+                pre_close=pre_close,
+                open_price=open_price,
+                high_price=high_price,
+                low_price=low_price,
+                bid_price_1=bid_prices[0] if len(bid_prices) > 0 else 0,
+                bid_price_2=bid_prices[1] if len(bid_prices) > 1 else 0,
+                bid_price_3=bid_prices[2] if len(bid_prices) > 2 else 0,
+                bid_price_4=bid_prices[3] if len(bid_prices) > 3 else 0,
+                bid_price_5=bid_prices[4] if len(bid_prices) > 4 else 0,
+                ask_price_1=ask_prices[0] if len(ask_prices) > 0 else 0,
+                ask_price_2=ask_prices[1] if len(ask_prices) > 1 else 0,
+                ask_price_3=ask_prices[2] if len(ask_prices) > 2 else 0,
+                ask_price_4=ask_prices[3] if len(ask_prices) > 3 else 0,
+                ask_price_5=ask_prices[4] if len(ask_prices) > 4 else 0,
+                bid_volume_1=bid_volumes[0] if len(bid_volumes) > 0 else 0,
+                bid_volume_2=bid_volumes[1] if len(bid_volumes) > 1 else 0,
+                bid_volume_3=bid_volumes[2] if len(bid_volumes) > 2 else 0,
+                bid_volume_4=bid_volumes[3] if len(bid_volumes) > 3 else 0,
+                bid_volume_5=bid_volumes[4] if len(bid_volumes) > 4 else 0,
+                ask_volume_1=ask_volumes[0] if len(ask_volumes) > 0 else 0,
+                ask_volume_2=ask_volumes[1] if len(ask_volumes) > 1 else 0,
+                ask_volume_3=ask_volumes[2] if len(ask_volumes) > 2 else 0,
+                ask_volume_4=ask_volumes[3] if len(ask_volumes) > 3 else 0,
+                ask_volume_5=ask_volumes[4] if len(ask_volumes) > 4 else 0,
                 localtime=datetime.now(ZoneInfo("Asia/Tokyo"))
             )
             
             return tick
             
         except Exception as e:
-            self.write_log(f"数据转换失败: symbol={symbol}, frame={frame}, error={e}")
+            self.write_log(f"数据转换失败: symbol={symbol}, error={e}, message_keys={list(message.keys())[:10]}")
+            import traceback
+            self.write_log(f"Traceback: {traceback.format_exc()}")
             return None
 
     def _start_polling_thread(self):
