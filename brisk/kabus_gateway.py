@@ -3,6 +3,8 @@ import asyncio
 import json
 import threading
 import time
+import os
+import glob
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from urllib.parse import urljoin
@@ -96,42 +98,64 @@ class KabusGateway(BaseGateway):
 
         # 锁
         self._lock: threading.Lock = threading.Lock()
+        
+        # Replay相关
+        self.replay_engine = None
+        self.replay_mode = False
 
     def connect(self, setting: Dict) -> None:
         """连接服务器"""
-        self._ws_url = setting.get("tick_server_url", self.default_setting["tick_server_url"])
-        self._http_url = setting.get("tick_server_http_url", self.default_setting["tick_server_http_url"])
-        self._reconnect_interval = setting.get("reconnect_interval", self.default_setting["reconnect_interval"])
-        self._max_reconnect_attempts = setting.get("max_reconnect_attempts", self.default_setting["max_reconnect_attempts"])
-        self.polling_interval = setting.get("polling_interval", self.default_setting["polling_interval"])
-
-        self._active = True
+        # 检查是否是replay模式
+        tick_mode = setting.get("tick_mode", "live")
         
-        self._ws_thread = threading.Thread(target=self._run_websocket)
-        self._ws_thread.daemon = True
-        self._ws_thread.start()
+        if tick_mode == "replay":
+            self.replay_mode = True
+            self._init_replay_engine(setting)
+            self._active = True
+            # 启动订单状态轮询线程（如果需要）
+            self._start_polling_thread()
+            self.write_log("Kabus Gateway启动成功（Replay模式）")
+        else:
+            # 原有的实时连接逻辑
+            self._ws_url = setting.get("tick_server_url", self.default_setting["tick_server_url"])
+            self._http_url = setting.get("tick_server_http_url", self.default_setting["tick_server_http_url"])
+            self._reconnect_interval = setting.get("reconnect_interval", self.default_setting["reconnect_interval"])
+            self._max_reconnect_attempts = setting.get("max_reconnect_attempts", self.default_setting["max_reconnect_attempts"])
+            self.polling_interval = setting.get("polling_interval", self.default_setting["polling_interval"])
 
-        # 启动订单状态轮询线程
-        self._start_polling_thread()
+            self._active = True
+            
+            self._ws_thread = threading.Thread(target=self._run_websocket)
+            self._ws_thread.daemon = True
+            self._ws_thread.start()
 
-        self.write_log("Brisk Gateway启动成功")
+            # 启动订单状态轮询线程
+            self._start_polling_thread()
+
+            self.write_log("Kabus Gateway启动成功")
 
     def close(self) -> None:
         """关闭连接"""
         self._active = False
         self._connected = False
         self._polling_active = False
+        
+        # 停止replay（如果正在运行）
+        if self.replay_engine:
+            self.replay_engine.stop_replay()
 
-        self.write_log("Brisk Gateway已关闭")
+        self.write_log("Kabus Gateway已关闭")
 
     def subscribe(self, req: SubscribeRequest, is_future: bool = True) -> None:
         """订阅行情"""
         for real_symbol in req.symbol.split(','):
             self._subscribed_symbols.add(real_symbol)
 
-        kabus_api.register_sc_lst(list(self._subscribed_symbols), exchange=2 if is_future else 1)
+        # 在replay模式下，不需要调用kabus_api注册
+        if not self.replay_mode:
+            kabus_api.register_sc_lst(list(self._subscribed_symbols), exchange=2 if is_future else 1)
 
-        self.write_log(f"订阅行情成功: {req.vt_symbol}")
+        self.write_log(f"订阅行情成功: {req.vt_symbol}, 已订阅symbols: {list(self._subscribed_symbols)}")
 
     # TODO: need implement sending futures order
     def send_order(self, req: OrderRequest) -> str:
@@ -691,3 +715,275 @@ class KabusGateway(BaseGateway):
             gateway_name=self.gateway_name,
         )
         return contract
+    
+    def _init_replay_engine(self, setting: dict) -> None:
+        """初始化replay引擎"""
+        self.replay_engine = KabusReplayEngine(setting, self)
+    
+    def start_replay(self, date: str, symbols: list = None) -> None:
+        """开始历史数据回放"""
+        if self.replay_engine:
+            self.replay_engine.start_replay()
+        else:
+            self.write_log("Replay引擎未初始化")
+    
+    def stop_replay(self) -> None:
+        """停止历史数据回放"""
+        if self.replay_engine:
+            self.replay_engine.stop_replay()
+        else:
+            self.write_log("Replay引擎未初始化")
+
+
+class KabusReplayEngine:
+    """Kabus历史数据回放引擎"""
+    
+    def __init__(self, config: dict, gateway):
+        self.config = config
+        self.gateway = gateway
+        self.replay_data_dir = config.get("replay_data_dir", "")
+        self.replay_date = config.get("replay_date", "")
+        self.replay_speed = config.get("replay_speed", 1.0)
+        
+        self.replay_data = []
+        self.replay_thread = None
+        self.active = False
+        self.paused = False
+        
+        # 字段名解压缩映射（反向映射）
+        self.field_decompress_map = {
+            "s": "Symbol",
+            "sn": "SymbolName",
+            "ex": "Exchange",
+            "exn": "ExchangeName",
+            "st": "SecurityType",
+            "ct": "currentTime",
+            "px": "CurrentPrice",
+            "pxt": "CurrentPriceTime",
+            "pxcs": "CurrentPriceChangeStatus",
+            "pxst": "CurrentPriceStatus",
+            "cpx": "CalcPrice",
+            "pc": "PreviousClose",
+            "pct": "PreviousCloseTime",
+            "chg": "ChangePreviousClose",
+            "chgp": "ChangePreviousClosePer",
+            "op": "OpeningPrice",
+            "opt": "OpeningPriceTime",
+            "hp": "HighPrice",
+            "hpt": "HighPriceTime",
+            "lp": "LowPrice",
+            "lpt": "LowPriceTime",
+            "v": "TradingVolume",
+            "vt": "TradingVolumeTime",
+            "vwap": "VWAP",
+            "tv": "TradingValue",
+            "clr": "ClearingPrice",
+        }
+    
+    def load_replay_data(self) -> bool:
+        """加载回放数据"""
+        if not self.replay_date or not self.replay_data_dir:
+            self.gateway.write_log("回放配置不完整")
+            return False
+        
+        try:
+            # 标准化日期格式：支持多种输入格式（2026-01-09, 20260109等）
+            date_str = self.replay_date.replace("-", "").replace("/", "").replace("_", "")
+            if len(date_str) == 8:  # YYYYMMDD格式
+                normalized_date = date_str
+            else:
+                # 尝试解析其他格式
+                normalized_date = self.replay_date
+            
+            # 查找指定日期的jsonl文件
+            # 支持多种文件命名格式
+            patterns = [
+                os.path.join(self.replay_data_dir, f"*{normalized_date}*.jsonl"),
+                os.path.join(self.replay_data_dir, f"*{self.replay_date}*.jsonl"),  # 保留原始格式
+                os.path.join(self.replay_data_dir, f"orderbook_*_{normalized_date}*.jsonl"),
+                os.path.join(self.replay_data_dir, f"orderbook_*_{self.replay_date}*.jsonl"),
+            ]
+            
+            files = []
+            for pattern in patterns:
+                files.extend(glob.glob(pattern))
+            
+            # 去重
+            files = list(set(files))
+            
+            if not files:
+                self.gateway.write_log(f"未找到{self.replay_date}的历史数据文件，搜索路径: {self.replay_data_dir}")
+                self.gateway.write_log(f"尝试的搜索模式: {patterns}")
+                return False
+            
+            # 加载和排序数据
+            self.gateway.write_log(f"加载回放数据文件: {len(files)} 个")
+            self.replay_data = self._load_and_sort_data(files)
+            self.gateway.write_log(f"加载回放数据成功，共{len(self.replay_data)}条记录")
+            return True
+            
+        except Exception as e:
+            self.gateway.write_log(f"加载回放数据失败: {e}")
+            import traceback
+            self.gateway.write_log(traceback.format_exc())
+            return False
+    
+    def _load_and_sort_data(self, files: List[str]) -> List[Dict]:
+        """加载并排序数据"""
+        replay_data = []
+        
+        for file_path in files:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    for line_num, line in enumerate(f, 1):
+                        if not line.strip():
+                            continue
+                        try:
+                            compressed_data = json.loads(line)
+                            # 解压缩数据
+                            decompressed_data = self._decompress_message(compressed_data)
+                            
+                            # 提取时间戳用于排序
+                            current_time_str = decompressed_data.get("currentTime", "")
+                            if not current_time_str:
+                                continue
+                            
+                            # 解析时间戳
+                            try:
+                                # 处理ISO 8601格式的时间字符串
+                                dt = datetime.fromisoformat(current_time_str.replace('Z', '+00:00'))
+                                timestamp = dt.timestamp()
+                            except Exception as e:
+                                self.gateway.write_log(f"解析时间戳失败: {current_time_str}, error: {e}")
+                                continue
+                            
+                            replay_data.append({
+                                'timestamp': timestamp,
+                                'data': decompressed_data
+                            })
+                        except json.JSONDecodeError as e:
+                            self.gateway.write_log(f"解析JSON失败: {file_path}:{line_num}, error: {e}")
+                            continue
+            except Exception as e:
+                self.gateway.write_log(f"读取文件{file_path}失败: {e}")
+                continue
+        
+        # 按时间戳排序
+        replay_data.sort(key=lambda x: x['timestamp'])
+        return replay_data
+    
+    def _decompress_message(self, compressed: Dict) -> Dict:
+        """解压缩消息（将短字段名还原为长字段名）"""
+        decompressed = {}
+        
+        # 解压缩顶层字段
+        for short_key, long_key in self.field_decompress_map.items():
+            if short_key in compressed:
+                decompressed[long_key] = compressed[short_key]
+        
+        # 解压缩订单簿数据
+        if "S" in compressed:
+            sell_orderbook = self._decompress_orderbook_side(compressed["S"], "Sell")
+            decompressed.update(sell_orderbook)
+        
+        if "B" in compressed:
+            buy_orderbook = self._decompress_orderbook_side(compressed["B"], "Buy")
+            decompressed.update(buy_orderbook)
+        
+        return decompressed
+    
+    def _decompress_orderbook_side(self, levels: List, prefix: str) -> Dict:
+        """解压缩订单簿一侧的数据"""
+        orderbook = {}
+        for i, level in enumerate(levels, 1):
+            if level is None:
+                continue
+            if isinstance(level, list) and len(level) >= 2:
+                price = level[0]
+                qty = level[1]
+                sign = level[2] if len(level) > 2 else None
+                
+                if price is not None and qty is not None and (price != 0.0 or qty != 0.0):
+                    level_data = {"Price": price, "Qty": qty}
+                    if sign is not None:
+                        level_data["Sign"] = sign
+                    orderbook[f"{prefix}{i}"] = level_data
+        
+        return orderbook
+    
+    def start_replay(self) -> None:
+        """开始回放"""
+        if not self.replay_data:
+            if not self.load_replay_data():
+                return
+        
+        # 检查订阅状态
+        if not self.gateway._subscribed_symbols:
+            self.gateway.write_log("警告: 开始replay时没有已订阅的symbols，replay数据将被过滤")
+        else:
+            self.gateway.write_log(f"开始replay，已订阅的symbols: {list(self.gateway._subscribed_symbols)}")
+        
+        self.active = True
+        self.paused = False
+        self.replay_thread = threading.Thread(target=self._run_replay)
+        self.replay_thread.daemon = True
+        self.replay_thread.start()
+        self.gateway.write_log("开始历史数据回放")
+    
+    def stop_replay(self) -> None:
+        """停止回放"""
+        self.active = False
+        if self.replay_thread and self.replay_thread.is_alive():
+            self.replay_thread.join(timeout=2.0)
+        self.gateway.write_log("停止历史数据回放")
+    
+    def _run_replay(self) -> None:
+        """运行回放循环"""
+        if not self.replay_data:
+            return
+        print('start replay')
+        last_timestamp = None
+        
+        for i, item in enumerate(self.replay_data):
+            if not self.active:
+                break
+            
+            # 处理暂停
+            while self.paused and self.active:
+                time.sleep(0.1)
+            
+            if not self.active:
+                break
+            
+            # 计算时间间隔
+            if last_timestamp is not None:
+                time_diff = item['timestamp'] - last_timestamp
+                sleep_time = time_diff / self.replay_speed
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+            
+            last_timestamp = item['timestamp']
+            
+            # 转换并推送tick数据
+            data = item['data']
+            symbol = data.get("Symbol")
+            
+            # 调试信息：每100条记录打印一次
+            if i % 100 == 0:
+                self.gateway.write_log(f"Replay进度: {i}/{len(self.replay_data)}, symbol: {symbol}, subscribed: {symbol in self.gateway._subscribed_symbols if symbol else False}")
+            
+            if symbol:
+                # 检查是否已订阅（如果未订阅，记录日志但不阻止处理，因为订阅可能在replay开始后才完成）
+                if symbol not in self.gateway._subscribed_symbols:
+                    # 只在第一次遇到未订阅的symbol时记录
+                    if i < 10 or i % 1000 == 0:
+                        self.gateway.write_log(f"跳过未订阅的symbol: {symbol} (已订阅: {list(self.gateway._subscribed_symbols)})")
+                    continue
+                
+                # 使用gateway的转换方法
+                tick = self.gateway._convert_kabus_message_to_tick(symbol, data)
+                if tick:
+                    self.gateway.on_tick(tick)
+                else:
+                    if i < 10:
+                        self.gateway.write_log(f"转换tick失败: symbol={symbol}")

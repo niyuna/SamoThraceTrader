@@ -194,6 +194,7 @@ class EnhancedBarGenerator:
             self.window_bar = BarData(
                 symbol=bar.symbol,
                 exchange=bar.exchange,
+                interval=None,  # 5分钟bar的interval设为None，以区别于1分钟bar（Interval.MINUTE）
                 datetime=dt,
                 gateway_name=bar.gateway_name,
                 open_price=bar.open_price,

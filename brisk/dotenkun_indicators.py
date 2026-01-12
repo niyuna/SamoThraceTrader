@@ -30,8 +30,19 @@ class DotenkunIndicator:
     def update_bar(self, bar: BarData) -> Dict[str, Any]:
         """更新5分钟bar并计算HL Range MA
         
-        注意：这个方法应该在策略的on_5min_bar回调中调用
+        注意：这个方法只处理5分钟bar，如果传入1分钟bar会被忽略
         """
+        # 检查bar的interval：如果是MINUTE（1分钟bar），则忽略
+        # 5分钟bar的interval通常是None（因为EnhancedBarGenerator没有设置）
+        # 但我们通过检查bar是否来自window_bar来判断
+        # 更安全的方式：只处理interval不是MINUTE的bar（即5分钟bar）
+        from vnpy.trader.constant import Interval
+        
+        # 如果bar的interval是MINUTE，说明这是1分钟bar，应该忽略
+        if bar.interval == Interval.MINUTE:
+            # 这是1分钟bar，不应该在这里处理，直接返回当前指标值
+            return self.get_indicators()
+        
         # 检查是否是新的一天
         bar_date = bar.datetime.date()
         if self.current_date != bar_date:

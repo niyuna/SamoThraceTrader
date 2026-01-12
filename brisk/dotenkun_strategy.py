@@ -29,6 +29,7 @@ class DotenkunStrategy(IntradayStrategyBase):
 
         # 固定订阅的股票
         self.fixed_symbol = "161030019"
+        
     
     def _create_indicator_manager(self, symbol: str):
         """创建Dotenkun策略专用的技术指标管理器"""
@@ -37,13 +38,13 @@ class DotenkunStrategy(IntradayStrategyBase):
     
     def on_5min_bar(self, bar: BarData):
         """5分钟K线回调函数"""
-        # 调用父类方法（记录日志等）
+        # 调用父类方法（记录日志等，父类已经调用了indicator.update_bar）
         super().on_5min_bar(bar)
         
-        # 更新指标
+        # 获取指标值（不需要再次调用update_bar，因为父类已经调用了）
         if bar.symbol in self.indicator_managers:
             indicator = self.indicator_managers[bar.symbol]
-            indicators = indicator.update_bar(bar)
+            indicators = indicator.get_indicators()  # 只获取指标值，不更新
             
             # 记录指标值
             hl_range_ma = indicators.get('hl_range_ma_5', 0.0)
@@ -75,30 +76,57 @@ class DotenkunStrategy(IntradayStrategyBase):
 
 def main():
     """主函数"""
+    import time
+    
     print("启动Dotenkun策略...")
     
     # 创建策略实例
     strategy = DotenkunStrategy()
     
     try:
-        # 连接Gateway
-        strategy.connect()
+        # 配置replay模式（如果需要使用replay，取消下面的注释并设置正确的路径和日期）
+        use_replay = True  # 设置为True启用replay模式
         
-        # 订阅固定股票
-        strategy.subscribe([strategy.fixed_symbol])
-        
-        # 等待一段时间接收数据
-        print("等待接收数据...")
-        import time
-        time.sleep(1)
+        if use_replay:
+            # Replay模式配置
+            replay_setting = {
+                "tick_mode": "replay",
+                "replay_data_dir": r"D:\\dev\\github\\brisk-hack\\misc_data",  # 用户需要指定实际路径
+                "replay_date": "2026-01-09",  # 用户需要指定实际日期（格式：YYYYMMDD）
+                "replay_speed": 10.0,  # 回放速度倍数（1.0 = 实时，2.0 = 2倍速等）
+            }
+            
+            # 连接Gateway（replay模式）
+            strategy.connect(replay_setting)
+            
+            # 订阅固定股票
+            strategy.subscribe([strategy.fixed_symbol])
+            
+            # 开始replay
+            strategy.start_replay(replay_setting["replay_date"], [strategy.fixed_symbol])
+            
+            print("Replay模式已启动，按Ctrl+C退出...")
+        else:
+            # 实时模式
+            strategy.connect()
+            
+            # 订阅固定股票
+            strategy.subscribe([strategy.fixed_symbol])
+            
+            # 等待一段时间接收数据
+            print("等待接收数据...")
+            time.sleep(1)
+            
+            print("实时模式已启动，按Ctrl+C退出...")
         
         # 保持运行
-        print("按Ctrl+C退出...")
         while True:
             time.sleep(1)
             
     except KeyboardInterrupt:
         print("\n收到退出信号...")
+        if use_replay:
+            strategy.stop_replay()
     except Exception as e:
         print(f"运行过程中出现错误: {e}")
         import traceback
