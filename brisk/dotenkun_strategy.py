@@ -28,7 +28,8 @@ class DotenkunStrategy(IntradayStrategyBase):
         self.hl_range_period = 5
 
         # 固定订阅的股票
-        self.fixed_symbol = "161030019"
+        # self.fixed_symbol = "161030019" # nk mini
+        self.fixed_symbol = '161030023' # nk micro
         
     
     def _create_indicator_manager(self, symbol: str):
@@ -85,7 +86,7 @@ def main():
     
     try:
         # 配置replay模式（如果需要使用replay，取消下面的注释并设置正确的路径和日期）
-        use_replay = True  # 设置为True启用replay模式
+        use_replay = False  # 设置为True启用replay模式
         
         if use_replay:
             # Replay模式配置
