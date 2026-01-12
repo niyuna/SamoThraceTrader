@@ -9,7 +9,7 @@ from vnpy.trader.constant import Direction, Offset, Status, OrderType, Exchange
 from vnpy.trader.object import BarData
 
 from intraday_strategy_base import IntradayStrategyBase, StrategyState
-from technical_indicators import TechnicalIndicatorManager, HLRangeMACalculator
+from dotenkun_indicators import DotenkunIndicator
 
 
 class DotenkunStrategy(IntradayStrategyBase):
@@ -24,39 +24,32 @@ class DotenkunStrategy(IntradayStrategyBase):
         
         # 自定义Bar Generator和技术指标配置
         self.bar_window = 5            # 使用5分钟K线
-        self.indicator_size = 15       # 需要足够的历史bar
+        self.indicator_size = 15       # ArrayManager的大小（用于未来扩展）
         
         # 固定订阅的股票
-        self.fixed_symbol = "9984"
+        self.fixed_symbol = "161030019"
     
     def _create_indicator_manager(self, symbol: str):
         """创建Dotenkun策略专用的技术指标管理器"""
-        # 创建基础的技术指标管理器
-        manager = TechnicalIndicatorManager(symbol, size=self.indicator_size)
-        
-        # 添加HL Range MA计算器
-        hl_range_ma_calc = HLRangeMACalculator(period=5)
-        manager.hl_range_ma_calc = hl_range_ma_calc
-        
-        return manager
+        # 使用独立的DotenkunIndicator类，不依赖TechnicalIndicatorManager
+        return DotenkunIndicator(symbol=symbol, size=self.indicator_size, hl_range_period=5)
     
     def on_5min_bar(self, bar: BarData):
         """5分钟K线回调函数"""
         # 调用父类方法（记录日志等）
         super().on_5min_bar(bar)
         
-        # 更新HL Range MA指标
+        # 更新指标
         if bar.symbol in self.indicator_managers:
-            manager = self.indicator_managers[bar.symbol]
-            if hasattr(manager, 'hl_range_ma_calc'):
-                hl_range_ma = manager.hl_range_ma_calc.update_bar(bar)
-                
-                # 更新指标到latest_indicators中
-                indicators = manager.get_indicators()
-                indicators['hl_range_ma_5'] = hl_range_ma
-                manager.latest_indicators = indicators
-                
-                self.write_log(f"5分钟K线: {bar.symbol} HL Range MA(5) = {hl_range_ma:.2f}")
+            indicator = self.indicator_managers[bar.symbol]
+            indicators = indicator.update_bar(bar)
+            
+            # 记录指标值
+            hl_range_ma = indicators.get('hl_range_ma_5', 0.0)
+            hl_range_count = indicators.get('hl_range_count', 0)
+            
+            self.write_log(f"5分钟K线: {bar.symbol} HL Range MA(5) = {hl_range_ma:.2f} "
+                          f"(数据点: {hl_range_count}/{self.hl_range_period})")
         
         # 策略逻辑（后续实现）
         # self._check_entry_signal(bar)
