@@ -93,8 +93,8 @@ class DotenkunIndicator:
     def reset_daily(self, new_date):
         """重置每日数据"""
         self.current_date = new_date
-        self.hl_ranges.clear()
-        self.latest_hl_range_ma = 0.0
+        # self.hl_ranges.clear()
+        # self.latest_hl_range_ma = 0.0
     
     def get_array_manager(self) -> ArrayManager:
         """获取ArrayManager引用（用于扩展其他指标）"""
