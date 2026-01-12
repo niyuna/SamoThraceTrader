@@ -27,12 +27,21 @@ class DotenkunContext(StockContext):
 class DotenkunStrategy(IntradayStrategyBase):
     """Dotenkun 日内交易策略"""
     
-    def __init__(self, log_suffix=None, k: float = 2.0):
+    def __init__(self, log_suffix=None, k: float = 2.0, initial_position: int = 0):
+        """
+        初始化Dotenkun策略
+        
+        Args:
+            log_suffix: 日志后缀
+            k: K参数，用于计算信号阈值
+            initial_position: 初始持仓数量（正数为多头，负数为空头，0表示无持仓）
+        """
         # 使用kabus gateway
         super().__init__(gateway_type="kabus", log_suffix=log_suffix)
         
         # 策略参数
         self.k = k  # K参数，用于计算信号阈值
+        self.initial_position = initial_position  # 初始持仓数量
         
         # 自定义Bar Generator和技术指标配置
         self.bar_window = 5            # 使用5分钟K线
@@ -46,15 +55,32 @@ class DotenkunStrategy(IntradayStrategyBase):
     def get_context(self, symbol: str) -> DotenkunContext:
         """获取或创建DotenkunContext"""
         if symbol not in self.contexts:
-            self.contexts[symbol] = DotenkunContext(symbol=symbol, k=self.k)
-            self.contexts[symbol].position_size = self.calculate_position_size(symbol)
+            context = DotenkunContext(symbol=symbol, k=self.k)
+            context.position_size = self.calculate_position_size(symbol)
+            
+            # 如果是fixed_symbol且有初始position，设置初始position
+            if symbol == self.fixed_symbol and self.initial_position != 0:
+                context.position = self.initial_position
+                # 如果有初始position，设置状态为HOLDING
+                context.state = StrategyState.HOLDING
+                self.write_log(f"初始化context: {symbol} 初始position={self.initial_position}, 状态={context.state.value}")
+            
+            self.contexts[symbol] = context
         return self.contexts[symbol]
     
     def create_context(self, symbol: str) -> DotenkunContext:
         """创建新的DotenkunContext"""
         context = DotenkunContext(symbol=symbol, k=self.k)
-        self.contexts[symbol] = context
         context.position_size = self.calculate_position_size(symbol)
+        
+        # 如果是fixed_symbol且有初始position，设置初始position
+        if symbol == self.fixed_symbol and self.initial_position != 0:
+            context.position = self.initial_position
+            # 如果有初始position，设置状态为HOLDING
+            context.state = StrategyState.HOLDING
+            self.write_log(f"创建context: {symbol} 初始position={self.initial_position}, 状态={context.state.value}")
+        
+        self.contexts[symbol] = context
         return context
     
     def _create_indicator_manager(self, symbol: str):
@@ -347,7 +373,11 @@ def main():
     print("启动Dotenkun策略...")
     
     # 创建策略实例
-    strategy = DotenkunStrategy()
+    # 如果需要从已有仓位启动，可以传入initial_position参数：
+    # initial_position: 正数表示多头持仓，负数表示空头持仓，0表示无持仓
+    # 例如：strategy = DotenkunStrategy(initial_position=1)  # 1手多头
+    # 例如：strategy = DotenkunStrategy(initial_position=-1)  # 1手空头
+    strategy = DotenkunStrategy(initial_position=0)  # 默认无持仓
     
     try:
         # 配置replay模式（如果需要使用replay，取消下面的注释并设置正确的路径和日期）
