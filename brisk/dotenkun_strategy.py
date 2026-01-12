@@ -151,11 +151,16 @@ class DotenkunStrategy(IntradayStrategyBase):
             position_qty = abs(current_position)
             
             if position_direction != target_direction:
-                # 有相反的position，立即close
-                self.write_log(f"检测到相反position: {symbol} {position_direction.value} qty={position_qty}, 立即close")
-                self._close_position_immediately(context, tick, position_direction, position_qty)
+                # Edge case处理：如果已经发送了close订单，不要再次发送
+                if context.exit_order_id:
+                    self.write_log(f"检测到相反position但已有close订单: {symbol} {position_direction.value} qty={position_qty}, exit_order_id={context.exit_order_id}, 跳过close")
+                else:
+                    # 有相反的position，立即close
+                    self.write_log(f"检测到相反position: {symbol} {position_direction.value} qty={position_qty}, 立即close")
+                    self._close_position_immediately(context, tick, position_direction, position_qty)
         
         # 设置delayed entry（在下一根5分钟bar的open执行）
+        # Edge case处理：entry的情况已经通过signal_triggered来处理，不会重复触发
         if context.signal_triggered == 'up':
             context.pending_entry_direction = 'long'
         else:
@@ -182,42 +187,157 @@ class DotenkunStrategy(IntradayStrategyBase):
             context.exit_order_id = order_id
             self.write_log(f"发送close订单: {context.symbol} {direction.value} MARKET qty={qty} order_id={order_id}")
     
+    def on_order(self, event):
+        """订单状态变化回调"""
+        order = event.data
+        symbol = order.symbol
+        
+        if symbol != self.fixed_symbol:
+            return
+        
+        context = self.get_context(symbol)
+        
+        # 修正：根据订单状态更新context中的position
+        # 参考hft_bb_reversal_strategy的实现
+        if order.status == Status.ALLTRADED:
+            # 完全成交
+            if order.orderid == context.entry_order_id:
+                # Entry订单成交
+                if order.direction == Direction.LONG:
+                    context.position = order.volume  # 多头持仓为正数
+                else:  # Direction.SHORT
+                    context.position = -order.volume  # 空头持仓为负数
+                
+                context.entry_price = order.price
+                context.entry_time = order.datetime
+                context.entry_order_id = ""
+                self.update_context_state(symbol, StrategyState.HOLDING)
+                self.write_log(f"Entry订单成交: {symbol} {order.direction.value} position={context.position} price={order.price:.2f}")
+            
+            elif order.orderid == context.exit_order_id:
+                # Exit订单成交
+                context.position = 0  # 平仓后position为0
+                context.exit_price = order.price
+                context.exit_order_id = ""
+                self.update_context_state(symbol, StrategyState.IDLE)
+                self.write_log(f"Exit订单成交: {symbol} {order.direction.value} position={context.position} price={order.price:.2f}")
+        
+        elif order.status == Status.PARTTRADED:
+            # 部分成交，更新position
+            if order.orderid == context.entry_order_id:
+                if order.direction == Direction.LONG:
+                    context.position = order.traded
+                else:  # SHORT
+                    context.position = -order.traded
+            elif order.orderid == context.exit_order_id:
+                if order.direction == Direction.LONG:
+                    # Close LONG position: position减少
+                    context.position = -int(order.volume) + order.traded
+                else:  # SHORT
+                    # Close SHORT position: position增加
+                    context.position = int(order.volume) - order.traded
+            
+            self.write_log(f"部分成交更新position: {symbol} position={context.position} traded={order.traded}")
+    
+    def on_trade(self, event):
+        """成交回调"""
+        trade = event.data
+        symbol = trade.symbol
+        
+        if symbol != self.fixed_symbol:
+            return
+        
+        context = self.get_context(symbol)
+        
+        # 更新成交信息（position已在on_order中更新）
+        if trade.orderid == context.entry_order_id:
+            self.write_log(f"Entry成交: {symbol} price={trade.price:.2f} volume={trade.volume}")
+        
+        if trade.orderid == context.exit_order_id:
+            self.write_log(f"Exit成交: {symbol} price={trade.price:.2f} volume={trade.volume}")
+    
     def on_5min_bar(self, bar: BarData):
         """5分钟K线回调函数"""
         # 调用父类方法（记录日志等，父类已经调用了indicator.update_bar）
         super().on_5min_bar(bar)
         
-        # 获取指标值（不需要再次调用update_bar，因为父类已经调用了）
-        if bar.symbol in self.indicator_managers:
-            indicator = self.indicator_managers[bar.symbol]
-            indicators = indicator.get_indicators()  # 只获取指标值，不更新
+        symbol = bar.symbol
+        context = self.get_context(symbol)
+        
+        # 更新最新5分钟bar的open价格
+        context.latest_5min_bar_open = bar.open_price
+        
+        # 检查是否有pending entry
+        if context.pending_entry_direction:
+            self._execute_delayed_entry(context, bar)
+            context.pending_entry_direction = ""  # 清除pending标志
+            context.signal_triggered = ""  # 清除信号标志
+        
+        # 获取指标值并记录
+        if symbol in self.indicator_managers:
+            indicator = self.indicator_managers[symbol]
+            indicators = indicator.get_indicators()
             
-            # 记录指标值
             hl_range_ma = indicators.get('hl_range_ma_5', 0.0)
             hl_range_count = indicators.get('hl_range_count', 0)
             
-            self.write_log(f"5分钟K线: {bar.symbol} HL Range MA(5) = {hl_range_ma:.2f} "
+            self.write_log(f"5分钟K线: {symbol} HL Range MA(5) = {hl_range_ma:.2f} "
                           f"(数据点: {hl_range_count}/{self.hl_range_period})")
+    
+    def _execute_delayed_entry(self, context: DotenkunContext, bar: BarData):
+        """执行delayed entry订单（在5分钟bar的open）"""
+        symbol = context.symbol
         
-        # 策略逻辑（后续实现）
-        # self._check_entry_signal(bar)
-        # self._check_exit_signal(bar)
+        # Edge case处理：如果已经发送了entry订单，不要再次发送
+        if context.entry_order_id:
+            self.write_log(f"已有entry订单在等待: {symbol} entry_order_id={context.entry_order_id}, 跳过delayed entry")
+            return
+        
+        # 确定entry方向
+        if context.pending_entry_direction == 'long':
+            direction = Direction.LONG
+        elif context.pending_entry_direction == 'short':
+            direction = Direction.SHORT
+        else:
+            return
+        
+        # 使用market order在open价格执行
+        order_req = OrderRequest(
+            symbol=symbol,
+            exchange=bar.exchange,
+            direction=direction,
+            type=OrderType.MARKET,
+            offset=Offset.OPEN,
+            price=0,  # market order
+            volume=1,  # 固定quantity为1
+            reference="dotenkun_entry"
+        )
+        
+        order_id = self.gateway.send_order(order_req)
+        if order_id:
+            context.entry_order_id = order_id
+            context.entry_price = bar.open_price
+            context.entry_time = bar.datetime
+            self.update_context_state(symbol, StrategyState.WAITING_ENTRY)
+            self.write_log(f"执行delayed entry: {symbol} {direction.value} MARKET at open={bar.open_price:.2f} order_id={order_id}")
+        else:
+            self.write_log(f"执行delayed entry失败: {symbol} {direction.value}")
     
     # 子类必须实现的抽象方法
     def get_entry_direction(self, symbol: str) -> str:
         """获取指定股票的entry方向"""
-        # 暂时返回'none'，等策略逻辑确定后再实现
+        context = self.get_context(symbol)
+        if context.pending_entry_direction:
+            return context.pending_entry_direction
         return 'none'
     
     def _calculate_entry_price(self, context, bar, indicators) -> float:
-        """计算 entry 价格"""
-        # 暂时返回0，等策略逻辑确定后再实现
-        return 0.0
+        """计算 entry 价格（使用market order，返回0）"""
+        return 0.0  # market order
     
     def _calculate_exit_price(self, context, bar, indicators) -> float:
-        """计算 exit 价格"""
-        # 暂时返回0，等策略逻辑确定后再实现
-        return 0.0
+        """计算 exit 价格（使用market order，返回0）"""
+        return 0.0  # market order
 
 
 def main():
