@@ -27,7 +27,7 @@ class DotenkunContext(StockContext):
 class DotenkunStrategy(IntradayStrategyBase):
     """Dotenkun 日内交易策略"""
     
-    def __init__(self, log_suffix=None, k: float = 1.0):
+    def __init__(self, log_suffix=None, k: float = 2.0):
         # 使用kabus gateway
         super().__init__(gateway_type="kabus", log_suffix=log_suffix)
         
