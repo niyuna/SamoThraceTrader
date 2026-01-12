@@ -937,6 +937,7 @@ class IntradayStrategyBase:
     
     def on_1min_bar(self, bar: BarData):
         """1分钟K线回调函数"""
+        # this will actually be printed after the below print statements because it's going through the event engine
         self.write_log(f"on_1min_bar triggered: {bar.symbol}")
         self.bars_count[f"{bar.symbol}_1min"] += 1
         
@@ -992,6 +993,10 @@ class IntradayStrategyBase:
                 if indicators['above_vwap_count'] + indicators['below_vwap_count'] > 0:
                     above_ratio = indicators['above_vwap_count'] / (indicators['above_vwap_count'] + indicators['below_vwap_count'])
                     print(f"  Close > VWAP 比例: {above_ratio:.2%}")
+        
+        # 关键修复：调用bar_generator.update_bar来生成窗口bar（5分钟bar）
+        if bar.symbol in self.bar_generators:
+            self.bar_generators[bar.symbol].update_bar(bar)
     
     def on_5min_bar(self, bar: BarData):
         """5分钟K线回调函数"""

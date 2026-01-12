@@ -24,15 +24,16 @@ class DotenkunStrategy(IntradayStrategyBase):
         
         # 自定义Bar Generator和技术指标配置
         self.bar_window = 5            # 使用5分钟K线
-        self.indicator_size = 15       # ArrayManager的大小（用于未来扩展）
-        
+        self.indicator_size = 6       # ArrayManager的大小（用于未来扩展）
+        self.hl_range_period = 5
+
         # 固定订阅的股票
         self.fixed_symbol = "161030019"
     
     def _create_indicator_manager(self, symbol: str):
         """创建Dotenkun策略专用的技术指标管理器"""
         # 使用独立的DotenkunIndicator类，不依赖TechnicalIndicatorManager
-        return DotenkunIndicator(symbol=symbol, size=self.indicator_size, hl_range_period=5)
+        return DotenkunIndicator(symbol=symbol, size=self.indicator_size, hl_range_period=self.hl_range_period)
     
     def on_5min_bar(self, bar: BarData):
         """5分钟K线回调函数"""
