@@ -147,12 +147,12 @@ class DotenkunStrategy(IntradayStrategyBase):
         current_price = tick.last_price
         signal_triggered = False
         
-        if current_price >= up_threshold:
+        if current_price > up_threshold:
             # UP信号
             context.signal_triggered = 'up'
             signal_triggered = True
             self.write_log(f"UP信号触发: {symbol} price={current_price:.2f} >= threshold={up_threshold:.2f}")
-        elif current_price <= down_threshold:
+        elif current_price < down_threshold:
             # DOWN信号
             context.signal_triggered = 'down'
             signal_triggered = True
