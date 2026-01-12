@@ -157,13 +157,17 @@ class KabusGateway(BaseGateway):
 
         self.write_log(f"订阅行情成功: {req.vt_symbol}, 已订阅symbols: {list(self._subscribed_symbols)}")
 
-    # TODO: need implement sending futures order
     def send_order(self, req: OrderRequest) -> str:
+        is_future = len(req.symbol) > 4
         self.write_log(f"send_order: {req}")
+        # right now only support future trading her
+        if not is_future:
+            raise Exception(f"only support future trading here: {req.symbol}")
+
         if req.offset == Offset.OPEN:
-            order_id = kabus_api.send_normal_trading_order(req.symbol, Direction_to_TradingSide[req.direction], req.price, req.volume)
+            order_id = kabus_api.send_future_init_trading_order(req.symbol, Direction_to_TradingSide[req.direction], req.price, req.volume)
         elif req.offset == Offset.CLOSE:
-            order_id = kabus_api.send_close_position_order(req.symbol, Direction_to_TradingSide[req.direction], req.price, req.volume)
+            order_id = kabus_api.send_future_close_position_order(req.symbol, Direction_to_TradingSide[req.direction], req.price, req.volume)
         else:
             raise Exception(f"不支持的委托方向: {req.offset}")
         
@@ -189,7 +193,6 @@ class KabusGateway(BaseGateway):
         
         return order_id
 
-    # TODO: need implement sending futures order
     def cancel_order(self, req: CancelRequest) -> None:
         cancel_result = kabus_api.cancel_order(req.orderid)
         if not cancel_result:
@@ -213,7 +216,8 @@ class KabusGateway(BaseGateway):
         """
         try:
             # 调用 kabus_api.get_positions() 获取持仓数据
-            positions = kabus_api.get_positions()
+            # only 3 means future only
+            positions = kabus_api.get_positions(product='3')
             return positions
         except Exception as e:
             self.write_log(f"获取持仓数据失败: {e}")
