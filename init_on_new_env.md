@@ -10,3 +10,5 @@ pip install -r requirements-all.txt
 # link brisk common (as admin, and under batch not ps1)
 mklink /D C:\Users\brisk2\Documents\GitHub\SamoThraceTrader\brisk\common C:\Users\brisk2\Documents\GitHub\brisk-hack\gomihiroi\common
 
+# refer to DEVELOPMENT_MODE.md, install vnpy in dev mode
+pip install -e . --force-reinstall
