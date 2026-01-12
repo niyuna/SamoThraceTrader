@@ -1004,6 +1004,10 @@ class IntradayStrategyBase:
         self.write_log(f"生成5分钟K线: {bar.symbol} {bar.datetime.strftime('%Y-%m-%d %H:%M:%S')} - "
               f"开:{bar.open_price:.2f} 高:{bar.high_price:.2f} 低:{bar.low_price:.2f} "
               f"收:{bar.close_price:.2f} 量:{bar.volume}")
+        
+        # 更新技术指标（5分钟bar）
+        if bar.symbol in self.indicator_managers:
+            indicators = self.indicator_managers[bar.symbol].update_bar(bar)
     
     def connect(self, setting: dict = None):
         """连接Gateway，支持多种gateway类型"""
