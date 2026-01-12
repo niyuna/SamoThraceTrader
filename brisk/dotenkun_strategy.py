@@ -3,24 +3,36 @@ Dotenkun 日内交易策略
 基于intraday_strategy_base实现，使用kabus gateway
 """
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+from dataclasses import dataclass
 
 from vnpy.trader.constant import Direction, Offset, Status, OrderType, Exchange
-from vnpy.trader.object import BarData
+from vnpy.trader.object import BarData, TickData, OrderRequest
+from vnpy.event import Event
 
-from intraday_strategy_base import IntradayStrategyBase, StrategyState
+from intraday_strategy_base import IntradayStrategyBase, StrategyState, StockContext
 from dotenkun_indicators import DotenkunIndicator
+
+
+@dataclass
+class DotenkunContext(StockContext):
+    """Dotenkun策略专用的Context"""
+    k: float = 1.0  # K参数，用于计算信号阈值
+    pending_entry_direction: str = ""  # 待执行的entry方向：'long'或'short'，空字符串表示无待执行订单
+    latest_5min_bar_open: float = 0.0  # 最新5分钟bar的open价格
+    signal_triggered: str = ""  # 触发的信号：'up'或'down'，空字符串表示无信号
+    position: int = 0  # 持仓数量（正数为多头，负数为空头，0表示无持仓）
 
 
 class DotenkunStrategy(IntradayStrategyBase):
     """Dotenkun 日内交易策略"""
     
-    def __init__(self, log_suffix=None):
+    def __init__(self, log_suffix=None, k: float = 1.0):
         # 使用kabus gateway
         super().__init__(gateway_type="kabus", log_suffix=log_suffix)
         
-        # 策略参数（后续可以添加）
-        # 暂时留空，等策略逻辑确定后再添加
+        # 策略参数
+        self.k = k  # K参数，用于计算信号阈值
         
         # 自定义Bar Generator和技术指标配置
         self.bar_window = 5            # 使用5分钟K线
@@ -30,12 +42,145 @@ class DotenkunStrategy(IntradayStrategyBase):
         # 固定订阅的股票
         # self.fixed_symbol = "161030019" # nk mini
         self.fixed_symbol = '161030023' # nk micro
-        
+    
+    def get_context(self, symbol: str) -> DotenkunContext:
+        """获取或创建DotenkunContext"""
+        if symbol not in self.contexts:
+            self.contexts[symbol] = DotenkunContext(symbol=symbol, k=self.k)
+            self.contexts[symbol].position_size = self.calculate_position_size(symbol)
+        return self.contexts[symbol]
+    
+    def create_context(self, symbol: str) -> DotenkunContext:
+        """创建新的DotenkunContext"""
+        context = DotenkunContext(symbol=symbol, k=self.k)
+        self.contexts[symbol] = context
+        context.position_size = self.calculate_position_size(symbol)
+        return context
     
     def _create_indicator_manager(self, symbol: str):
         """创建Dotenkun策略专用的技术指标管理器"""
         # 使用独立的DotenkunIndicator类，不依赖TechnicalIndicatorManager
         return DotenkunIndicator(symbol=symbol, size=self.indicator_size, hl_range_period=self.hl_range_period)
+    
+    def _get_latest_5min_bar(self, symbol: str) -> Optional[BarData]:
+        """获取最新的5分钟bar（当前正在构建的）"""
+        # 从bar_generator获取window_bar（5分钟bar）
+        bar_gen = self.bar_generators.get(symbol)
+        if bar_gen and hasattr(bar_gen, 'window_bar') and bar_gen.window_bar:
+            return bar_gen.window_bar
+        
+        # 如果没有window_bar，返回None
+        return None
+    
+    def get_indicators(self, symbol: str) -> Dict[str, Any]:
+        """获取指定股票的指标值"""
+        if symbol in self.indicator_managers:
+            return self.indicator_managers[symbol].get_indicators()
+        return {}
+    
+    def on_tick(self, event: Event):
+        """Tick数据回调函数"""
+        tick = event.data
+        symbol = tick.symbol
+        
+        # 调用父类方法更新bar
+        super().on_tick(event)
+        
+        # 只处理订阅的symbol
+        if symbol != self.fixed_symbol:
+            return
+        
+        context = self.get_context(symbol)
+        
+        # 获取最新的5分钟bar和指标
+        indicators = self.get_indicators(symbol)
+        if not indicators:
+            return
+        
+        # 修正：检查hl_range_count，确保数据充足
+        hl_range_count = indicators.get('hl_range_count', 0)
+        if hl_range_count < 5:
+            return  # 数据不足，不生成信号
+        
+        hl_range_ma = indicators.get('hl_range_ma_5', 0.0)
+        if hl_range_ma <= 0:
+            return  # 指标未准备好
+        
+        # 获取最新5分钟bar的open价格
+        latest_5min_bar = self._get_latest_5min_bar(symbol)
+        if not latest_5min_bar:
+            return
+        
+        context.latest_5min_bar_open = latest_5min_bar.open_price
+        
+        # 计算信号阈值
+        up_threshold = latest_5min_bar.open_price + context.k * hl_range_ma
+        down_threshold = latest_5min_bar.open_price - context.k * hl_range_ma
+        
+        # 检查信号
+        current_price = tick.last_price
+        signal_triggered = False
+        
+        if current_price >= up_threshold:
+            # UP信号
+            context.signal_triggered = 'up'
+            signal_triggered = True
+            self.write_log(f"UP信号触发: {symbol} price={current_price:.2f} >= threshold={up_threshold:.2f}")
+        elif current_price <= down_threshold:
+            # DOWN信号
+            context.signal_triggered = 'down'
+            signal_triggered = True
+            self.write_log(f"DOWN信号触发: {symbol} price={current_price:.2f} <= threshold={down_threshold:.2f}")
+        
+        if signal_triggered:
+            self._handle_signal(context, tick)
+    
+    def _handle_signal(self, context: DotenkunContext, tick: TickData):
+        """处理触发的信号"""
+        symbol = context.symbol
+        
+        # 确定目标方向
+        target_direction = Direction.LONG if context.signal_triggered == 'up' else Direction.SHORT
+        
+        # 修正：使用context中的position而不是从gateway查询
+        current_position = context.position
+        
+        # 检查是否有相反的position
+        if current_position != 0:
+            position_direction = Direction.LONG if current_position > 0 else Direction.SHORT
+            position_qty = abs(current_position)
+            
+            if position_direction != target_direction:
+                # 有相反的position，立即close
+                self.write_log(f"检测到相反position: {symbol} {position_direction.value} qty={position_qty}, 立即close")
+                self._close_position_immediately(context, tick, position_direction, position_qty)
+        
+        # 设置delayed entry（在下一根5分钟bar的open执行）
+        if context.signal_triggered == 'up':
+            context.pending_entry_direction = 'long'
+        else:
+            context.pending_entry_direction = 'short'
+        
+        self.write_log(f"设置delayed entry: {symbol} direction={context.pending_entry_direction}")
+    
+    def _close_position_immediately(self, context: DotenkunContext, tick: TickData, direction: Direction, qty: int):
+        """立即close position"""
+        # 使用market order立即平仓
+        order_req = OrderRequest(
+            symbol=context.symbol,
+            exchange=tick.exchange,
+            direction=direction,
+            type=OrderType.MARKET,
+            offset=Offset.CLOSE,
+            price=0,  # market order
+            volume=qty,
+            reference="dotenkun_close"
+        )
+        
+        order_id = self.gateway.send_order(order_req)
+        if order_id:
+            context.exit_order_id = order_id
+            self.write_log(f"发送close订单: {context.symbol} {direction.value} MARKET qty={qty} order_id={order_id}")
     
     def on_5min_bar(self, bar: BarData):
         """5分钟K线回调函数"""
