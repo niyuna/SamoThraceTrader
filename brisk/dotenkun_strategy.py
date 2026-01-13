@@ -184,9 +184,13 @@ class DotenkunStrategy(IntradayStrategyBase):
                     # 有相反的position，立即close
                     self.write_log(f"检测到相反position: {symbol} {position_direction.value} qty={position_qty}, 立即close")
                     self._close_position_immediately(context, tick, position_direction, position_qty)
+            else:
+                # 已有相同方向的position，不应该再entry
+                self.write_log(f"已有相同方向的position: {symbol} {position_direction.value} qty={position_qty}, 跳过entry")
+                return  # 直接返回，不设置pending_entry_direction
         
         # 设置delayed entry（在下一根5分钟bar的open执行）
-        # Edge case处理：entry的情况已经通过signal_triggered来处理，不会重复触发
+        # 只有在没有position或position方向相反（已close）时才设置
         if context.signal_triggered == 'up':
             context.pending_entry_direction = 'long'
         else:
@@ -326,6 +330,15 @@ class DotenkunStrategy(IntradayStrategyBase):
             direction = Direction.SHORT
         else:
             return
+        
+        # 双重检查：如果已有相同方向的position，不应该再entry
+        current_position = context.position
+        if current_position != 0:
+            position_direction = Direction.LONG if current_position > 0 else Direction.SHORT
+            if position_direction == direction:
+                self.write_log(f"已有相同方向的position: {symbol} {position_direction.value} qty={abs(current_position)}, 跳过delayed entry")
+                context.pending_entry_direction = ""  # 清除pending标志
+                return
         
         # 使用market order在open价格执行
         order_req = OrderRequest(

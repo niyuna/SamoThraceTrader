@@ -413,6 +413,105 @@ class TestDotenkunPositionManagement(unittest.TestCase):
         
         # 验证pending_entry_direction被设置
         self.assertEqual(context.pending_entry_direction, 'short')
+    
+    def test_no_entry_when_same_direction_position_exists(self):
+        """测试已有相同方向position时，触发相同方向信号不会执行entry"""
+        # 创建策略，设置initial_position=1（已有long position）
+        self.strategy = DotenkunStrategy(k=1.0, initial_position=1, log_suffix="test")
+        self.strategy.fixed_symbol = "161030023"
+        self.strategy.gateway = Mock()
+        self.strategy.gateway.send_order = Mock(return_value="test_order_123")
+        self.strategy.write_log = Mock()
+        
+        # 获取context（应该已经有position=1）
+        context = self.strategy.get_context("161030023")
+        self.assertEqual(context.position, 1)  # 验证初始position
+        
+        # Mock bar generator和indicator
+        bar_5min = BarData(
+            symbol="161030023",
+            exchange=Exchange.TSE,
+            datetime=datetime.now(),
+            interval=None,
+            open_price=100.0,
+            high_price=102.0,
+            low_price=98.0,
+            close_price=101.0,
+            gateway_name="TEST"
+        )
+        mock_bar_gen = Mock()
+        mock_bar_gen.window_bar = bar_5min
+        self.strategy.bar_generators = {"161030023": mock_bar_gen}
+        
+        self.strategy.get_indicators = Mock(return_value={
+            'hl_range_count': 5,
+            'hl_range_ma_5': 2.0
+        })
+        
+        # 创建tick触发UP信号（与现有position方向相同）
+        tick = TickData(
+            symbol="161030023",
+            exchange=Exchange.TSE,
+            datetime=datetime.now(),
+            last_price=102.5,  # >= 100 + 1.0 * 2.0 = 102.0，触发UP信号
+            gateway_name="TEST"
+        )
+        
+        # 调用on_tick
+        event = Event("test", tick)
+        self.strategy.on_tick(event)
+        
+        # 验证：不应该设置pending_entry_direction（因为已有相同方向的position）
+        self.assertEqual(context.pending_entry_direction, "")
+        
+        # 验证：不应该发送任何订单（既不应该close，也不应该entry）
+        self.strategy.gateway.send_order.assert_not_called()
+        
+        # 验证：position保持不变
+        self.assertEqual(context.position, 1)
+    
+    def test_no_delayed_entry_when_same_direction_position_exists(self):
+        """测试delayed entry执行时，如果已有相同方向position，不应该执行entry"""
+        context = self.strategy.get_context("161030023")
+        context.position = 1  # 已有long position
+        context.pending_entry_direction = 'long'  # 假设之前错误地设置了pending entry
+        context.signal_triggered = 'up'
+        
+        # 创建下一根5分钟bar
+        bar = BarData(
+            symbol="161030023",
+            exchange=Exchange.TSE,
+            datetime=datetime.now(),
+            interval=None,
+            open_price=102.0,
+            high_price=103.0,
+            low_price=101.0,
+            close_price=102.5,
+            gateway_name="TEST"
+        )
+        
+        # Mock indicator manager
+        mock_indicator = Mock()
+        mock_indicator.get_indicators.return_value = {
+            'hl_range_ma_5': 2.0,
+            'hl_range_count': 5
+        }
+        self.strategy.indicator_managers = {"161030023": mock_indicator}
+        
+        # 重置send_order mock（因为之前可能被调用过）
+        self.strategy.gateway.send_order.reset_mock()
+        
+        # 调用on_5min_bar
+        self.strategy.on_5min_bar(bar)
+        
+        # 验证：不应该发送entry订单（因为已有相同方向的position）
+        self.strategy.gateway.send_order.assert_not_called()
+        
+        # 验证：pending_entry_direction被清除
+        self.assertEqual(context.pending_entry_direction, "")
+        
+        # 验证：position保持不变
+        self.assertEqual(context.position, 1)
 
 
 class TestDotenkunDelayedEntry(unittest.TestCase):
