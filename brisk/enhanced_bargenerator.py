@@ -187,7 +187,11 @@ class EnhancedBarGenerator:
             self.update_bar_daily_window(bar)
 
     def update_bar_minute_window(self, bar: BarData) -> None:
-        """更新分钟窗口bar（5分钟bar），对齐到5分钟边界"""
+        """更新分钟窗口bar（5分钟bar），对齐到5分钟边界
+        
+        注意：传入的1分钟bar代表上一个已完成的1分钟bar
+        应该在收到minute % 5 == 4的bar时完成5分钟bar（如9:04, 9:09等）
+        """
         # 对齐当前bar的分钟到5分钟边界
         aligned_minute = (bar.datetime.minute // self.window) * self.window
         aligned_datetime = bar.datetime.replace(minute=aligned_minute, second=0, microsecond=0)
@@ -206,45 +210,30 @@ class EnhancedBarGenerator:
             )
             self.interval_count = 1
         else:
-            # 检查是否跨越了5分钟边界
-            current_aligned_minute = (bar.datetime.minute // self.window) * self.window
-            window_bar_aligned_minute = (self.window_bar.datetime.minute // self.window) * self.window
-            
-            # 如果跨越了边界，完成当前window_bar并创建新的
-            if current_aligned_minute != window_bar_aligned_minute:
-                # 完成当前window_bar
-                self.on_window_bar(self.window_bar)
-                self.window_bar = None
-                
-                # 创建新的window_bar
-                self.window_bar = BarData(
-                    symbol=bar.symbol,
-                    exchange=bar.exchange,
-                    interval=None,
-                    datetime=aligned_datetime,
-                    gateway_name=bar.gateway_name,
-                    open_price=bar.open_price,
-                    high_price=bar.high_price,
-                    low_price=bar.low_price
-                )
-                self.interval_count = 1
-            else:
-                # 在同一5分钟窗口内，更新high/low
-                self.window_bar.high_price = max(
-                    self.window_bar.high_price,
-                    bar.high_price
-                )
-                self.window_bar.low_price = min(
-                    self.window_bar.low_price,
-                    bar.low_price
-                )
-                self.interval_count += 1
+            # 在同一5分钟窗口内，更新high/low
+            self.window_bar.high_price = max(
+                self.window_bar.high_price,
+                bar.high_price
+            )
+            self.window_bar.low_price = min(
+                self.window_bar.low_price,
+                bar.low_price
+            )
+            self.interval_count += 1
         
         # 更新close price/volume/turnover
         self.window_bar.close_price = bar.close_price
         self.window_bar.volume += bar.volume
         self.window_bar.turnover += bar.turnover
         self.window_bar.open_interest = bar.open_interest
+        
+        # 检查是否应该完成5分钟bar
+        # 当收到minute % 5 == 4的bar时（如9:04, 9:09），完成当前的5分钟bar
+        if bar.datetime.minute % self.window == (self.window - 1):
+            # 完成当前window_bar
+            self.on_window_bar(self.window_bar)
+            self.window_bar = None
+            self.interval_count = 0
 
     def update_bar_hour_window(self, bar: BarData) -> None:
         """"""
