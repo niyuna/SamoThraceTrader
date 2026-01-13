@@ -369,27 +369,43 @@ class DotenkunStrategy(IntradayStrategyBase):
 def main():
     """主函数"""
     import time
+    import argparse
+    
+    # 设置命令行参数解析
+    parser = argparse.ArgumentParser(description='Dotenkun策略')
+    parser.add_argument('--initial-position', type=int, default=0,
+                       help='初始持仓数量（正数为多头，负数为空头，0表示无持仓，默认: 0）')
+    parser.add_argument('--use-replay', action='store_true', default=False,
+                       help='启用replay模式（默认: False）')
+    parser.add_argument('--replay-data-dir', type=str, 
+                       default=r"D:\dev\github\brisk-hack\misc_data",
+                       help='Replay数据文件目录（默认: D:\\dev\\github\\brisk-hack\\misc_data）')
+    parser.add_argument('--replay-date', type=str, default='2026-01-09',
+                       help='Replay日期（格式: YYYY-MM-DD 或 YYYYMMDD，默认: 2026-01-09）')
+    parser.add_argument('--replay-speed', type=float, default=10.0,
+                       help='Replay速度倍数（1.0 = 实时，默认: 10.0）')
+    
+    args = parser.parse_args()
     
     print("启动Dotenkun策略...")
+    print(f"初始持仓: {args.initial_position}")
+    print(f"Replay模式: {args.use_replay}")
+    if args.use_replay:
+        print(f"Replay数据目录: {args.replay_data_dir}")
+        print(f"Replay日期: {args.replay_date}")
+        print(f"Replay速度: {args.replay_speed}x")
     
     # 创建策略实例
-    # 如果需要从已有仓位启动，可以传入initial_position参数：
-    # initial_position: 正数表示多头持仓，负数表示空头持仓，0表示无持仓
-    # 例如：strategy = DotenkunStrategy(initial_position=1)  # 1手多头
-    # 例如：strategy = DotenkunStrategy(initial_position=-1)  # 1手空头
-    strategy = DotenkunStrategy(initial_position=0)  # 默认无持仓
+    strategy = DotenkunStrategy(initial_position=args.initial_position)
     
     try:
-        # 配置replay模式（如果需要使用replay，取消下面的注释并设置正确的路径和日期）
-        use_replay = False  # 设置为True启用replay模式
-        
-        if use_replay:
+        if args.use_replay:
             # Replay模式配置
             replay_setting = {
                 "tick_mode": "replay",
-                "replay_data_dir": r"D:\\dev\\github\\brisk-hack\\misc_data",  # 用户需要指定实际路径
-                "replay_date": "2026-01-09",  # 用户需要指定实际日期（格式：YYYYMMDD）
-                "replay_speed": 10.0,  # 回放速度倍数（1.0 = 实时，2.0 = 2倍速等）
+                "replay_data_dir": args.replay_data_dir,
+                "replay_date": args.replay_date,
+                "replay_speed": args.replay_speed,
             }
             
             # 连接Gateway（replay模式）
@@ -421,7 +437,7 @@ def main():
             
     except KeyboardInterrupt:
         print("\n收到退出信号...")
-        if use_replay:
+        if args.use_replay:
             strategy.stop_replay()
     except Exception as e:
         print(f"运行过程中出现错误: {e}")
