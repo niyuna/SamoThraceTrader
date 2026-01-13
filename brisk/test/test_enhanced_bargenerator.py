@@ -12,7 +12,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from vnpy.trader.object import TickData, BarData
-from vnpy.trader.constant import Exchange
+from vnpy.trader.constant import Exchange, Interval
 import sys
 import os
 
@@ -176,6 +176,180 @@ class EnhancedBarGeneratorTest(unittest.TestCase):
         
         # 验证新bar的成交量
         self.assertEqual(self.bar_generator.bar.volume, 500)  # 2000 - 1500 = 500增量
+
+    def create_bar(self, datetime_obj, open_price, high_price, low_price, close_price, volume=100, turnover=1000):
+        """创建测试用的BarData"""
+        return BarData(
+            symbol=self.symbol,
+            exchange=self.exchange,
+            interval=Interval.MINUTE,
+            datetime=datetime_obj,
+            gateway_name=self.gateway_name,
+            open_price=open_price,
+            high_price=high_price,
+            low_price=low_price,
+            close_price=close_price,
+            volume=volume,
+            turnover=turnover,
+            open_interest=0
+        )
+
+    def test_5min_alignment_start_from_9_00(self):
+        """测试从9:00开始的5分钟对齐"""
+        window_callback = Mock()
+        bar_generator = EnhancedBarGenerator(
+            on_bar=self.mock_callback,
+            window=5,
+            on_window_bar=window_callback,
+            interval=Interval.MINUTE
+        )
+        
+        # 9:00的bar - 应该创建window_bar，datetime=9:00
+        bar1 = self.create_bar(datetime(2024, 1, 1, 9, 0, 0), 10.0, 10.5, 9.8, 10.2)
+        bar_generator.update_bar(bar1)
+        
+        self.assertIsNotNone(bar_generator.window_bar)
+        self.assertEqual(bar_generator.window_bar.datetime.minute, 0)  # 对齐到9:00
+        self.assertEqual(bar_generator.window_bar.datetime.hour, 9)
+        window_callback.assert_not_called()
+        
+        # 9:01-9:04的bar - 应该更新window_bar
+        for minute in [1, 2, 3, 4]:
+            bar = self.create_bar(datetime(2024, 1, 1, 9, minute, 0), 10.0, 10.5, 9.8, 10.2)
+            bar_generator.update_bar(bar)
+            self.assertIsNotNone(bar_generator.window_bar)
+            self.assertEqual(bar_generator.window_bar.datetime.minute, 0)  # 仍然在9:00窗口
+            window_callback.assert_not_called()
+        
+        # 9:05的bar - 应该完成9:00的window_bar，创建新的window_bar，datetime=9:05
+        bar5 = self.create_bar(datetime(2024, 1, 1, 9, 5, 0), 10.0, 10.5, 9.8, 10.2)
+        bar_generator.update_bar(bar5)
+        
+        # 验证第一个window_bar被完成
+        window_callback.assert_called_once()
+        completed_bar = window_callback.call_args[0][0]
+        self.assertEqual(completed_bar.datetime.minute, 0)  # 9:00-9:04的bar
+        
+        # 验证新的window_bar已创建
+        self.assertIsNotNone(bar_generator.window_bar)
+        self.assertEqual(bar_generator.window_bar.datetime.minute, 5)  # 对齐到9:05
+
+    def test_5min_alignment_start_from_9_01(self):
+        """测试从9:01开始的5分钟对齐（策略启动）"""
+        window_callback = Mock()
+        bar_generator = EnhancedBarGenerator(
+            on_bar=self.mock_callback,
+            window=5,
+            on_window_bar=window_callback,
+            interval=Interval.MINUTE
+        )
+        
+        # 9:01的bar - 应该创建window_bar，datetime对齐到9:00（不是9:01）
+        bar1 = self.create_bar(datetime(2024, 1, 1, 9, 1, 0), 10.0, 10.5, 9.8, 10.2)
+        bar_generator.update_bar(bar1)
+        
+        self.assertIsNotNone(bar_generator.window_bar)
+        self.assertEqual(bar_generator.window_bar.datetime.minute, 0)  # 对齐到9:00
+        self.assertEqual(bar_generator.window_bar.datetime.hour, 9)
+        window_callback.assert_not_called()
+        
+        # 9:02-9:04的bar - 应该更新window_bar
+        for minute in [2, 3, 4]:
+            bar = self.create_bar(datetime(2024, 1, 1, 9, minute, 0), 10.0, 10.5, 9.8, 10.2)
+            bar_generator.update_bar(bar)
+            self.assertIsNotNone(bar_generator.window_bar)
+            self.assertEqual(bar_generator.window_bar.datetime.minute, 0)  # 仍然在9:00窗口
+            window_callback.assert_not_called()
+        
+        # 9:05的bar - 应该完成9:00的window_bar，创建新的window_bar，datetime=9:05
+        bar5 = self.create_bar(datetime(2024, 1, 1, 9, 5, 0), 10.0, 10.5, 9.8, 10.2)
+        bar_generator.update_bar(bar5)
+        
+        # 验证第一个window_bar被完成
+        window_callback.assert_called_once()
+        completed_bar = window_callback.call_args[0][0]
+        self.assertEqual(completed_bar.datetime.minute, 0)  # 9:00-9:04的bar
+        
+        # 验证新的window_bar已创建
+        self.assertIsNotNone(bar_generator.window_bar)
+        self.assertEqual(bar_generator.window_bar.datetime.minute, 5)  # 对齐到9:05
+
+    def test_5min_alignment_start_from_9_03(self):
+        """测试从9:03开始的5分钟对齐"""
+        window_callback = Mock()
+        bar_generator = EnhancedBarGenerator(
+            on_bar=self.mock_callback,
+            window=5,
+            on_window_bar=window_callback,
+            interval=Interval.MINUTE
+        )
+        
+        # 9:03的bar - 应该创建window_bar，datetime对齐到9:00
+        bar1 = self.create_bar(datetime(2024, 1, 1, 9, 3, 0), 10.0, 10.5, 9.8, 10.2)
+        bar_generator.update_bar(bar1)
+        
+        self.assertIsNotNone(bar_generator.window_bar)
+        self.assertEqual(bar_generator.window_bar.datetime.minute, 0)  # 对齐到9:00
+        window_callback.assert_not_called()
+        
+        # 9:04的bar - 应该更新window_bar
+        bar2 = self.create_bar(datetime(2024, 1, 1, 9, 4, 0), 10.0, 10.5, 9.8, 10.2)
+        bar_generator.update_bar(bar2)
+        self.assertIsNotNone(bar_generator.window_bar)
+        self.assertEqual(bar_generator.window_bar.datetime.minute, 0)  # 仍然在9:00窗口
+        window_callback.assert_not_called()
+        
+        # 9:05的bar - 应该完成9:00的window_bar，创建新的window_bar，datetime=9:05
+        bar5 = self.create_bar(datetime(2024, 1, 1, 9, 5, 0), 10.0, 10.5, 9.8, 10.2)
+        bar_generator.update_bar(bar5)
+        
+        # 验证第一个window_bar被完成
+        window_callback.assert_called_once()
+        completed_bar = window_callback.call_args[0][0]
+        self.assertEqual(completed_bar.datetime.minute, 0)  # 9:00-9:04的bar
+        
+        # 验证新的window_bar已创建
+        self.assertIsNotNone(bar_generator.window_bar)
+        self.assertEqual(bar_generator.window_bar.datetime.minute, 5)  # 对齐到9:05
+
+    def test_5min_alignment_multiple_windows(self):
+        """测试多个5分钟窗口的对齐"""
+        window_callback = Mock()
+        bar_generator = EnhancedBarGenerator(
+            on_bar=self.mock_callback,
+            window=5,
+            on_window_bar=window_callback,
+            interval=Interval.MINUTE
+        )
+        
+        # 9:01-9:04的bar - 第一个窗口
+        for minute in [1, 2, 3, 4]:
+            bar = self.create_bar(datetime(2024, 1, 1, 9, minute, 0), 10.0, 10.5, 9.8, 10.2)
+            bar_generator.update_bar(bar)
+        
+        # 9:05的bar - 完成第一个窗口
+        bar5 = self.create_bar(datetime(2024, 1, 1, 9, 5, 0), 10.0, 10.5, 9.8, 10.2)
+        bar_generator.update_bar(bar5)
+        self.assertEqual(window_callback.call_count, 1)
+        
+        # 9:06-9:09的bar - 第二个窗口
+        for minute in [6, 7, 8, 9]:
+            bar = self.create_bar(datetime(2024, 1, 1, 9, minute, 0), 10.0, 10.5, 9.8, 10.2)
+            bar_generator.update_bar(bar)
+            self.assertEqual(bar_generator.window_bar.datetime.minute, 5)  # 仍然在9:05窗口
+        
+        # 9:10的bar - 完成第二个窗口
+        bar10 = self.create_bar(datetime(2024, 1, 1, 9, 10, 0), 10.0, 10.5, 9.8, 10.2)
+        bar_generator.update_bar(bar10)
+        self.assertEqual(window_callback.call_count, 2)
+        
+        # 验证第二个window_bar被完成
+        completed_bar = window_callback.call_args[0][0]
+        self.assertEqual(completed_bar.datetime.minute, 5)  # 9:05-9:09的bar
+        
+        # 验证新的window_bar已创建
+        self.assertIsNotNone(bar_generator.window_bar)
+        self.assertEqual(bar_generator.window_bar.datetime.minute, 10)  # 对齐到9:10
 
 
 if __name__ == "__main__":
