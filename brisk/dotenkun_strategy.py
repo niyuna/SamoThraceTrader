@@ -203,7 +203,7 @@ class DotenkunStrategy(IntradayStrategyBase):
             direction=direction,
             type=OrderType.MARKET,
             offset=Offset.CLOSE,
-            price=0,  # market order
+            price=None,  # market order
             volume=qty,
             reference="dotenkun_close"
         )
@@ -334,7 +334,7 @@ class DotenkunStrategy(IntradayStrategyBase):
             direction=direction,
             type=OrderType.MARKET,
             offset=Offset.OPEN,
-            price=0,  # market order
+            price=None,  # market order
             volume=1,  # 固定quantity为1
             reference="dotenkun_entry"
         )
