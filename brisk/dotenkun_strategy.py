@@ -183,7 +183,7 @@ class DotenkunStrategy(IntradayStrategyBase):
                 else:
                     # 有相反的position，立即close
                     self.write_log(f"检测到相反position: {symbol} {position_direction.value} qty={position_qty}, 立即close")
-                    self._close_position_immediately(context, tick, position_direction, position_qty)
+                    self._close_position_immediately(context, tick, target_direction, position_qty)
             else:
                 # 已有相同方向的position，不应该再entry
                 self.write_log(f"已有相同方向的position: {symbol} {position_direction.value} qty={position_qty}, 跳过entry")
