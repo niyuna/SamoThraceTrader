@@ -438,11 +438,11 @@ class KabusGateway(BaseGateway):
                 return None
             
             # 提取价格数据
-            last_price = float(message.get('CurrentPrice', 0))
-            pre_close = float(message.get('PreviousClose', 0))
-            open_price = float(message.get('OpeningPrice', 0))
-            high_price = float(message.get('HighPrice', 0))
-            low_price = float(message.get('LowPrice', 0))
+            last_price = float(message.get('CurrentPrice', 0) or 0)
+            pre_close = float(message.get('PreviousClose', 0) or 0)
+            open_price = float(message.get('OpeningPrice', 0) or 0)
+            high_price = float(message.get('HighPrice', 0) or 0)
+            low_price = float(message.get('LowPrice', 0) or 0)
             
             # 提取成交量数据
             volume = float(current_volume)  # 累计成交量
@@ -453,10 +453,10 @@ class KabusGateway(BaseGateway):
             
             # 提取订单簿数据
             # BidPrice/AskPrice是第1档
-            bid_price_1 = float(message.get('BidPrice', 0))
-            bid_volume_1 = float(message.get('BidQty', 0))
-            ask_price_1 = float(message.get('AskPrice', 0))
-            ask_volume_1 = float(message.get('AskQty', 0))
+            bid_price_1 = float(message.get('BidPrice', 0) or 0)
+            bid_volume_1 = float(message.get('BidQty', 0) or 0)
+            ask_price_1 = float(message.get('AskPrice', 0) or 0)
+            ask_volume_1 = float(message.get('AskQty', 0) or 0)
             
             # 初始化订单簿数组（共5档）
             bid_prices = [bid_price_1]
@@ -469,8 +469,8 @@ class KabusGateway(BaseGateway):
                 buy_key = f'Buy{i}'
                 if buy_key in message and isinstance(message[buy_key], dict):
                     buy_data = message[buy_key]
-                    bid_prices.append(float(buy_data.get('Price', 0)))
-                    bid_volumes.append(float(buy_data.get('Qty', 0)))
+                    bid_prices.append(float(buy_data.get('Price', 0) or 0))
+                    bid_volumes.append(float(buy_data.get('Qty', 0) or 0))
                 else:
                     bid_prices.append(0.0)
                     bid_volumes.append(0.0)
@@ -480,8 +480,8 @@ class KabusGateway(BaseGateway):
                 sell_key = f'Sell{i}'
                 if sell_key in message and isinstance(message[sell_key], dict):
                     sell_data = message[sell_key]
-                    ask_prices.append(float(sell_data.get('Price', 0)))
-                    ask_volumes.append(float(sell_data.get('Qty', 0)))
+                    ask_prices.append(float(sell_data.get('Price', 0) or 0))
+                    ask_volumes.append(float(sell_data.get('Qty', 0) or 0))
                 else:
                     ask_prices.append(0.0)
                     ask_volumes.append(0.0)
