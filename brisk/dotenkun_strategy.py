@@ -52,6 +52,12 @@ class DotenkunStrategy(IntradayStrategyBase):
         # self.fixed_symbol = "161030019" # nk mini
         self.fixed_symbol = '161030023' # nk micro
     
+    def calculate_position_size(self, symbol: str) -> int:
+        """计算持仓数量，基于单只股票最大持仓量"""
+        if symbol == self.fixed_symbol:
+            return 1
+        return 0
+
     def get_context(self, symbol: str) -> DotenkunContext:
         """获取或创建DotenkunContext"""
         if symbol not in self.contexts:
@@ -348,7 +354,7 @@ class DotenkunStrategy(IntradayStrategyBase):
             type=OrderType.MARKET,
             offset=Offset.OPEN,
             price=None,  # market order
-            volume=1,  # 固定quantity为1
+            volume=context.position_size,  # 固定quantity为1
             reference="dotenkun_entry"
         )
         
