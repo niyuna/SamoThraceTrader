@@ -449,7 +449,7 @@ class KabusGateway(BaseGateway):
             turnover = float(message.get('TradingValue', 0))  # 累计成交额
             
             # 计算本次变化量
-            last_volume = volume - cache['volume'] if cache['volume'] > 0 else 0
+            last_volume = volume - cache['volume'] if cache.get('volume', 0) > 0 else 0
             
             # 提取订单簿数据
             # BidPrice/AskPrice是第1档
