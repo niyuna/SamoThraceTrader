@@ -424,6 +424,9 @@ class KabusGateway(BaseGateway):
             # 解析时间 - 使用TradingVolumeTime或CurrentPriceTime
             time_str = current_volume_time or message.get('CurrentPriceTime', '')
             if not time_str:
+                # before current price is decided
+                if message.get('CurrentPrice') is None or message.get('CurrentPrice') == 0:
+                    time_str = datetime.now().isoformat()
                 self.write_log(f"消息缺少时间字段: symbol={symbol}")
                 return None
             
