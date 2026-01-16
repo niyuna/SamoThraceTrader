@@ -55,6 +55,9 @@ class DotenkunIndicator:
         hl_range = bar.high_price - bar.low_price
         
         # 添加到列表
+        if hl_range == 0:
+            return self.get_indicators()
+            
         self.hl_ranges.append(hl_range)
         
         # 只保留最近period个值
