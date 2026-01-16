@@ -92,7 +92,7 @@ class BriskEshitenGateway(BaseGateway):
         self.polling_interval: int = 1  # 轮询间隔（秒）
         self._polling_active: bool = False
 
-        eshiten_api.init_eshiten_api(prod=True, skip_seq_no=13100)
+        eshiten_api.init_eshiten_api(prod=True, skip_seq_no=20000)
         if hasattr(eshiten_api.e_shiten_api_env['class_cust_property'], 'sUrlRequest'):
             self.write_log(f"Eshiten API URL: {eshiten_api.e_shiten_api_env['class_cust_property'].sUrlRequest}")
         else:

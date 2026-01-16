@@ -384,7 +384,7 @@ class KabusGateway(BaseGateway):
             cache = self._trading_cache[symbol]
             
             # 提取TradingVolume和TradingVolumeTime用于检测tick变化
-            current_volume = message.get('TradingVolume', 0)
+            current_volume = message.get('TradingVolume') or 0
             current_volume_time = message.get('TradingVolumeTime', '')
             
             # 检查日期变化，必要时重置每日数据
@@ -411,7 +411,7 @@ class KabusGateway(BaseGateway):
                 cache['last_trading_volume'] = current_volume
                 cache['last_trading_volume_time'] = current_volume_time
                 cache['volume'] = current_volume
-                cache['turnover'] = message.get('TradingValue', 0)
+                cache['turnover'] = message.get('TradingValue') or 0
                 if current_volume_time:
                     try:
                         dt_volume = datetime.fromisoformat(current_volume_time)
@@ -441,25 +441,25 @@ class KabusGateway(BaseGateway):
                 return None
             
             # 提取价格数据
-            last_price = float(message.get('CurrentPrice', 0) or 0)
-            pre_close = float(message.get('PreviousClose', 0) or 0)
-            open_price = float(message.get('OpeningPrice', 0) or 0)
-            high_price = float(message.get('HighPrice', 0) or 0)
-            low_price = float(message.get('LowPrice', 0) or 0)
+            last_price = float(message.get('CurrentPrice') or 0)
+            pre_close = float(message.get('PreviousClose') or 0)
+            open_price = float(message.get('OpeningPrice') or 0)
+            high_price = float(message.get('HighPrice') or 0)
+            low_price = float(message.get('LowPrice') or 0)
             
             # 提取成交量数据
-            volume = float(current_volume)  # 累计成交量
-            turnover = float(message.get('TradingValue', 0))  # 累计成交额
+            volume = float(current_volume or 0)  # 累计成交量
+            turnover = float(message.get('TradingValue') or 0)  # 累计成交额
             
             # 计算本次变化量
             last_volume = volume - cache['volume'] if cache.get('volume', 0) is not None and cache.get('volume', 0) > 0 else 0
             
             # 提取订单簿数据
             # BidPrice/AskPrice是第1档
-            bid_price_1 = float(message.get('BidPrice', 0) or 0)
-            bid_volume_1 = float(message.get('BidQty', 0) or 0)
-            ask_price_1 = float(message.get('AskPrice', 0) or 0)
-            ask_volume_1 = float(message.get('AskQty', 0) or 0)
+            bid_price_1 = float(message.get('BidPrice') or 0)
+            bid_volume_1 = float(message.get('BidQty') or 0)
+            ask_price_1 = float(message.get('AskPrice') or 0)
+            ask_volume_1 = float(message.get('AskQty') or 0)
             
             # 初始化订单簿数组（共5档）
             bid_prices = [bid_price_1]
@@ -472,8 +472,8 @@ class KabusGateway(BaseGateway):
                 buy_key = f'Buy{i}'
                 if buy_key in message and isinstance(message[buy_key], dict):
                     buy_data = message[buy_key]
-                    bid_prices.append(float(buy_data.get('Price', 0) or 0))
-                    bid_volumes.append(float(buy_data.get('Qty', 0) or 0))
+                    bid_prices.append(float(buy_data.get('Price') or 0))
+                    bid_volumes.append(float(buy_data.get('Qty') or 0))
                 else:
                     bid_prices.append(0.0)
                     bid_volumes.append(0.0)
