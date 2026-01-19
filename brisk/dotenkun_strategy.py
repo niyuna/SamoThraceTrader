@@ -157,12 +157,12 @@ class DotenkunStrategy(IntradayStrategyBase):
             # UP信号
             context.signal_triggered = 'up'
             signal_triggered = True
-            self.write_log(f"UP信号触发: {symbol} price={current_price:.2f} >= threshold={up_threshold:.2f}")
+            self.write_log(f"UP信号触发: {symbol} latest open price={latest_5min_bar.open_price:.2f}, price={current_price:.2f} >= threshold={up_threshold:.2f}")
         elif current_price < down_threshold:
             # DOWN信号
             context.signal_triggered = 'down'
             signal_triggered = True
-            self.write_log(f"DOWN信号触发: {symbol} price={current_price:.2f} <= threshold={down_threshold:.2f}")
+            self.write_log(f"DOWN信号触发: {symbol} latest open price={latest_5min_bar.open_price:.2f}, price={current_price:.2f} <= threshold={down_threshold:.2f}")
         
         if signal_triggered:
             self._handle_signal(context, tick)
