@@ -1,7 +1,7 @@
 """
 Dotenkun策略专用技术指标类
 """
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 from vnpy.trader.object import BarData
 from vnpy.trader.utility import ArrayManager
@@ -26,6 +26,10 @@ class DotenkunIndicator:
         # 缓存最新指标值
         self.latest_hl_range_ma = 0.0
         self.current_date = None
+        
+        # 保存上一个完成的5分钟bar信息（用于OC异常检测）
+        self.last_completed_bar_close: float = 0.0
+        self.last_completed_bar_datetime: Optional[datetime] = None
     
     def update_bar(self, bar: BarData) -> Dict[str, Any]:
         """更新5分钟bar并计算HL Range MA
@@ -74,6 +78,10 @@ class DotenkunIndicator:
             else:
                 self.latest_hl_range_ma = 0.0
         
+        # 保存上一个完成的5分钟bar信息（用于OC异常检测）
+        self.last_completed_bar_close = bar.close_price
+        self.last_completed_bar_datetime = bar.datetime
+        
         # 返回指标字典
         return self.get_indicators()
     
@@ -82,7 +90,9 @@ class DotenkunIndicator:
         return {
             'hl_range_ma_5': self.latest_hl_range_ma,
             'hl_range_count': len(self.hl_ranges),  # 当前存储的h-l值数量
-            'symbol': self.symbol
+            'symbol': self.symbol,
+            'last_completed_bar_close': self.last_completed_bar_close,
+            'last_completed_bar_datetime': self.last_completed_bar_datetime,
         }
     
     def get_hl_range_ma(self) -> float:

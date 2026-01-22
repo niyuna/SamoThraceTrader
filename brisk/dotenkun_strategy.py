@@ -143,11 +143,37 @@ class DotenkunStrategy(IntradayStrategyBase):
         if not latest_5min_bar:
             return
         
-        context.latest_5min_bar_open = latest_5min_bar.open_price
+        # 检查OC异常并使用修正后的open价格
+        effective_open_price = latest_5min_bar.open_price
+        oc_corrected = False
         
-        # 计算信号阈值
-        up_threshold = latest_5min_bar.open_price + context.k * hl_range_ma
-        down_threshold = latest_5min_bar.open_price - context.k * hl_range_ma
+        # 获取上一个完成的5分钟bar信息
+        last_close = indicators.get('last_completed_bar_close', 0.0)
+        last_datetime = indicators.get('last_completed_bar_datetime', None)
+        
+        # 检查OC异常：时间差 <= 10分钟 且 价格差 >= 15
+        if last_close > 0 and last_datetime:
+            time_diff = (latest_5min_bar.datetime - last_datetime).total_seconds() / 60
+            price_diff = abs(latest_5min_bar.open_price - last_close)
+            
+            # TODO: use a better price_diff threshold, 15 only works for futures right now
+            if time_diff <= 10 and price_diff >= 15:
+                # 使用OC平均值作为修正后的open价格
+                effective_open_price = (last_close + latest_5min_bar.open_price) / 2.0
+                oc_corrected = True
+                self.write_log(f"检测到OC异常，使用修正后的open价格: {symbol} "
+                              f"原始open={latest_5min_bar.open_price:.2f} "
+                              f"上一个close={last_close:.2f} "
+                              f"修正后open={effective_open_price:.2f} "
+                              f"价格差={price_diff:.2f} "
+                              f"时间差={time_diff:.2f}分钟")
+        
+        # 使用effective_open_price更新context
+        context.latest_5min_bar_open = effective_open_price
+        
+        # 使用effective_open_price计算信号阈值
+        up_threshold = effective_open_price + context.k * hl_range_ma
+        down_threshold = effective_open_price - context.k * hl_range_ma
         
         # 检查信号
         current_price = tick.last_price
@@ -157,12 +183,14 @@ class DotenkunStrategy(IntradayStrategyBase):
             # UP信号
             context.signal_triggered = 'up'
             signal_triggered = True
-            self.write_log(f"UP信号触发: {symbol} latest open price={latest_5min_bar.open_price:.2f}, price={current_price:.2f} >= threshold={up_threshold:.2f}")
+            open_price_label = '修正后' if oc_corrected else '原始'
+            self.write_log(f"UP信号触发: {symbol} {open_price_label}open price={effective_open_price:.2f}, price={current_price:.2f} >= threshold={up_threshold:.2f}")
         elif current_price < down_threshold:
             # DOWN信号
             context.signal_triggered = 'down'
             signal_triggered = True
-            self.write_log(f"DOWN信号触发: {symbol} latest open price={latest_5min_bar.open_price:.2f}, price={current_price:.2f} <= threshold={down_threshold:.2f}")
+            open_price_label = '修正后' if oc_corrected else '原始'
+            self.write_log(f"DOWN信号触发: {symbol} {open_price_label}open price={effective_open_price:.2f}, price={current_price:.2f} <= threshold={down_threshold:.2f}")
         
         if signal_triggered:
             self._handle_signal(context, tick)
