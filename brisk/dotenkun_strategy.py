@@ -104,6 +104,44 @@ class DotenkunStrategy(IntradayStrategyBase):
         # 如果没有window_bar，返回None
         return None
     
+    def _get_latest_1min_bar(self, symbol: str) -> Optional[BarData]:
+        """获取最新的1分钟bar（当前正在构建的）"""
+        bar_gen = self.bar_generators.get(symbol)
+        if bar_gen and hasattr(bar_gen, 'bar') and bar_gen.bar:
+            return bar_gen.bar
+        return None
+    
+    def _is_5min_bar_valid(self, symbol: str, tick_datetime: datetime) -> tuple[bool, Optional[BarData]]:
+        """检查5分钟bar是否有效（datetime匹配当前5分钟窗口）
+        
+        Args:
+            symbol: 股票代码
+            tick_datetime: 当前tick的datetime
+            
+        Returns:
+            (is_valid, window_bar): is_valid表示window_bar是否有效，window_bar是当前的window_bar（可能为None）
+        """
+        bar_gen = self.bar_generators.get(symbol)
+        if not bar_gen or not hasattr(bar_gen, 'window_bar'):
+            return (False, None)
+        
+        window_bar = bar_gen.window_bar
+        if not window_bar:
+            return (False, None)
+        
+        # 计算当前tick应该属于的5分钟窗口
+        aligned_minute = (tick_datetime.minute // 5) * 5
+        expected_datetime = tick_datetime.replace(minute=aligned_minute, second=0, microsecond=0)
+        window_bar_aligned = window_bar.datetime.replace(second=0, microsecond=0)
+        
+        # 检查日期和datetime是否匹配
+        if (tick_datetime.date() != window_bar.datetime.date() or 
+            expected_datetime != window_bar_aligned):
+            # window_bar过期，无效
+            return (False, window_bar)
+        
+        return (True, window_bar)
+    
     def get_indicators(self, symbol: str) -> Dict[str, Any]:
         """获取指定股票的指标值"""
         if symbol in self.indicator_managers:
@@ -138,13 +176,28 @@ class DotenkunStrategy(IntradayStrategyBase):
         if hl_range_ma <= 0:
             return  # 指标未准备好
         
-        # 获取最新5分钟bar的open价格
-        latest_5min_bar = self._get_latest_5min_bar(symbol)
-        if not latest_5min_bar:
+        # 验证5分钟bar的有效性
+        is_valid, latest_5min_bar = self._is_5min_bar_valid(symbol, tick.datetime)
+        
+        if not is_valid:
+            # window_bar无效（None或过期），fallback到1分钟bar的open_price
+            latest_1min_bar = self._get_latest_1min_bar(symbol)
+            if latest_1min_bar:
+                effective_open_price = latest_1min_bar.open_price
+                self.write_log(f"5分钟bar无效（过期或None），使用1分钟bar的open_price: {symbol} 1min_open={effective_open_price:.2f}")
+            else:
+                # 如果连1分钟bar都没有，使用tick.last_price
+                effective_open_price = tick.last_price
+                self.write_log(f"5分钟bar和1分钟bar都无效，使用tick.last_price: {symbol} tick_price={effective_open_price:.2f}")
+            
+            # 使用fallback价格更新context，但不继续处理信号（数据不足）
+            context.latest_5min_bar_open = effective_open_price
             return
+        else:
+            # 正常情况：使用5分钟bar的open_price
+            effective_open_price = latest_5min_bar.open_price
         
         # 检查OC异常并使用修正后的open价格
-        effective_open_price = latest_5min_bar.open_price
         oc_corrected = False
         
         # 获取上一个完成的5分钟bar信息
