@@ -109,11 +109,16 @@ class TestDotenkunSignalLogic(unittest.TestCase):
             'hl_range_ma_5': 2.0
         }
         
+        # 创建对齐到5分钟窗口的datetime（例如9:00）
+        now = datetime.now()
+        aligned_minute = (now.minute // 5) * 5
+        aligned_datetime = now.replace(minute=aligned_minute, second=0, microsecond=0)
+        
         # 创建5分钟bar（open=100.0）
         bar_5min = BarData(
             symbol="161030023",
             exchange=Exchange.TSE,
-            datetime=datetime.now(),
+            datetime=aligned_datetime,
             interval=None,
             open_price=100.0,
             high_price=102.0,
@@ -130,10 +135,12 @@ class TestDotenkunSignalLogic(unittest.TestCase):
         })
         
         # 创建tick价格 >= open + K * hl_range_ma (100 + 1.0 * 2.0 = 102.0)
+        # tick的datetime应该在同一个5分钟窗口内
+        tick_datetime = aligned_datetime.replace(minute=aligned_minute + 2, second=30)
         tick = TickData(
             symbol="161030023",
             exchange=Exchange.TSE,
-            datetime=datetime.now(),
+            datetime=tick_datetime,
             last_price=102.5,  # >= 102.0
             gateway_name="TEST"
         )
@@ -155,11 +162,16 @@ class TestDotenkunSignalLogic(unittest.TestCase):
             'hl_range_ma_5': 2.0
         }
         
+        # 创建对齐到5分钟窗口的datetime（例如9:00）
+        now = datetime.now()
+        aligned_minute = (now.minute // 5) * 5
+        aligned_datetime = now.replace(minute=aligned_minute, second=0, microsecond=0)
+        
         # 创建5分钟bar（open=100.0）
         bar_5min = BarData(
             symbol="161030023",
             exchange=Exchange.TSE,
-            datetime=datetime.now(),
+            datetime=aligned_datetime,
             interval=None,
             open_price=100.0,
             high_price=102.0,
@@ -176,10 +188,12 @@ class TestDotenkunSignalLogic(unittest.TestCase):
         })
         
         # 创建tick价格 <= open - K * hl_range_ma (100 - 1.0 * 2.0 = 98.0)
+        # tick的datetime应该在同一个5分钟窗口内
+        tick_datetime = aligned_datetime.replace(minute=aligned_minute + 2, second=30)
         tick = TickData(
             symbol="161030023",
             exchange=Exchange.TSE,
-            datetime=datetime.now(),
+            datetime=tick_datetime,
             last_price=97.5,  # <= 98.0
             gateway_name="TEST"
         )
@@ -201,11 +215,16 @@ class TestDotenkunSignalLogic(unittest.TestCase):
             'hl_range_ma_5': 2.0
         })
         
+        # 创建对齐到5分钟窗口的datetime（例如9:00）
+        now = datetime.now()
+        aligned_minute = (now.minute // 5) * 5
+        aligned_datetime = now.replace(minute=aligned_minute, second=0, microsecond=0)
+        
         # 创建5分钟bar（open=100.0）
         bar_5min = BarData(
             symbol="161030023",
             exchange=Exchange.TSE,
-            datetime=datetime.now(),
+            datetime=aligned_datetime,
             interval=None,
             open_price=100.0,
             high_price=102.0,
@@ -216,10 +235,12 @@ class TestDotenkunSignalLogic(unittest.TestCase):
         self.mock_bar_gen.window_bar = bar_5min
         
         # 创建tick价格在范围内 (98.0 < 99.5 < 102.0)
+        # tick的datetime应该在同一个5分钟窗口内
+        tick_datetime = aligned_datetime.replace(minute=aligned_minute + 2, second=30)
         tick = TickData(
             symbol="161030023",
             exchange=Exchange.TSE,
-            datetime=datetime.now(),
+            datetime=tick_datetime,
             last_price=99.5,
             gateway_name="TEST"
         )
@@ -370,11 +391,16 @@ class TestDotenkunPositionManagement(unittest.TestCase):
         context.position = 1  # 当前有多头持仓
         context.signal_triggered = 'down'  # 触发DOWN信号（空头）
         
+        # 创建对齐到5分钟窗口的datetime（例如9:00）
+        now = datetime.now()
+        aligned_minute = (now.minute // 5) * 5
+        aligned_datetime = now.replace(minute=aligned_minute, second=0, microsecond=0)
+        
         # Mock bar generator和indicator
         bar_5min = BarData(
             symbol="161030023",
             exchange=Exchange.TSE,
-            datetime=datetime.now(),
+            datetime=aligned_datetime,
             interval=None,
             open_price=100.0,
             high_price=102.0,
@@ -392,10 +418,12 @@ class TestDotenkunPositionManagement(unittest.TestCase):
         })
         
         # 创建tick触发DOWN信号
+        # tick的datetime应该在同一个5分钟窗口内
+        tick_datetime = aligned_datetime.replace(minute=aligned_minute + 2, second=30)
         tick = TickData(
             symbol="161030023",
             exchange=Exchange.TSE,
-            datetime=datetime.now(),
+            datetime=tick_datetime,
             last_price=97.5,
             gateway_name="TEST"
         )
@@ -408,8 +436,8 @@ class TestDotenkunPositionManagement(unittest.TestCase):
         self.strategy.gateway.send_order.assert_called()
         call_args = self.strategy.gateway.send_order.call_args[0][0]
         self.assertEqual(call_args.offset, Offset.CLOSE)
-        self.assertEqual(call_args.direction, Direction.LONG)  # close多头持仓
-        self.assertEqual(call_args.volume, 1)
+        self.assertEqual(call_args.direction, Direction.SHORT)  # close多头持仓使用SHORT方向（target_direction）
+        self.assertEqual(call_args.volume, context.position_size)  # 使用position_size
         
         # 验证pending_entry_direction被设置
         self.assertEqual(context.pending_entry_direction, 'short')
@@ -427,11 +455,16 @@ class TestDotenkunPositionManagement(unittest.TestCase):
         context = self.strategy.get_context("161030023")
         self.assertEqual(context.position, 1)  # 验证初始position
         
+        # 创建对齐到5分钟窗口的datetime（例如9:00）
+        now = datetime.now()
+        aligned_minute = (now.minute // 5) * 5
+        aligned_datetime = now.replace(minute=aligned_minute, second=0, microsecond=0)
+        
         # Mock bar generator和indicator
         bar_5min = BarData(
             symbol="161030023",
             exchange=Exchange.TSE,
-            datetime=datetime.now(),
+            datetime=aligned_datetime,
             interval=None,
             open_price=100.0,
             high_price=102.0,
@@ -449,6 +482,8 @@ class TestDotenkunPositionManagement(unittest.TestCase):
         })
         
         # 创建tick触发UP信号（与现有position方向相同）
+        # tick的datetime应该在同一个5分钟窗口内
+        tick_datetime = aligned_datetime.replace(minute=aligned_minute + 2, second=30)
         tick = TickData(
             symbol="161030023",
             exchange=Exchange.TSE,

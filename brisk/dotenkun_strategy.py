@@ -183,11 +183,12 @@ class DotenkunStrategy(IntradayStrategyBase):
             # window_bar无效（None或过期），fallback到1分钟bar的open_price
             latest_1min_bar = self._get_latest_1min_bar(symbol)
             if latest_1min_bar:
-                effective_open_price = latest_1min_bar.open_price
+                # 确保open_price是float类型（避免Mock对象导致的格式化错误）
+                effective_open_price = float(latest_1min_bar.open_price) if latest_1min_bar.open_price else 0.0
                 self.write_log(f"5分钟bar无效（过期或None），使用1分钟bar的open_price: {symbol} 1min_open={effective_open_price:.2f}")
             else:
                 # 如果连1分钟bar都没有，使用tick.last_price
-                effective_open_price = tick.last_price
+                effective_open_price = float(tick.last_price) if tick.last_price else 0.0
                 self.write_log(f"5分钟bar和1分钟bar都无效，使用tick.last_price: {symbol} tick_price={effective_open_price:.2f}")
             
             # 使用fallback价格更新context，但不继续处理信号（数据不足）
