@@ -210,16 +210,40 @@ class EnhancedBarGenerator:
             )
             self.interval_count = 1
         else:
-            # 在同一5分钟窗口内，更新high/low
-            self.window_bar.high_price = max(
-                self.window_bar.high_price,
-                bar.high_price
-            )
-            self.window_bar.low_price = min(
-                self.window_bar.low_price,
-                bar.low_price
-            )
-            self.interval_count += 1
+            # 检查对齐后的datetime是否匹配
+            window_bar_aligned = self.window_bar.datetime.replace(second=0, microsecond=0)
+            window_bar_date = self.window_bar.datetime.date()
+            bar_date = bar.datetime.date()
+            
+            if (bar_date != window_bar_date or aligned_datetime != window_bar_aligned):
+                # 跨session/跨天/缺失bar：强制完成旧的window_bar
+                self.on_window_bar(self.window_bar)
+                self.window_bar = None
+                self.interval_count = 0
+                
+                # 创建新的window_bar
+                self.window_bar = BarData(
+                    symbol=bar.symbol,
+                    exchange=bar.exchange,
+                    interval=None,  # 5分钟bar的interval设为None，以区别于1分钟bar（Interval.MINUTE）
+                    datetime=aligned_datetime,  # 对齐到5分钟边界
+                    gateway_name=bar.gateway_name,
+                    open_price=bar.open_price,
+                    high_price=bar.high_price,
+                    low_price=bar.low_price
+                )
+                self.interval_count = 1
+            else:
+                # 正常情况：在同一5分钟窗口内，更新high/low
+                self.window_bar.high_price = max(
+                    self.window_bar.high_price,
+                    bar.high_price
+                )
+                self.window_bar.low_price = min(
+                    self.window_bar.low_price,
+                    bar.low_price
+                )
+                self.interval_count += 1
         
         # 更新close price/volume/turnover
         self.window_bar.close_price = bar.close_price
