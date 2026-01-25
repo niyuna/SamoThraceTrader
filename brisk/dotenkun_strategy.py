@@ -55,7 +55,7 @@ class DotenkunStrategy(IntradayStrategyBase):
     def calculate_position_size(self, symbol: str) -> int:
         """计算持仓数量，基于单只股票最大持仓量"""
         if symbol == self.fixed_symbol:
-            return 5
+            return 10
         return 0
 
     def get_context(self, symbol: str) -> DotenkunContext:
